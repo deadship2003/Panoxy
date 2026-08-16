@@ -1,0 +1,66 @@
+# 自动打包发布:推 V* 标签 → 下载内核/geo/面板 → 组装全离线包 → 建 Release 传资产
+# 用 runner 自带的 GITHUB_TOKEN(permissions: contents: write),无需任何人工凭证
+name: Release
+
+on:
+  push:
+    tags: ['V*', 'v*']
+
+permissions:
+  contents: write
+
+env:
+  MIHOMO_VERSION: v1.19.29   # 包内内核版本;升级时同步改这里
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble offline package
+        run: |
+          set -euxo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PKG="Panixy-${TAG}"
+          mkdir -p "${PKG}/assets/core" "${PKG}/assets/geo" "${PKG}/assets/ui/official"
+
+          # 内核:与本地离线包同版本(amd64-V3 + arm64 标准版)
+          base="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}"
+          curl -fsSL --retry 3 -o "${PKG}/assets/core/mihomo-linux-amd64-v3-${MIHOMO_VERSION}.gz" \
+            "$base/mihomo-linux-amd64-v3-${MIHOMO_VERSION}.gz"
+          curl -fsSL --retry 3 -o "${PKG}/assets/core/mihomo-linux-arm64-${MIHOMO_VERSION}.gz" \
+            "$base/mihomo-linux-arm64-${MIHOMO_VERSION}.gz"
+
+          # geo 数据(包内文件名沿用 install.sh 认识的写法)
+          geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
+          curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoIP.dat"    "$geo/geoip.dat"
+          curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoSite.dat"  "$geo/geosite.dat"
+          curl -fsSL --retry 3 -o "${PKG}/assets/geo/Country.mmdb" "$geo/country.mmdb"
+
+          # metacubexd 面板(最新稳定 release)
+          curl -fsSL --retry 3 -o /tmp/ui.tgz \
+            "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"
+          tar xzf /tmp/ui.tgz -C "${PKG}/assets/ui/official"
+          test -f "${PKG}/assets/ui/official/index.html"
+
+          # 源文件就位(仓库根 → 包内布局) + 语法自检
+          cp README.md install.sh panixy "${PKG}/"
+          cp clash-template.yaml "${PKG}/assets/clash-template.yaml"
+          bash -n "${PKG}/panixy"
+          bash -n "${PKG}/install.sh"
+
+          tar -czf "Panixy-${TAG}.tar.gz" "${PKG}"
+          sha256sum "Panixy-${TAG}.tar.gz" > "Panixy-${TAG}.tar.gz.sha256"
+          ls -la "Panixy-${TAG}.tar.gz"
+
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          notes="全离线安装包:内核 ${MIHOMO_VERSION} 双架构(amd64-V3/arm64),geo 与 metacubexd 面板取打包时最新版。
+          完整性校验:sha256sum -c Panixy-${TAG}.tar.gz.sha256
+          快速开始:tar xzf Panixy-${TAG}.tar.gz && cd Panixy-${TAG} && sudo ./install.sh && sudo panixy set-sub '订阅链接'"
+          gh release create "$TAG" --title "Panixy ${TAG}" --notes "$notes" \
+            "Panixy-${TAG}.tar.gz" "Panixy-${TAG}.tar.gz.sha256"
