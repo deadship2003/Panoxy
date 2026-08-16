@@ -1,0 +1,5 @@
+# 包根手工配置(含真实订阅URL,install.sh 会优先采用)—— 绝不能提交
+clash.yaml
+
+# 本地打包产物
+*.tar.gz
