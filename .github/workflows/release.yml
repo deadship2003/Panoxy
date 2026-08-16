@@ -62,5 +62,11 @@ jobs:
           notes="全离线安装包:内核 ${MIHOMO_VERSION} 双架构(amd64-V3/arm64),geo 与 metacubexd 面板取打包时最新版。
           完整性校验:sha256sum -c Panixy-${TAG}.tar.gz.sha256
           快速开始:tar xzf Panixy-${TAG}.tar.gz && cd Panixy-${TAG} && sudo ./install.sh && sudo panixy set-sub '订阅链接'"
-          gh release create "$TAG" --title "Panixy ${TAG}" --notes "$notes" \
-            "Panixy-${TAG}.tar.gz" "Panixy-${TAG}.tar.gz.sha256"
+          # 幂等:Release 已存在(如手工先建过)就补传/覆盖资产,而不是报错退出
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在,覆盖上传资产"
+            gh release upload "$TAG" "Panixy-${TAG}.tar.gz" "Panixy-${TAG}.tar.gz.sha256" --clobber
+          else
+            gh release create "$TAG" --title "Panixy ${TAG}" --notes "$notes" \
+              "Panixy-${TAG}.tar.gz" "Panixy-${TAG}.tar.gz.sha256"
+          fi
