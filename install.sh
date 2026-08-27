@@ -65,11 +65,17 @@ else
   echo "[1/5] 内核已存在,保留: $($BIN -v | head -1)"
 fi
 
-# 2. geo 数据
+# 2. geo 数据 + 分流规则(规则源在 raw.githubusercontent.com,国内直连不可达,离线预置首启即生效)
 for f in GeoIP.dat GeoSite.dat Country.mmdb; do
   if [ ! -f "$ROOT/$f" ]; then cp "$DIR/assets/geo/$f" "$ROOT/$f"; fi
 done
-echo "[2/5] geo 数据就位"
+mkdir -p "$ROOT/rule_provider"
+if [ -f "$DIR/assets/rule/AWAvenue-Ads.yaml" ]; then
+  [ -f "$ROOT/rule_provider/AWAvenue-Ads.yaml" ] || cp "$DIR/assets/rule/AWAvenue-Ads.yaml" "$ROOT/rule_provider/"
+else
+  echo "   (包内未带广告规则文件,首启将由内核联网拉取)"
+fi
+echo "[2/5] geo 与规则数据就位"
 
 # 3. Web 管理面板(metacubexd,之后由 panixy upgrade 自动更新)
 if [ ! -d "$ROOT/ui/official" ]; then
@@ -90,6 +96,7 @@ else
   SECRET_NEW=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
   sed -i "s/^secret: deadship/secret: $SECRET_NEW/" "$CONF"
   echo "[4/5] 写入通用模板 $CONF —— 记得 sudo panixy set-sub '<订阅URL>'"
+  echo "      无外网环境可离线导入:panixy set-sub '<URL>' <下载好的订阅文件>"
   echo "      面板 API 密钥(随机生成): $SECRET_NEW  (日后查看: grep '^secret' $CONF)"
 fi
 
@@ -97,8 +104,8 @@ fi
 install -m755 "$DIR/panixy" "$CLI"
 echo "[5/5] 服务:"
 "$CLI" install
-if [ -n "${1:-}" ]; then
-  "$CLI" set-sub "$1"
+if [ "$#" -gt 0 ]; then
+  "$CLI" set-sub "$@"
 else
   echo "提示: sudo panixy set-sub '<订阅链接>' 设置订阅"
 fi

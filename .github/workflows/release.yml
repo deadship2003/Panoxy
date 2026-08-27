@@ -38,6 +38,13 @@ jobs:
           curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoSite.dat"  "$geo/geosite.dat"
           curl -fsSL --retry 3 -o "${PKG}/assets/geo/Country.mmdb" "$geo/country.mmdb"
 
+          # 分流规则(源站在 raw.githubusercontent.com,国内直连不可达 → 离线预置,
+          # 文件名/路径须与 clash-template.yaml 的 rule-providers.path 一致)
+          mkdir -p "${PKG}/assets/rule"
+          curl -fsSL --retry 3 -o "${PKG}/assets/rule/AWAvenue-Ads.yaml" \
+            "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml"
+          test -s "${PKG}/assets/rule/AWAvenue-Ads.yaml"
+
           # metacubexd 面板(最新稳定 release)
           curl -fsSL --retry 3 -o /tmp/ui.tgz \
             "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"

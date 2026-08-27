@@ -6,10 +6,11 @@
 
 ## ✨ 特性
 
-- **全离线安装**——内核(amd64-V3/arm64 双架构)、Geo 数据、metacubexd 面板、配置模板全在包内,装完才需要网
+- **全离线安装**——内核(amd64-V3/arm64 双架构)、Geo 数据、metacubexd 面板、广告分流规则、配置模板全在包内,装完才需要网
+- **订阅导入可验证**——`set-sub` 直连→经本机代理两级预取订阅(或直接给本地文件离线导入),预置缓存后重启内核,**以节点数 > 0 为成功标准**,绝不假成功
 - **事务式安装**——任何一步失败自动回滚到运行前状态,不留残迹
 - **每日自动升级**——内核与面板经本机代理下载、试运行校验、原子替换、双健康检查(API 版本 + 经代理出网 204),失败自动回退,内核保留 3 份备份
-- **热重载生效**——`set-sub`/`apply-conf` 优先 API 热重载,不重启、不重建 TUN,网关链路无损
+- **热重载生效**——`apply-conf` 优先 API 热重载,不重启、不重建 TUN,网关链路无损(`set-sub` 换 URL 必须重启重建 provider,见下节)
 - **安全默认**——API 密钥安装时随机生成;联动参数(密钥/端口)运行时从配置解析,配置是唯一事实源
 - **并发保护**——flock 互斥,自动升级与手工操作不互踩
 - **通用模板**——全文件只需改一处订阅链接;国内流量默认 DIRECT,地区分组按常见机场命名自动归类
@@ -26,6 +27,15 @@ sudo panixy set-sub '你的订阅链接'       # 用模板时唯一必改项
 
 也可以把订阅链接直接传给安装器一步到位:`sudo ./install.sh 'https://你的订阅链接'`
 
+**无外网环境**(订阅域名直连不可达、本机也没有可用节点)时离线导入:在任意能访问订阅的设备上下载好
+Clash 订阅 YAML,拷到网关后:
+
+```bash
+sudo panixy set-sub 'https://你的订阅链接' /path/to/订阅.yaml
+```
+
+导入后内核从预置缓存**秒级加载节点,不依赖当时的网络**;测速选优由 `🔃 自动选择` 组自动进行,各策略组默认走最快节点,境外域名的真实 DNS 解析也经 `dns` 组(默认同样是最快节点)走 DoH。
+
 安装是事务式的:任何一步失败(内核缺失/配置校验不过/服务起不来/健康验证超时),自动停用并移除 unit/timer、还原 sysctl 与 ip_forward、删除本次新建的目录与文件,系统回到运行前状态。
 
 配置模板 `/etc/clash.yaml` 已内置全套常见分组(自动选择/地区组/ChatGPT/油管/网飞/Telegram/Twitter/微软/苹果/游戏/学术/广告拦截/GitHub/Spotify/兜底),地区分组按常见机场命名自动归类(港/台/日/新/韩/美/其他),不中可改各组 `filter` 正则。
@@ -38,6 +48,8 @@ sudo panixy set-sub '你的订阅链接'       # 用模板时唯一必改项
 ├── ui/official/        # metacubexd 面板(自动升级)
 │   └── .official.version  (上游 release tag 戳)
 ├── cache.db            # mihomo 家目录(-d):fake-ip 缓存/订阅/规则
+├── proxies/SUB.yaml    # 订阅缓存(set-sub 预取预置,内核重启秒级加载)
+├── rule_provider/      # 规则缓存(离线包预置)
 ├── GeoIP.dat GeoSite.dat Country.mmdb
 ├── .last-upgrade       # 最近一次升级成功时间戳
 /etc/clash.yaml         # 配置
@@ -63,7 +75,7 @@ sudo panixy set-sub '你的订阅链接'       # 用模板时唯一必改项
 | 命令 | 作用 |
 |---|---|
 | `sudo panixy install` | 部署 unit/timer、开 ip_forward、拉起服务(**失败自动回滚**) |
-| `sudo panixy set-sub <URL>` | 设置/更换订阅链接(写入+校验+热重载,失败恢复原配置) |
+| `sudo panixy set-sub <URL> [本地文件]` | 导入订阅:预取(直连→本机代理两级,或用本地文件)→预置缓存→重启→**验证节点加载**,失败自动恢复原订阅 |
 | `panixy check [yaml]` | 用内核 `-t` 校验配置文件(只读,免 root) |
 | `sudo panixy apply-conf <yaml>` | 部署手工调整的配置(优先热重载;失败自动恢复原配置) |
 | `sudo panixy upgrade` | 内核+UI 升级(timer 每天 04:17±25min 自动跑) |
@@ -84,6 +96,32 @@ TPClash 把 UI 编进二进制、内核只在缺失时下载——都不会更�
 - x86 升级时 V3 优先,下载后试运行验证,指令集不兼容自动降级标准版/compatible 版
 - 全部成功会更新 `/opt/panixy/.last-upgrade` 时间戳,`panixy status` 展示——
   时间过旧说明升级在静默停滞(API 限流/网络),查 `panixy log`
+
+## 订阅导入与无外网初始化(为什么是"预取+重启+验证")
+
+实测 mihomo 行为决定了这套流程:
+
+- **拉不到订阅时内核照常运行、API 照常应答**(组里只有空的 COMPATIBLE)——只查 API 的健康检查会"假成功"
+- **热重载不重建 provider**:换了订阅 URL 热重载后,内核仍按旧 URL 拉取,新订阅永远不生效
+- **有本地缓存时内核秒级加载、不联网**;缓存陈旧则先加载旧内容再后台刷新(刷新流量经自身规则走节点)
+
+因此 `set-sub` 的做法:CLI 用与内核一致的 UA(`clash.meta/vX.Y.Z`)预取订阅(机场按 UA 返回 Clash 格式)→
+校验内容确为含节点的 YAML → 写入配置并**预置缓存**(`proxies/SUB.yaml`)→ 重启重建 provider →
+轮询 API 直到**节点数 > 0** 才算成功;任一步失败恢复原配置与缓存。拉取顺序:本地文件 > 直连 > 经本机代理
+(换被墙订阅时旧节点还能当跳板);都不通时报可执行的离线导入指引。
+
+广告分流规则源在 `raw.githubusercontent.com`(国内直连不可达),离线包已预置规则缓存,首启即生效;
+内核后台刷新规则/订阅的流量会经自身规则走节点,节点通了自然恢复更新。
+
+## 开发与测试
+
+改完 `panixy`/模板后跑冒烟测试(沙箱内模拟假 systemd、假订阅服务器与不可达网络,**不动系统、不需要 root、不联外网**):
+
+```bash
+tests/smoke.sh            # 内核默认取 /opt/panixy/bin/mihomo,可用 tests/smoke.sh <内核路径> 覆盖
+```
+
+覆盖:模板过内核 `-t`、可达订阅导入并验证节点数、不可达订阅诚实失败且配置零改动、被墙订阅+本地文件离线导入、旧配置自动补 `path`、`status` 节点行。
 
 ## 架构
 
@@ -110,6 +148,7 @@ mihomo ── auto-route/auto-detect-interface ──> 物理网卡出站
 
 ## 故障排查
 
+- `status` 显示"节点: 0 ⚠️ 订阅未加载":订阅没导入成功——重新 `set-sub`(可带本地订阅文件离线导入),仍失败看 `panixy log` 中内核报错
 - 全机断网:`systemctl restart panixy`,恢复后查 `panixy log`
 - 只断代理(直连正常):多为运营商 UDP 波动,通常 1-2 分钟自愈;持续则换 TCP 节点
 - DNS 异常:`resolvectl dns Meta` 应显示 198.18.0.2;没有则 `systemctl restart panixy`

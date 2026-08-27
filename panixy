@@ -66,6 +66,42 @@ egress_ok() {  # 经代理出网 204,重试 $1 次(默认3)
   done
   return 1
 }
+
+# ---- 订阅导入辅助 ----
+# 关键事实(实测 mihomo v1.19.x):订阅拉不到时内核照常运行、API 照常应答(0 节点),
+# 且热重载不重建 provider(换 URL 不生效)——所以必须:CLI 预取订阅→预置缓存→重启→验证节点数。
+sub_ua() {  # 与内核拉订阅一致的 UA(机场按 UA 返回 Clash 格式)
+  echo "clash.meta/$("$BIN" -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+}
+fetch_sub() {  # $1=url $2=输出文件:直连优先,失败经本机代理(换被墙订阅时旧节点还能用);失败返回非0
+  local ua; ua=$(sub_ua)
+  curl -fsSL -m 20 -A "$ua" -o "$2" "$1" 2>/dev/null && return 0
+  curl -fsSL -m 20 -A "$ua" -x "$PROXY" -o "$2" "$1" 2>/dev/null
+}
+sub_yaml_ok() {  # $1=文件:是否为含节点的 Clash YAML(机场对无效 token 常返回网页/空,须拦下)
+  [ -s "$1" ] || return 1
+  grep -qE '^[[:space:]]*proxies:' "$1" \
+    && grep -qE '^[[:space:]]*-[[:space:]]*(\{|"?name"?:)' "$1"
+}
+sub_cache_path() {  # SUB provider 的缓存落盘位:取配置 path 字段(相对 $ROOT),缺省兜底
+  local p
+  p=$(awk '/^  SUB:/{f=1;next} f&&/^    path:/{sub(/^    path:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null)
+  case "$p" in
+    /*) echo "$p" ;;
+    '') echo "$ROOT/proxies/SUB.yaml" ;;
+    *)  echo "$ROOT/${p#./}" ;;
+  esac
+}
+provider_nodes() {  # SUB provider 已加载的节点数(0=未加载;API 不可达亦为 0)
+  # 按 provider-name 计数:不能按 "alive"(extra 里每个测速 URL 还有一份,会翻倍)
+  curl -s -m 4 -H "Authorization: Bearer $SECRET" "$API/providers/proxies/SUB" 2>/dev/null \
+    | grep -o '"provider-name":"[^"]*"' | wc -l
+}
+sub_recover() {  # $1=缓存路径(空=只恢复配置) $2=非空则重启服务;set-sub 失败路径恢复原状
+  mv -f "$CONF.panixy-bak" "$CONF" 2>/dev/null
+  [ -n "$1" ] && [ -f "$1.panixy-bak" ] && mv -f "$1.panixy-bak" "$1"
+  [ -n "${2:-}" ] && systemctl restart panixy.service >/dev/null 2>&1
+}
 reload_conf() {  # 热重载配置(不重启、不重建 TUN,网关链路无损);失败返回非0
   curl -fsS -m 10 -X PUT -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' \
        -d "{\"path\": \"$CONF\"}" "$API/configs?force=0" >/dev/null 2>&1
@@ -277,40 +313,73 @@ cmd_upgrade() {   # timer 入口: 内核 + UI;全成功才更新时间戳(status
   return $rc
 }
 
-cmd_set_sub() {  # 用法: panixy set-sub <订阅URL> — 写入配置并生效(优先热重载,失败退重启;失败自动恢复原配置)
+cmd_set_sub() {  # 用法: panixy set-sub <订阅URL> [本地订阅文件] — 导入订阅并验证真实加载
+  # 无外网环境要点:订阅内容预取(直连→经本机代理两级,或直接给本地文件)→ 预置 provider 缓存
+  # → 重启重建 provider(热重载对换 URL 无效)→ 以节点数>0 作为成功标准,绝不假成功
   need_root; lock
-  local url="${1:-}"
-  [ -n "$url" ] || die "用法: panixy set-sub <订阅URL>"
+  local url="${1:-}" seed="${2:-}" cache tmp n i
+  [ -n "$url" ] || die "用法: panixy set-sub <订阅URL> [本地订阅文件]"
   case "$url" in http://*|https://*) ;; *) die "URL 需以 http(s):// 开头" ;; esac
   [ -f "$CONF" ] || die "配置不存在: $CONF"
+
+  # 1) 取订阅内容:本地文件 > 直连 > 经本机代理
+  tmp=$(mktemp)
+  if [ -n "$seed" ]; then
+    [ -f "$seed" ] || { rm -f "$tmp"; die "本地订阅文件不存在: $seed"; }
+    cp "$seed" "$tmp" || { rm -f "$tmp"; die "本地订阅文件读取失败: $seed"; }
+    log "使用本地订阅文件: $seed (跳过联网拉取)"
+  elif ! fetch_sub "$url" "$tmp"; then
+    rm -f "$tmp"
+    die "订阅拉取失败(直连与经本机代理均不通): $url
+  无外网环境可离线导入:在任意能访问订阅的设备下载好 Clash 订阅 YAML 后
+  sudo panixy set-sub '<URL>' <订阅文件>
+  或指定可用代理: sudo PANIXY_PROXY=http://主机:端口 panixy set-sub '<URL>'"
+  fi
+  if ! sub_yaml_ok "$tmp"; then
+    rm -f "$tmp"
+    die "订阅内容不是有效的 Clash YAML(应含 proxies: 节点列表),请检查链接/token 或本地文件"
+  fi
+
+  # 2) 备份 → 写 URL(块内无 path 时顺手补上,保证缓存可预置)→ 内核校验 → 预置缓存
   cp "$CONF" "$CONF.panixy-bak"
-  awk -v u="$url" '
+  if awk '/^  SUB:/{f=1} f&&/^    path:/{found=1} END{exit !found}' "$CONF.panixy-bak"; then haspath=1; else haspath=0; fi
+  awk -v u="$url" -v p="$haspath" '
     /^[^ #]/{insub=0}
     /^  SUB:/{insub=1}
-    insub && /^    url:/{print "    url: \"" u "\""; next}
+    insub && /^    url:/{print "    url: \"" u "\""; if(p=="0") print "    path: ./proxies/SUB.yaml"; next}
     {print}
-  ' "$CONF.panixy-bak" > "$CONF" || { mv "$CONF.panixy-bak" "$CONF"; die "配置写入失败,已恢复原文件"; }
-  grep -q "\"$url\"" "$CONF" || { mv "$CONF.panixy-bak" "$CONF"; die "写入失败(未找到 SUB 的 url 行),已恢复原文件"; }
+  ' "$CONF.panixy-bak" > "$CONF" || { sub_recover ""; die "配置写入失败,已恢复原文件"; }
+  grep -q "\"$url\"" "$CONF" || { sub_recover ""; die "写入失败(未找到 SUB 的 url 行),已恢复原文件"; }
   if ! "$BIN" -t -f "$CONF" -d "$ROOT" >/dev/null 2>&1; then
-    mv "$CONF.panixy-bak" "$CONF"
+    sub_recover ""
     die "配置校验未通过,已恢复原配置"
   fi
-  # 优先热重载:不重启、不重建 TUN,避免网关链路抖动
-  if reload_conf && wait_healthy 20; then
-    rm -f "$CONF.panixy-bak"
-    log "订阅已设置并热重载生效(未重启)"
-    cmd_status
-    return 0
-  fi
-  log "热重载未生效,改用重启方式"
+  cache=$(sub_cache_path)
+  [ -f "$cache" ] && cp "$cache" "$cache.panixy-bak"
+  mkdir -p "$(dirname "$cache")"
+  cp "$tmp" "$cache" && rm -f "$tmp"
+
+  # 3) 重启重建 provider:内核从预置缓存秒级加载节点,不依赖当时的网络
+  log "订阅已写入,缓存已预置,重启内核生效(换 URL 必须重启,热重载不重建 provider)"
   if ! systemctl restart panixy.service >/dev/null 2>&1; then
-    mv "$CONF.panixy-bak" "$CONF"
-    systemctl restart panixy.service >/dev/null 2>&1
-    die "重启失败,已恢复原配置并重启回旧版"
+    sub_recover "$cache" restart; die "重启失败,已恢复原订阅"
   fi
-  rm -f "$CONF.panixy-bak"
-  wait_healthy 30 || log "警告:重启后健康检查未通过,请 panixy log 排查"
-  log "订阅已设置并重启生效"
+  wait_healthy 30 || { sub_recover "$cache" restart; die "重启后健康检查超时,已恢复原订阅"; }
+
+  # 4) 成功标准 = 节点真实加载(这一步是内核能转发流量的前提)
+  if grep -q '^  SUB:' "$CONF"; then
+    n=0
+    for i in 1 2 3 4 5; do n=$(provider_nodes); [ "$n" -gt 0 ] 2>/dev/null && break; sleep 2; done
+    if [ "${n:-0}" -eq 0 ] 2>/dev/null; then
+      sub_recover "$cache" restart
+      die "订阅未加载(节点数为 0),已恢复原订阅;排查: panixy log / panixy check"
+    fi
+    log "订阅加载成功:$n 个节点(测速选优由 🔃 自动选择 组负责,默认走最快节点)"
+  else
+    log "提示:自定义配置无 SUB provider,跳过节点数验证"
+  fi
+  rm -f "$CONF.panixy-bak" "$cache.panixy-bak"
+  log "订阅导入完成: $url"
   cmd_status
 }
 
@@ -353,12 +422,18 @@ cmd_apply_conf() {  # 用法: panixy apply-conf <yaml路径> — 部署手工调
 }
 
 cmd_status() {
+  local nodes="-(自定义配置,不统计)"
+  if grep -q '^  SUB:' "$CONF" 2>/dev/null; then
+    nodes="$(provider_nodes) 个"
+    [ "$nodes" = "0 个" ] && nodes="0 ⚠️ 订阅未加载(重新导入: sudo panixy set-sub '<URL>',仍失败查 panixy log)"
+  fi
   echo "== panixy v$VER_TAG  ($ROOT) =="
   if grep -q 'url:.*SUB_URL_PLACEHOLDER' "$CONF" 2>/dev/null; then
     echo "订阅:     ⚠️ 尚未设置! 用 sudo panixy set-sub '<订阅URL>'"
   else
-    echo "订阅:     $(awk '/^  SUB:/{f=1} f&&/^    url:/{print $2; exit}' "$CONF" 2>/dev/null | cut -c1-60)..."
+    echo "订阅:     $(awk '/^  SUB:/{f=1} f&&/^    url:/{sub(/^    url:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null | cut -c1-60)..."
   fi
+  echo "节点:     $nodes"
   echo "服务:     $(systemctl is-active panixy.service 2>/dev/null)"
   echo "升级定时: $(systemctl is-active panixy-upgrade.timer 2>/dev/null) 下次: $(systemctl list-timers panixy-upgrade.timer --no-pager 2>/dev/null | awk 'NR==2{print $1,$2,$3}')"
   echo "上次升级: $(cat "$LASTUP" 2>/dev/null || echo 未知)(仅全成功时更新;过旧=升级停滞,查 panixy log)"
@@ -417,5 +492,5 @@ case "${1:-}" in
   uninstall)  cmd_uninstall ;;
   units)      cmd_units ;;
   log)        shift; cmd_log "$@" ;;
-  *) echo "panixy v$VER_TAG — 用法: panixy {install|upgrade|update-ui|set-sub <URL>|check [yaml]|apply-conf <yaml>|status|rollback [版本]|uninstall|units|log [行数]}"; exit 1 ;;
+  *) echo "panixy v$VER_TAG — 用法: panixy {install|upgrade|update-ui|set-sub <URL> [本地订阅文件]|check [yaml]|apply-conf <yaml>|status|rollback [版本]|uninstall|units|log [行数]}"; exit 1 ;;
 esac

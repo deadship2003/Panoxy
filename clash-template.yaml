@@ -1,7 +1,8 @@
 # =====================================================================
-# panixy 通用配置模板 v0.1.3
+# panixy 通用配置模板 v0.1.4
 # ★ 全文件只有一处必须修改: 搜索 SUB_URL_PLACEHOLDER
 #   改法一(推荐): sudo panixy set-sub '你的订阅链接'
+#       (无外网环境可离线导入: panixy set-sub '链接' <下载好的订阅文件>)
 #   改法二: 手工把 SUB_URL_PLACEHOLDER 整个替换成订阅链接(保留引号)
 #
 # 地区分组用常见机场命名正则匹配(香港/台湾/日本/新加坡/韩国/美国/其他地区),
@@ -10,6 +11,9 @@
 # v0.1.3: 国内组默认 DIRECT / 删除已失效的 global-client-fingerprint(内核已移除)
 #         / 删除 external-ui-url(面板更新由 panixy upgrade 接管)
 #         / 开启 geo 自动更新 / 广告规则改为每日拉取。
+# v0.1.4: SUB 订阅落盘到 path(panixy set-sub 预置缓存,无外网也能秒级加载)
+#         / 境外域名真实解析经 dns 组(默认 🔃 自动选择 = 自动测速最快节点)走 DoH
+#         / NTP 换国内源(网关环境 time.apple.com 的 UDP 常被扰动)。
 # =====================================================================
 
 # ============ 锚点模板(&pr 服务组 / &prd 国内组 / &p 订阅健康检查 / &use 地区组)============
@@ -52,6 +56,7 @@ proxy-providers:
   SUB:
     <<: *p
     url: "SUB_URL_PLACEHOLDER"   # ←←← 把订阅链接粘进来,或用 panixy set-sub
+    path: ./proxies/SUB.yaml     # 订阅落盘位:panixy set-sub 预取预置到这里,内核重启秒级加载不依赖网络
 
 # ============ 基础设置 ============
 mixed-port: 33833
@@ -92,7 +97,7 @@ profile:
 ntp:
   enable: true
   write-to-system: false
-  server: time.apple.com
+  server: ntp.aliyun.com   # 国内网关 time.apple.com(UDP 123)常被扰动
   port: 123
   interval: 30
 
@@ -136,8 +141,12 @@ dns:
   default-nameserver:
     - 119.29.29.29
     - 223.5.5.5
+  # 境外域名真实解析:经 dns 组走 DoH(#后缀=指定出站组,dns 组默认 🔃 自动选择=最快节点)。
+  # fake-ip 模式下客户端拿到的都是假 IP,这里仅在内核需要真实 IP 时触发;流量转发由节点远端解析。
+  # 1.1.1.1 为 IP 直连 DoH,无需先解析 DNS 服务器域名(无订阅时此路不通,CN 域名不受影响)。
   nameserver:
-    - https://doh.pub/dns-query
+    - https://1.1.1.1/dns-query#dns
+  # 订阅域名/节点服务器域名:必须国内直连可解析(引导期唯一的 DNS 生命线,勿改走代理)
   proxy-server-nameserver:
     - https://doh.pub/dns-query
   nameserver-policy:
@@ -148,7 +157,8 @@ dns:
 
 # ============ 策略分组 ============
 proxy-groups:
-  # dns 组刻意不含 DIRECT(避免被墙域名走直连无法解析)
+  # dns 组:上方 nameserver 里 DoH 的出站口(#dns 后缀),默认走 🔃 自动选择(自动测速最快节点)
+  # 刻意不含 DIRECT(避免被墙域名走直连无法解析)
   - { name: dns, type: select, use: [SUB], proxies: [🔃 自动选择, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 全部节点] }
   - { name: 🚀 节点选择, <<: *pr }
   - { name: 学术, <<: *pr }
@@ -188,6 +198,8 @@ proxy-groups:
 # ============ 规则订阅 ============
 rule-providers:
   # 秋风广告拦截规则 https://awavenue.top
+  # 源站在 raw.githubusercontent.com(国内直连不可达):离线包已预置同名缓存文件,
+  # 首启离线可用;之后内核刷新订阅/规则时流量经自身规则走节点,自动恢复正常更新
   AWAvenue-Ads:
     type: http
     behavior: domain
