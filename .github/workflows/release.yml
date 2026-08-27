@@ -32,7 +32,7 @@ jobs:
           curl -fsSL --retry 3 -o "${PKG}/assets/core/mihomo-linux-arm64-${MIHOMO_VERSION}.gz" \
             "$base/mihomo-linux-arm64-${MIHOMO_VERSION}.gz"
 
-          # geo 数据(包内文件名沿用 install.sh 认识的写法)
+          # geo 数据(包内文件名沿用 deploy 认识的写法)
           geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
           curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoIP.dat"    "$geo/geoip.dat"
           curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoSite.dat"  "$geo/geosite.dat"
@@ -51,11 +51,11 @@ jobs:
           tar xzf /tmp/ui.tgz -C "${PKG}/assets/ui/official"
           test -f "${PKG}/assets/ui/official/index.html"
 
-          # 源文件就位(仓库根 → 包内布局) + 语法自检
-          cp README.md install.sh panixy "${PKG}/"
+          # 源文件就位(仓库根 → 包内布局;全部功能在 panixy 单文件内,含 deploy 引导) + 语法自检
+          cp README.md panixy "${PKG}/"
           cp clash-template.yaml "${PKG}/assets/clash-template.yaml"
           bash -n "${PKG}/panixy"
-          bash -n "${PKG}/install.sh"
+          "${PKG}/panixy" --help >/dev/null
 
           tar -czf "Panixy-${TAG}.tar.gz" "${PKG}"
           sha256sum "Panixy-${TAG}.tar.gz" > "Panixy-${TAG}.tar.gz.sha256"
@@ -66,9 +66,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          notes="全离线安装包:内核 ${MIHOMO_VERSION} 双架构(amd64-V3/arm64),geo 与 metacubexd 面板取打包时最新版。
+          notes="全离线安装包:内核 ${MIHOMO_VERSION} 双架构(amd64-V3/arm64),geo/广告规则与 metacubexd 面板取打包时最新版。
           完整性校验:sha256sum -c Panixy-${TAG}.tar.gz.sha256
-          快速开始:tar xzf Panixy-${TAG}.tar.gz && cd Panixy-${TAG} && sudo ./install.sh && sudo panixy set-sub '订阅链接'"
+          快速开始:tar xzf Panixy-${TAG}.tar.gz && cd Panixy-${TAG} && sudo ./panixy deploy '订阅链接'"
           # 幂等:Release 已存在(如手工先建过)就补传/覆盖资产,而不是报错退出
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在,覆盖上传资产"

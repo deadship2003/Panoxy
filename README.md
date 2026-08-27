@@ -1,6 +1,6 @@
 # Panixy
 
-> 基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理一键部署套件(V0.0.1)
+> 基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理一键部署套件(V0.0.2)
 
 取代已归档的 TPClash:进程守护、systemd-resolved 接管、**内核与 Web 面板每日自动升级(带健康检查与自动回滚)**。面向网关全新部署,一条命令落地。
 
@@ -17,15 +17,14 @@
 
 ## 🚀 快速开始(就两步)
 
-从 [Releases](../../releases) 下载 `Panixy-V0.0.1.tar.gz` 后:
+从 [Releases](../../releases) 下载 `Panixy-V0.0.2.tar.gz` 后:
 
 ```bash
-tar xzf Panixy-V0.0.1.tar.gz && cd Panixy-V0.0.1
-sudo ./install.sh                       # 全离线安装
-sudo panixy set-sub '你的订阅链接'       # 用模板时唯一必改项
+tar xzf Panixy-V0.0.2.tar.gz && cd Panixy-V0.0.2
+sudo ./panixy deploy '你的订阅链接'       # 单文件即全部功能:资产就位+服务拉起+订阅导入
 ```
 
-也可以把订阅链接直接传给安装器一步到位:`sudo ./install.sh 'https://你的订阅链接'`
+也可以先部署后导订阅:`sudo ./panixy deploy` → `sudo panixy set-sub '你的订阅链接'`;帮助看 `./panixy -h`,完整手册 `./panixy man`(部署到系统后直接 `man panixy`)。
 
 **无外网环境**(订阅域名直连不可达、本机也没有可用节点)时离线导入:在任意能访问订阅的设备上下载好
 Clash 订阅 YAML,拷到网关后:
@@ -36,7 +35,7 @@ sudo panixy set-sub 'https://你的订阅链接' /path/to/订阅.yaml
 
 导入后内核从预置缓存**秒级加载节点,不依赖当时的网络**;测速选优由 `🔃 自动选择` 组自动进行,各策略组默认走最快节点,境外域名的真实 DNS 解析也经 `dns` 组(默认同样是最快节点)走 DoH。
 
-安装是事务式的:任何一步失败(内核缺失/配置校验不过/服务起不来/健康验证超时),自动停用并移除 unit/timer、还原 sysctl 与 ip_forward、删除本次新建的目录与文件,系统回到运行前状态。
+安装是事务式的:`deploy` 任何一步失败(内核缺失/配置校验不过/服务起不来/健康验证超时),自动停用并移除 unit/timer、还原 sysctl 与 ip_forward、删除本次新建的目录与文件,系统回到运行前状态。
 
 配置模板 `/etc/clash.yaml` 已内置全套常见分组(自动选择/地区组/ChatGPT/油管/网飞/Telegram/Twitter/微软/苹果/游戏/学术/广告拦截/GitHub/Spotify/兜底),地区分组按常见机场命名自动归类(港/台/日/新/韩/美/其他),不中可改各组 `filter` 正则。
 
@@ -64,26 +63,28 @@ sudo panixy set-sub 'https://你的订阅链接' /path/to/订阅.yaml
 ## 手工配置(自己调好的 clash.yaml)
 
 三种放法,优先级从高到低:
-1. 装之前放到 `/etc/clash.yaml` —— 安装器检测到就原样采用
-2. 装之前放到**包根目录** `Panixy-V0.0.1/clash.yaml` —— 安装器优先于模板采用
+1. 装之前放到 `/etc/clash.yaml` —— deploy 检测到就原样采用
+2. 装之前放到**包根目录** `Panixy-V0.0.2/clash.yaml` —— deploy 优先于模板采用
    (⚠️ 该文件含真实订阅链接,已被 .gitignore 排除,不会误提交)
 3. 装好之后随时替换:`panixy check 你的.yaml` 校验 → `sudo panixy apply-conf 你的.yaml` 生效
-   (apply-conf/set-sub 优先**热重载**:不重启、不重建 TUN;失败自动退回重启,再失败恢复原配置)
+   (apply-conf 优先**热重载**;set-sub 因需重建 provider 走重启,见下节;失败均自动恢复原配置)
 
 ## 命令
 
 | 命令 | 作用 |
 |---|---|
-| `sudo panixy install` | 部署 unit/timer、开 ip_forward、拉起服务(**失败自动回滚**) |
+| `sudo ./panixy deploy [URL] [订阅文件]` | 全新部署(离线包内运行):资产/配置/CLI/手册/服务就位,**失败全量回滚**,可顺带导订阅 |
+| `sudo panixy install` | 仅部署 unit/timer、开 ip_forward、拉起服务(**失败自动回滚**;deploy 的内部步骤) |
 | `sudo panixy set-sub <URL> [本地文件]` | 导入订阅:预取(直连→本机代理两级,或用本地文件)→预置缓存→重启→**验证节点加载**,失败自动恢复原订阅 |
 | `panixy check [yaml]` | 用内核 `-t` 校验配置文件(只读,免 root) |
 | `sudo panixy apply-conf <yaml>` | 部署手工调整的配置(优先热重载;失败自动恢复原配置) |
 | `sudo panixy upgrade` | 内核+UI 升级(timer 每天 04:17±25min 自动跑) |
 | `sudo panixy update-ui` | 单独触发面板升级 |
-| `panixy status` | 版本/服务/DNS/代理健康一览(含上次升级成功时间) |
+| `panixy status [-v\|-q\|--json]` | 健康一览:订阅/节点/服务/DNS/出网;`-v` 加 TUN/路由/缓存明细,`-q` 仅退出码(0健康/1降级/2故障),`--json` 机器可读 |
 | `sudo panixy rollback [v1.19.x]` | 回滚内核(默认最近备份) |
 | `sudo panixy uninstall` | 移除 unit/timer/sysctl(数据保留) |
 | `panixy log [行数]` | 查看服务与自动升级日志 |
+| `panixy man` / `man panixy` | 查看手册(deploy 后装入系统;包内可直接 `./panixy man`) |
 
 ## 自动升级机制(参考 TPClash 的职责划分,但为真·运行时更新)
 

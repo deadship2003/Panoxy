@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# panixy — 基于 mihomo 的 Linux 透明代理部署/管理工具 (单文件,自包含)
+# panixy — 基于 mihomo 的 Linux 透明代理部署/管理工具 (单文件,自包含:安装引导也内置)
 # 取代已归档的 TPClash: 进程守护 + systemd-resolved 接管 + 内核/UI 自动升级(带健康回滚)
 # 布局: /opt/panixy/bin/mihomo(内核)  /opt/panixy/ui/official(面板,自动更新)
 #       /opt/panixy/(mihomo 家目录: cache.db/providers/geo)
-# 用法: panixy {install|upgrade|update-ui|set-sub|check|apply-conf|status|rollback|uninstall|units|log}
+# 用法: panixy {deploy|install|upgrade|update-ui|set-sub|check|apply-conf|status|rollback|uninstall|units|log|man}
+#       详细说明: panixy --help / man panixy(deploy 后可用)
 # 联动参数(secret/mixed-port/external-controller)运行时从 $CONF 解析,唯一事实源是配置文件
 set -u
 
-VER_TAG=0.0.1
+VER_TAG=0.0.2
 ROOT="${PANIXY_ROOT:-/opt/panixy}"
 BIN=$ROOT/bin/mihomo
 UI_DIR=$ROOT/ui/official
 UI_STAMP=$ROOT/ui/.official.version
 CONF="${PANIXY_CONF:-/etc/clash.yaml}"
 UNIT_DIR="${PANIXY_UNIT_DIR:-/etc/systemd/system}"
+CLI="${PANIXY_CLI:-/usr/local/bin/panixy}"
+MAN_GZ="${PANIXY_MAN:-/usr/local/share/man/man1/panixy.1.gz}"
 KEEP=3                             # 内核备份保留份数
 SYSCTL_FILE="${PANIXY_SYSCTL:-/etc/sysctl.d/99-panixy.conf}"
 LASTUP=$ROOT/.last-upgrade         # 最近一次升级成功时间戳(status 展示,停滞可见)
@@ -34,12 +37,16 @@ log() { echo "[panixy] $(date '+%F %T') $*"; }
 die() { log "错误: $*"; exit 1; }
 need_root() { [ $EUID -eq 0 ] || die "请用 sudo 运行"; }
 
-lock() {  # 互斥锁:防止 timer 自动升级与手工 upgrade/rollback/set-sub 并发互踩
-  command -v flock >/dev/null 2>&1 || return 0
+lock() {  # 互斥锁:防止 timer 自动升级与手工 upgrade/rollback/set-sub 并发互踩;进程内幂等
+  # 注意:exec 的重定向会永久生效,必须用 { } 限定 2>/dev/null 的作用域,
+  # 否则整个脚本后续的 stderr(内核报错/curl 错误)都被吞掉
+  [ -n "${PANIXY_LOCKED:-}" ] && return 0
+  command -v flock >/dev/null 2>&1 || { PANIXY_LOCKED=1; return 0; }
   local f="${PANIXY_LOCK:-/run/panixy.lock}"
-  if exec 9>"$f" 2>/dev/null; then
+  if { exec 9>"$f"; } 2>/dev/null; then
     flock -n 9 || die "另一个 panixy 实例正在运行,请稍后再试"
   fi
+  PANIXY_LOCKED=1
 }
 
 api_ver_now() {  # API 上报的内核版本(空=API 不可用)
@@ -48,7 +55,7 @@ api_ver_now() {  # API 上报的内核版本(空=API 不可用)
 wait_healthy() {  # $1=最长等待秒(默认30) $2=期望版本(可选);轮询代替固定 sleep,慢网关不误判
   local end=$(( $(date +%s) + ${1:-30} )) v
   while [ "$(date +%s)" -lt "$end" ]; do
-    v=$(api_ver_now)
+    v=$(api_ver_now || true)
     if [ -n "$v" ] && systemctl is-active --quiet panixy.service 2>/dev/null \
        && { [ -z "${2:-}" ] || [ "$v" = "$2" ]; }; then
       return 0
@@ -176,10 +183,11 @@ install_rollback() {  # $1=改动前的 ip_forward 值;install 失败时恢复�
 
 cmd_install() {
   need_root; lock
-  [ -x "$BIN" ]  || die "内核不存在: $BIN (用安装包 install.sh,或手动放置)"
+  [ -x "$BIN" ]  || die "内核不存在: $BIN (在离线包内用 panixy deploy,或手动放置)"
+  "$BIN" -v >/dev/null 2>&1 || die "内核无法执行: $BIN (空文件/架构不符?重新放置)"
   [ -f "$CONF" ] || die "配置不存在: $CONF"
   mkdir -p "$ROOT/ui"
-  [ -d "$UI_DIR" ] || die "UI 不存在: $UI_DIR (用安装包 install.sh)"
+  [ -d "$UI_DIR" ] || die "UI 不存在: $UI_DIR (在离线包内用 panixy deploy)"
   [ -f "$UI_STAMP" ] || echo unknown > "$UI_STAMP"
 
   # 预检:配置必须过内核校验 —— 此时尚未对系统做任何改动
@@ -421,11 +429,51 @@ cmd_apply_conf() {  # 用法: panixy apply-conf <yaml路径> — 部署手工调
   cmd_status
 }
 
-cmd_status() {
-  local nodes="-(自定义配置,不统计)"
-  if grep -q '^  SUB:' "$CONF" 2>/dev/null; then
-    nodes="$(provider_nodes) 个"
-    [ "$nodes" = "0 个" ] && nodes="0 ⚠️ 订阅未加载(重新导入: sudo panixy set-sub '<URL>',仍失败查 panixy log)"
+json_esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+
+cmd_status() {  # 用法: panixy status [-v|-q|--json] — 健康一览
+  local v= q= j=
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -v|--verbose) v=1 ;;
+      -q|--quiet)   q=1 ;;
+      --json)       j=1 ;;
+      *) die "未知参数: $1 (用法: panixy status [-v|-q|--json])" ;;
+    esac
+    shift
+  done
+  local svc api_ver nodes egress direct has_sub nodes_txt
+  # 探测赋值一律 || true:探测失败不是错误(在 deploy 的 set -e 子壳里尤其不能炸)
+  svc=$(systemctl is-active panixy.service 2>/dev/null || true)
+  api_ver=$(curl -s -m 4 -H "Authorization: Bearer $SECRET" "$API/version" 2>/dev/null | grep -oE '"version":"[^"]*"' | cut -d'"' -f4 || true)
+  has_sub=$(grep -c '^  SUB:' "$CONF" 2>/dev/null || true)
+  if [ "${has_sub:-0}" -gt 0 ] 2>/dev/null; then nodes=$(provider_nodes || true); else nodes=-1; fi
+  egress=$(curl -s -m 8 -x "$PROXY" -o /dev/null -w '%{http_code}' https://www.gstatic.com/generate_204 2>/dev/null || echo 000)
+  direct=$(curl -s -m 6 -o /dev/null -w '%{http_code}' http://connect.rom.miui.com/generate_204 2>/dev/null || echo 000)
+
+  # -q:静默,仅以退出码表达健康(0=健康 1=降级 2=故障),供监控/巡检
+  if [ -n "$q" ]; then
+    { [ "$svc" = "active" ] && [ -n "$api_ver" ]; } || exit 2
+    { [ "$nodes" -gt 0 ] 2>/dev/null && [ "$egress" = "204" ]; } || exit 1
+    exit 0
+  fi
+  # --json:单行机器可读
+  if [ -n "$j" ]; then
+    local n_json=null
+    [ "$nodes" -ge 0 ] 2>/dev/null && n_json=$nodes
+    printf '{"version":"%s","service":"%s","api":%s,"nodes":%s,"proxy_egress":"%s","direct_egress":"%s","core":"%s","ui":"%s","last_upgrade":"%s"}\n' \
+      "$VER_TAG" "$svc" "$([ -n "$api_ver" ] && echo true || echo false)" "$n_json" "$egress" "$direct" \
+      "$(json_esc "$("$BIN" -v 2>/dev/null | head -1)")" \
+      "$(json_esc "$(cat "$UI_STAMP" 2>/dev/null || echo unknown)")" \
+      "$(json_esc "$(cat "$LASTUP" 2>/dev/null || echo "")")"
+    return 0
+  fi
+
+  if [ "$nodes" -ge 0 ] 2>/dev/null; then
+    nodes_txt="$nodes 个"
+    [ "$nodes" = "0" ] && nodes_txt="0 ⚠️ 订阅未加载(重新导入: sudo panixy set-sub '<URL>',仍失败查 panixy log)"
+  else
+    nodes_txt="-(自定义配置,不统计)"
   fi
   echo "== panixy v$VER_TAG  ($ROOT) =="
   if grep -q 'url:.*SUB_URL_PLACEHOLDER' "$CONF" 2>/dev/null; then
@@ -433,17 +481,25 @@ cmd_status() {
   else
     echo "订阅:     $(awk '/^  SUB:/{f=1} f&&/^    url:/{sub(/^    url:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null | cut -c1-60)..."
   fi
-  echo "节点:     $nodes"
-  echo "服务:     $(systemctl is-active panixy.service 2>/dev/null)"
+  echo "节点:     $nodes_txt"
+  echo "服务:     $svc"
   echo "升级定时: $(systemctl is-active panixy-upgrade.timer 2>/dev/null) 下次: $(systemctl list-timers panixy-upgrade.timer --no-pager 2>/dev/null | awk 'NR==2{print $1,$2,$3}')"
   echo "上次升级: $(cat "$LASTUP" 2>/dev/null || echo 未知)(仅全成功时更新;过旧=升级停滞,查 panixy log)"
   echo "内核:     $($BIN -v 2>/dev/null | head -1)"
   echo "UI:       metacubexd $(cat "$UI_STAMP" 2>/dev/null || echo 未知)"
-  echo "API:      $(curl -s -m 4 -H "Authorization: Bearer $SECRET" "$API/version" 2>/dev/null || echo 不可达)"
+  echo "API:      ${api_ver:-不可达}"
   echo "resolved: $(resolvectl dns Meta 2>/dev/null | tail -1)"
-  echo "代理出网: $(curl -s -m 8 -x "$PROXY" -o /dev/null -w '%{http_code}' https://www.gstatic.com/generate_204 2>/dev/null) (期望204)"
-  echo "直连出网: $(curl -s -m 6 -o /dev/null -w '%{http_code}' http://connect.rom.miui.com/generate_204 2>/dev/null) (期望204)"
+  echo "代理出网: $egress (期望204)"
+  echo "直连出网: $direct (期望204)"
   echo "内核备份: $(ls -1 "$BIN".bak-* 2>/dev/null | tr '\n' ' ')"
+  if [ -n "$v" ]; then
+    echo "-- 详细(-v) --"
+    echo "TUN:      $(ip -brief addr show Meta 2>/dev/null | awk '{print $2,$3}' | tr '\n' ' ')"
+    echo "默认路由: $(ip route show default 2>/dev/null | head -1)"
+    echo "订阅缓存: $(ls -l --time-style=+%F\ %T "$(sub_cache_path)" 2>/dev/null | awk '{print $6,$7,$8}')"
+    echo "规则缓存: $(ls -l --time-style=+%F\ %T "$ROOT/rule_provider/AWAvenue-Ads.yaml" 2>/dev/null | awk '{print $6,$7,$8}')"
+    echo "面板:     $API/ui/ (http $(curl -s -m 5 -o /dev/null -w '%{http_code}' "$API/ui/" 2>/dev/null))"
+  fi
 }
 
 cmd_rollback() {
@@ -463,9 +519,9 @@ cmd_rollback() {
 cmd_uninstall() {
   need_root; lock
   systemctl disable --now panixy.service panixy-upgrade.timer 2>/dev/null
-  rm -f "$UNIT_DIR/panixy.service" "$UNIT_DIR/panixy-upgrade.service" "$UNIT_DIR/panixy-upgrade.timer" "$SYSCTL_FILE"
+  rm -f "$UNIT_DIR/panixy.service" "$UNIT_DIR/panixy-upgrade.service" "$UNIT_DIR/panixy-upgrade.timer" "$SYSCTL_FILE" "$MAN_GZ"
   systemctl daemon-reload
-  log "已卸载 unit/timer/sysctl;数据目录 $ROOT 与 $CONF 保留"
+  log "已卸载 unit/timer/sysctl/手册;数据目录 $ROOT 与 $CONF 保留(CLI 本身保留)"
 }
 
 cmd_units() {  # 输出内嵌 unit 内容(用于离线校验,不动系统)
@@ -480,17 +536,273 @@ cmd_log() {  # 用法: panixy log [行数] — 服务与自动升级日志
   journalctl -u panixy.service -u panixy-upgrade.service -n "${1:-80}" --no-pager
 }
 
+usage() {
+cat <<EOF
+panixy v$VER_TAG — 基于 mihomo 的 Linux 透明代理网关部署/管理工具
+
+引导(在解压的离线包根目录运行):
+  deploy [订阅URL] [本地订阅文件]   全新部署:内核/geo/面板/规则/配置就位 + 服务拉起
+                                    (失败全量回滚;可顺带导入订阅)
+  install                           仅部署 systemd 服务(文件已就位时)
+
+日常管理:
+  set-sub <订阅URL> [本地订阅文件]  导入/更换订阅:预取(本地文件>直连>经代理)→预置缓存
+                                    →重启→验证节点数>0,失败自动恢复原状
+  status [-v|-q|--json]             健康一览:订阅/节点/服务/升级/DNS/出网
+                                    -v 追加 TUN/路由/缓存明细  -q 只以退出码表达健康
+                                    (0=健康 1=降级 2=故障,供监控)  --json 机器可读
+  upgrade                           内核+UI 升级(timer 每天 04:17±25min 自动)
+  update-ui                         仅升级 metacubexd 面板
+  check [yaml]                      用内核 -t 校验配置(只读,免 root)
+  apply-conf <yaml>                 应用手工调整的配置(优先热重载;失败自动恢复)
+  rollback [版本]                   回滚内核(默认最近备份)
+  uninstall                         移除 unit/timer/sysctl(数据保留)
+  units                             输出内嵌 unit 内容(离线审查,不动系统)
+  log [行数]                        查看服务与自动升级日志
+  man                               显示本工具手册
+
+选项:
+  -h, -?, --help                    显示本帮助
+
+详细说明: man panixy(deploy 后可用)或 panixy man
+EOF
+}
+
+man_page() {  # 内嵌 roff 手册:panixy man 查看;deploy 时装入系统,之后 man panixy
+cat <<'EOF'
+.TH PANIXY 1 "2026-08-27" "panixy 0.0.2" "Panixy 手册"
+.SH 名称
+panixy \- 基于 mihomo 的 Linux 透明代理网关部署/管理工具(单文件,自包含)
+.SH 概要
+.B panixy
+.I 命令
+.RI [ 参数 ...]
+.br
+.B panixy \-h | \-\-help | \-\?
+.SH 描述
+以 mihomo 为内核在 Linux 网关上落地透明代理(TUN):进程守护、接管 systemd\-resolved、
+内核与面板每日自动升级(双健康检查,失败自动回滚)。
+.PP
+订阅导入采用「预取 + 预置缓存 + 重启 + 验证」:CLI 以内核同款 UA 预取订阅
+(本地文件 > 直连 > 经本机代理),校验后写入 provider 缓存,重启重建 provider,
+并以节点数大于 0 为成功标准——无外网环境也可离线导入
+(panixy set-sub \fIURL\fR \fI本地订阅文件\fR)。
+.SH 命令
+.TP
+.BI deploy " [订阅URL] [本地订阅文件]"
+全新部署,须在解压的离线包根目录运行:放置内核/geo/面板/广告规则,生成配置
+(现有配置 > 包内手工 clash.yaml > 通用模板),安装 CLI 与 man 手册,拉起服务;
+任一步失败全量回滚。给定参数时随后执行 set\-sub。
+.TP
+.B install
+仅部署 systemd 服务与 sysctl(文件已就位时;deploy 的内部步骤)。
+.TP
+.BI set-sub " <订阅URL> [本地订阅文件]"
+导入/更换订阅。拉取顺序:本地文件 > 直连 > 经本机代理(换被墙订阅时旧节点可当跳板)。
+.TP
+.BI status " [\-v|\-q|\-\-json]"
+健康一览。\-v 追加 TUN/路由/缓存明细;\-q 静默,仅以退出码表达健康
+(0 健康 / 1 降级(服务在但节点为 0 或代理出网不通) / 2 故障(服务或 API 不可用));
+\-\-json 输出单行 JSON。
+.TP
+.B upgrade
+内核与面板升级(timer 每天 04:17±25min 自动执行;全成功才更新时间戳)。
+.TP
+.B update\-ui
+仅升级 metacubexd 面板。
+.TP
+.BI check " [yaml]"
+用内核 \-t 校验配置文件(默认当前配置;只读,免 root)。
+.TP
+.BI apply\-conf " <yaml>"
+应用手工调整的配置(优先 API 热重载;失败退重启,再失败恢复原配置)。
+.TP
+.BI rollback " [版本]"
+回滚内核(默认最近备份;内核保留 3 份)。
+.TP
+.B uninstall
+移除 unit/timer/sysctl;数据目录与配置保留。
+.TP
+.B units
+输出内嵌 unit 内容(离线审查,不动系统)。
+.TP
+.BI log " [行数]"
+查看服务与自动升级日志(journalctl)。
+.TP
+.B man
+显示本手册(等价 deploy 后的 man panixy)。
+.SH 选项
+.TP
+.B \-h, \-\-help, \-\?
+显示帮助并退出。
+.SH 文件
+.TP
+.I /opt/panixy/
+家目录:bin/mihomo 内核、ui/official 面板、proxies/SUB.yaml 订阅缓存、
+rule_provider/ 规则缓存、geo 数据、cache.db。
+.TP
+.I /etc/clash.yaml
+配置(唯一事实源:secret/端口改动 CLI 自动跟随)。
+.TP
+.I /usr/local/bin/panixy , /usr/local/share/man/man1/panixy.1.gz
+CLI 与手册(deploy 安装)。
+.SH 示例
+.nf
+sudo ./panixy deploy 'https://订阅链接'        # 离线包内一步部署
+sudo ./panixy set\-sub 'URL' sub.yaml          # 无外网时离线导入订阅
+panixy status \-\-json                          # 监控取数
+panixy status \-q || echo 告警                  # 退出码巡检
+.fi
+.SH 另见
+项目 README(架构/故障排查),mihomo 文档。
+EOF
+}
+
+cmd_manual() {  # panixy man — 就地阅读内嵌手册(无需安装)
+  local t; t=$(mktemp)
+  man_page > "$t"
+  if command -v man >/dev/null 2>&1 && man -l "$t" 2>/dev/null; then :
+  elif command -v groff >/dev/null 2>&1 && groff -man -Tutf8 "$t" 2>/dev/null | col -bx 2>/dev/null; then :
+  else sed -e 's/^\.TH.*//' -e 's/^\.\\".*//' "$t"
+  fi
+  rm -f "$t"
+}
+
+deploy_rollback() {  # deploy 失败路径:恢复系统与文件到运行前状态(全部幂等)
+  log "部署失败——回滚到运行前状态"
+  systemctl disable --now panixy.service panixy-upgrade.timer >/dev/null 2>&1 || true
+  rm -f "$UNIT_DIR/panixy.service" "$UNIT_DIR/panixy-upgrade.service" "$UNIT_DIR/panixy-upgrade.timer"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  rm -f "$SYSCTL_FILE"
+  sysctl -w net.ipv4.ip_forward="${PREV_FWD:-0}" >/dev/null 2>&1 || true
+  if [ "${CONF_NEW:-0}" = 1 ]; then rm -f "$CONF"; fi
+  if [ "${CLI_NEW:-0}"  = 1 ]; then rm -f "$CLI";  fi
+  if [ "${MAN_NEW:-0}"  = 1 ]; then rm -f "$MAN_GZ"; fi
+  if [ "${OPT_NEW:-0}"  = 1 ]; then
+    rm -rf "$ROOT"
+  else
+    log "(注意: $ROOT 原本已存在,本次新增文件保留在原地)"
+  fi
+  log "回滚完成,系统已恢复原状"
+}
+
+cmd_deploy() {  # 用法(离线包根目录): panixy deploy [订阅URL] [本地订阅文件]
+  # 全部职责:资产就位→配置→CLI+手册→服务→可选订阅导入;事务式,失败全量回滚
+  need_root; lock
+  local pkg; pkg=$(cd "$(dirname "$0")" && pwd)
+  [ -d "$pkg/assets" ] || die "未找到离线资产目录 $pkg/assets —— deploy 需在解压的 Panixy 离线包内运行(已安装的机器用 set-sub/status 等即可)"
+
+  # 注意:子壳不能写成 `( ... ) || die` —— bash 会因 || 上下文忽略子壳内的 set -e,
+  # 必须独立语句执行后再检查退出码,事务性才真实生效
+  local rc=0
+  (
+    set -e
+    trap 'rc=$?; [ "$rc" -ne 0 ] && deploy_rollback' EXIT
+
+    # 环境预检
+    case "$(uname -m)" in
+      x86_64)  A=amd64 ;;
+      aarch64) A=arm64 ;;
+      *) die "不支持的架构: $(uname -m) (包内置 amd64/arm64)" ;;
+    esac
+    command -v systemctl >/dev/null || die "需要 systemd"
+    command -v curl      >/dev/null || die "需要 curl"
+
+    # 运行前状态快照(回滚依据)
+    OPT_NEW=0; CONF_NEW=0; CLI_NEW=0; MAN_NEW=0
+    [ -d "$ROOT" ] || OPT_NEW=1
+    [ -f "$CONF" ] || CONF_NEW=1
+    [ -f "$CLI"  ] || CLI_NEW=1
+    [ -f "$MAN_GZ" ] || MAN_NEW=1
+    PREV_FWD=$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)
+
+    mkdir -p "$ROOT/bin" "$ROOT/ui"
+
+    # 1. 内核:已存在则尊重现场不覆盖
+    if [ ! -x "$BIN" ]; then
+      if [ "$A" = amd64 ] && ! grep -qm1 avx2 /proc/cpuinfo; then
+        die "x86_64 CPU 不支持 AVX2,包内 amd64-v3 内核无法运行(会 SIGILL)。方案:手动放置 compatible 版内核到 $BIN 后重跑,或换支持 AVX2 的机器"
+      fi
+      gz=$(ls "$pkg"/assets/core/mihomo-linux-$A-*.gz 2>/dev/null | sort -V | tail -1 || true)
+      [ -n "$gz" ] || die "assets 缺 $A 内核"
+      # 注意:不能写成 gzip&&chmod 两连(左元失败会被 set -e 吞掉)
+      gzip -dc "$gz" > "$BIN"
+      chmod 755 "$BIN"
+      [ -s "$BIN" ] || die "解包后内核为空(资产损坏)"
+      "$BIN" -v >/dev/null 2>&1 || die "内核无法执行(资产损坏/架构不符)"
+      log "[1/5] 内核: $($BIN -v | head -1)"
+    else
+      log "[1/5] 内核已存在,保留: $($BIN -v | head -1)"
+    fi
+
+    # 2. geo 数据 + 分流规则(规则源国内直连不可达,离线预置首启即生效)
+    for f in GeoIP.dat GeoSite.dat Country.mmdb; do
+      if [ ! -f "$ROOT/$f" ]; then cp "$pkg/assets/geo/$f" "$ROOT/$f"; fi
+    done
+    mkdir -p "$ROOT/rule_provider"
+    if [ -f "$pkg/assets/rule/AWAvenue-Ads.yaml" ]; then
+      [ -f "$ROOT/rule_provider/AWAvenue-Ads.yaml" ] || cp "$pkg/assets/rule/AWAvenue-Ads.yaml" "$ROOT/rule_provider/"
+    else
+      log "  (包内未带广告规则文件,首启将由内核联网拉取)"
+    fi
+    log "[2/5] geo 与规则数据就位"
+
+    # 3. Web 管理面板(metacubexd,之后由 panixy upgrade 自动更新)
+    if [ ! -d "$UI_DIR" ]; then
+      cp -r "$pkg/assets/ui/official" "$UI_DIR"
+      echo "unknown" > "$UI_STAMP"
+    fi
+    log "[3/5] Web UI 就位 (http://<本机IP>:9999/ui/)"
+
+    # 4. 配置:现有 > 包内手工 > 通用模板
+    if [ -f "$CONF" ]; then
+      log "[4/5] 检测到现有配置,保留不动: $CONF"
+    elif [ -f "$pkg/clash.yaml" ]; then
+      cp "$pkg/clash.yaml" "$CONF"
+      log "[4/5] 采用包内手工配置: $pkg/clash.yaml -> $CONF"
+    else
+      cp "$pkg/assets/clash-template.yaml" "$CONF"
+      SECRET_NEW=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+      sed -i "s/^secret: deadship/secret: $SECRET_NEW/" "$CONF"
+      log "[4/5] 写入通用模板 $CONF —— 记得导入订阅: panixy set-sub '<订阅URL>'(无外网可离线导入)"
+      log "      面板 API 密钥(随机生成): $SECRET_NEW  (日后查看: grep '^secret' $CONF)"
+    fi
+
+    # 5. CLI + 手册 + 服务(panixy install 内含预检/健康验证/失败自回滚)
+    if [ "$(readlink -f "$0")" != "$(readlink -f "$CLI")" ]; then
+      mkdir -p "$(dirname "$CLI")"
+      install -m755 "$0" "$CLI"
+    fi
+    mkdir -p "$(dirname "$MAN_GZ")"
+    man_page | gzip -c > "$MAN_GZ"
+    log "[5/5] CLI/手册就位,启动服务:"
+    cmd_install
+    trap - EXIT
+  )
+  rc=$?
+  [ "$rc" -eq 0 ] || die "部署失败,已回滚到运行前状态(详见上方日志)"
+
+  if [ "$#" -gt 0 ]; then
+    cmd_set_sub "$@"
+  else
+    log "deploy 完成。提示: sudo panixy set-sub '<订阅链接>' 设置订阅;panixy status 查看健康"
+  fi
+}
+
 case "${1:-}" in
+  deploy)     shift; cmd_deploy "$@" ;;
   install)    cmd_install ;;
   upgrade)    cmd_upgrade ;;
   update-ui)  need_root; lock; update_ui ;;
   set-sub)    shift; cmd_set_sub "$@" ;;
   check)      shift; cmd_check "$@" ;;
   apply-conf) shift; cmd_apply_conf "$@" ;;
-  status)     cmd_status ;;
+  status)     shift; cmd_status "$@" ;;
   rollback)   shift; cmd_rollback "$@" ;;
   uninstall)  cmd_uninstall ;;
   units)      cmd_units ;;
   log)        shift; cmd_log "$@" ;;
-  *) echo "panixy v$VER_TAG — 用法: panixy {install|upgrade|update-ui|set-sub <URL> [本地订阅文件]|check [yaml]|apply-conf <yaml>|status|rollback [版本]|uninstall|units|log [行数]}"; exit 1 ;;
+  man)        cmd_manual ;;
+  -h|-\?|--help|help) usage; exit 0 ;;
+  *) usage; exit 1 ;;
 esac
