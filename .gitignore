@@ -3,3 +3,8 @@ clash.yaml
 
 # 本地打包产物
 *.tar.gz
+
+# Go 构建产物
+dist/
+*.test
+/tmp-panixy*
