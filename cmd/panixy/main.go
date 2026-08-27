@@ -19,6 +19,9 @@ import (
 	"github.com/deadship2003/panixy/internal/statemode"
 )
 
+// version 由构建脚本经 -ldflags -X 注入;缺省用常量。
+var version = constants.Version
+
 func main() {
 	// cobra 不自带 -?:入口处归一化
 	for i, a := range os.Args {
@@ -49,7 +52,7 @@ func NewRootCmd() *cobra.Command {
   sudo panixy upgrade --check            # 查看可升级项
 
 详细说明: man panixy(部署后可用)或 panixy man`,
-		Version: constants.Version,
+		Version: version,
 	}
 	root.PersistentFlags().Bool("verbose", false, "分步明细:每个事务步骤、写入的文件、应用的规则")
 	root.PersistentFlags().Bool("debug", false, "全量透传:外部命令原样回显、mihomo API 请求响应、配置 diff")
@@ -297,7 +300,7 @@ func cmdMan() *cobra.Command {
 				return err
 			}
 			defer os.RemoveAll(dir)
-			hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册", Source: "panixy " + constants.Version}
+			hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册", Source: "panixy " + version}
 			if err := doc.GenManTree(cmd.Root(), hdr, dir); err != nil {
 				return fmt.Errorf("生成手册失败: %w", err)
 			}

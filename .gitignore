@@ -8,3 +8,5 @@ clash.yaml
 dist/
 *.test
 /tmp-panixy*
+Panixy-V*/
+dist/

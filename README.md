@@ -1,156 +1,113 @@
-# Panixy
+# Panixy(Go 版)
 
-> 基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理一键部署套件(V0.0.2)
+> 基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理网关部署/管理工具。
+> 单二进制(CGO=0,amd64/arm64);**管理工具,不实现任何转发逻辑** —— 流量与 DNS 全部由 mihomo 完成。
 
-取代已归档的 TPClash:进程守护、systemd-resolved 接管、**内核与 Web 面板每日自动升级(带健康检查与自动回滚)**。面向网关全新部署,一条命令落地。
+取代 bash 版:模板渲染、增量配置编辑、防火墙 DNS 劫持、订阅管理、升级回滚、健康检测,事务式 + 全量回滚。
 
 ## ✨ 特性
 
-- **全离线安装**——内核(amd64-V3/arm64 双架构)、Geo 数据、metacubexd 面板、广告分流规则、配置模板全在包内,装完才需要网
-- **订阅导入可验证**——`set-sub` 直连→经本机代理两级预取订阅(或直接给本地文件离线导入),预置缓存后重启内核,**以节点数 > 0 为成功标准**,绝不假成功
-- **事务式安装**——任何一步失败自动回滚到运行前状态,不留残迹
-- **每日自动升级**——内核与面板经本机代理下载、试运行校验、原子替换、双健康检查(API 版本 + 经代理出网 204),失败自动回退,内核保留 3 份备份
-- **热重载生效**——`apply-conf` 优先 API 热重载,不重启、不重建 TUN,网关链路无损(`set-sub` 换 URL 必须重启重建 provider,见下节)
-- **安全默认**——API 密钥安装时随机生成;联动参数(密钥/端口)运行时从配置解析,配置是唯一事实源
-- **并发保护**——flock 互斥,自动升级与手工操作不互踩
-- **通用模板**——全文件只需改一处订阅链接;国内流量默认 DIRECT,地区分组按常见机场命名自动归类
+- **TUN / TPROXY 双模式**(默认 tun):TUN 开箱稳定;TPROXY 保留客户端真实源 IP、内核转发性能最优
+- **DNS 劫持 = nftables(降级 iptables)**:独立表 `inet panixy`,53 redirect → mihomo:1053,拒绝 853(DoT/DoQ);mihomo 自身流量按 `routing-mark 6666` 放行防回环
+- **自愈**:服务 `ExecStartPost` 调 `panixy fw apply`(先无条件清表再加载)—— **kill -9/OOM 残留随 `systemctl restart panixy` 自动清除**,正常 stop 由 `ExecStop` 清理
+- **订阅可验证**:预取(直连→本机代理/`--file` 离线导入)→ 校验 → 增量写入 provider(锚点复用、保注释)→ 重启 → **节点数>0 才算成功**;`--name` 多订阅并存,自动融合进策略组
+- **完整模板资产**:bash 版 v0.1.4 全量分组/规则移植(地区组/应用组/GEO 规则/广告拦截),set-sub 只动 provider 与 use 列表
+- **升级参数化**:`upgrade --core/--ui/--check/--core-version`;试运行校验、双健康检查、失败自动回滚、备份 KEEP=3
+- **全量文档**:`-h/-?/--help` 每命令含示例;`man panixy` 与 `--help` 同源生成(cobra),永不漂移
+- **调试友好**:`--verbose` 分步明细;`--debug` 外部命令/API I/O 零遮蔽(吸取 bash 版吞 stderr 教训)
 
-## 🚀 快速开始(就两步)
+## 🚀 快速开始
 
-从 [Releases](../../releases) 下载 `Panixy-V0.0.2.tar.gz` 后:
-
-```bash
-tar xzf Panixy-V0.0.2.tar.gz && cd Panixy-V0.0.2
-sudo ./panixy deploy '你的订阅链接'       # 单文件即全部功能:资产就位+服务拉起+订阅导入
-```
-
-也可以先部署后导订阅:`sudo ./panixy deploy` → `sudo panixy set-sub '你的订阅链接'`;帮助看 `./panixy -h`,完整手册 `./panixy man`(部署到系统后直接 `man panixy`)。
-
-**无外网环境**(订阅域名直连不可达、本机也没有可用节点)时离线导入:在任意能访问订阅的设备上下载好
-Clash 订阅 YAML,拷到网关后:
+从 [Releases](../../releases) 下载对应架构离线包(amd64/arm64,含内核+geo+UI+规则):
 
 ```bash
-sudo panixy set-sub 'https://你的订阅链接' /path/to/订阅.yaml
+tar xzf Panixy-V0.1.0-amd64.tar.gz && cd Panixy-V0.1.0-amd64
+sudo ./panixy deploy                 # 全新部署(资产/配置/CLI/手册/服务/防火墙)
+sudo panixy set-sub                  # 回车进入粘贴模式,粘订阅链接,无需引号
+panixy status                        # 节点/服务/防火墙/出口 一览
 ```
 
-导入后内核从预置缓存**秒级加载节点,不依赖当时的网络**;测速选优由 `🔃 自动选择` 组自动进行,各策略组默认走最快节点,境外域名的真实 DNS 解析也经 `dns` 组(默认同样是最快节点)走 DoH。
+一条命令到位:`sudo ./panixy deploy '订阅链接'`。无外网导入:`sudo panixy set-sub --file 订阅.yaml`。
 
-安装是事务式的:`deploy` 任何一步失败(内核缺失/配置校验不过/服务起不来/健康验证超时),自动停用并移除 unit/timer、还原 sysctl 与 ip_forward、删除本次新建的目录与文件,系统回到运行前状态。
+## 架构
 
-配置模板 `/etc/clash.yaml` 已内置全套常见分组(自动选择/地区组/ChatGPT/油管/网飞/Telegram/Twitter/微软/苹果/游戏/学术/广告拦截/GitHub/Spotify/兜底),地区分组按常见机场命名自动归类(港/台/日/新/韩/美/其他),不中可改各组 `filter` 正则。
+```
+                 DNS(53/853)                        数据流量(非53)
+┌──────────┐  nft redirect → :1053  ┌─┐  路由表 → TUN 设备 → mihomo(system 栈)
+│ TUN 模式 │ ─────────────────────► │同│
+├──────────┤                        │一│  nft mark 1 + 策略路由(table 100)
+│TPROXY模式│  nft redirect → :1053  │套│  + tproxy → :7893(保留客户端源 IP)
+└──────────┘ ─────────────────────► └─┘
+```
+
+- 排除项共用:保留网段/回环不劫持;mihomo 自身出站(`routing-mark: 6666`)放行 —— 防 DNS 回环死锁
+- 模式切换:**数据面(节点/组)在 Web 面板;传输面(tun/tproxy)必须走 `panixy mode`**(防火墙与配置需同事务变更,面板做不到)
+- systemd 单元零 resolvectl;`fw apply` 自清洁实现 restart 自愈
 
 ## 目录布局
 
 ```
-/opt/panixy/
-├── bin/mihomo          # 内核(自动升级,保留3份备份)
-├── ui/official/        # metacubexd 面板(自动升级)
-│   └── .official.version  (上游 release tag 戳)
-├── cache.db            # mihomo 家目录(-d):fake-ip 缓存/订阅/规则
-├── proxies/SUB.yaml    # 订阅缓存(set-sub 预取预置,内核重启秒级加载)
-├── rule_provider/      # 规则缓存(离线包预置)
-├── GeoIP.dat GeoSite.dat Country.mmdb
-├── .last-upgrade       # 最近一次升级成功时间戳
-/etc/clash.yaml         # 配置
-/usr/local/bin/panixy   # 本工具
+/opt/panixy/            # 数据家目录:bin/mihomo、ui/official、proxies/(订阅缓存)、
+                        # rule_provider/、geo、panixy.yaml(状态:proxy-mode)、.last-upgrade
+/etc/clash.yaml         # mihomo 配置(管理员可手编;唯一事实源)
+/usr/local/bin/panixy   # CLI         /usr/local/share/man/man1/panixy.1.gz  # 手册
 ```
-
-## 要求
-
-- systemd Linux,x86_64(需支持 AVX2)或 aarch64,bash + curl
-- root 权限安装
-
-## 手工配置(自己调好的 clash.yaml)
-
-三种放法,优先级从高到低:
-1. 装之前放到 `/etc/clash.yaml` —— deploy 检测到就原样采用
-2. 装之前放到**包根目录** `Panixy-V0.0.2/clash.yaml` —— deploy 优先于模板采用
-   (⚠️ 该文件含真实订阅链接,已被 .gitignore 排除,不会误提交)
-3. 装好之后随时替换:`panixy check 你的.yaml` 校验 → `sudo panixy apply-conf 你的.yaml` 生效
-   (apply-conf 优先**热重载**;set-sub 因需重建 provider 走重启,见下节;失败均自动恢复原配置)
 
 ## 命令
 
 | 命令 | 作用 |
 |---|---|
-| `sudo ./panixy deploy [URL] [订阅文件]` | 全新部署(离线包内运行):资产/配置/CLI/手册/服务就位,**失败全量回滚**,可顺带导订阅 |
-| `sudo panixy install` | 仅部署 unit/timer、开 ip_forward、拉起服务(**失败自动回滚**;deploy 的内部步骤) |
-| `sudo panixy set-sub <URL> [本地文件]` | 导入订阅:预取(直连→本机代理两级,或用本地文件)→预置缓存→重启→**验证节点加载**,失败自动恢复原订阅 |
-| `panixy check [yaml]` | 用内核 `-t` 校验配置文件(只读,免 root) |
-| `sudo panixy apply-conf <yaml>` | 部署手工调整的配置(优先热重载;失败自动恢复原配置) |
-| `sudo panixy upgrade` | 内核+UI 升级(timer 每天 04:17±25min 自动跑) |
-| `sudo panixy update-ui` | 单独触发面板升级 |
-| `panixy status [-v\|-q\|--json]` | 健康一览:订阅/节点/服务/DNS/出网;`-v` 加 TUN/路由/缓存明细,`-q` 仅退出码(0健康/1降级/2故障),`--json` 机器可读 |
-| `sudo panixy rollback [v1.19.x]` | 回滚内核(默认最近备份) |
-| `sudo panixy uninstall` | 移除 unit/timer/sysctl(数据保留) |
-| `panixy log [行数]` | 查看服务与自动升级日志 |
-| `panixy man` / `man panixy` | 查看手册(deploy 后装入系统;包内可直接 `./panixy man`) |
+| `sudo ./panixy deploy [URL]` | 全新部署(离线包内运行;`--proxy-mode tproxy`;失败全量回滚;检测 bash 旧版残留并中止) |
+| `sudo panixy install` | 仅部署服务/防火墙(文件已就位) |
+| `sudo panixy set-sub [URL]` | 导入/更换订阅(`--name/--file/--group`;粘贴模式免引号;节点数>0 才成功) |
+| `sudo panixy sub-rm --name N` | 删除订阅(对称反融合;删光唯一订阅会被 `-t` 拒绝并回滚) |
+| `panixy sub-list [--json]` | 各订阅状态/节点数(✅/⚠️获取失败/⚠️解析失败/⚠️节点0) |
+| `panixy status [-v\|-q\|--json]` | 健康一览;`-q` 退出码 0健康/1降级/2故障(监控用) |
+| `sudo panixy mode [tun\|tproxy]` | 查看/原子切换模式(tproxy 需内核 xt_TPROXY) |
+| `sudo panixy upgrade [--core\|--ui] [--check] [--core-version vX]` | 参数化升级(timer 每日 04:17 自动) |
+| `sudo panixy rollback [vX.Y.Z]` | 内核回滚(默认最近备份) |
+| `panixy check [yaml]` / `sudo panixy apply-conf <yaml>` | 校验 / 应用配置(热重载优先;**热重载不刷新 provider**) |
+| `sudo panixy uninstall` | 停服务+清防火墙+删单元(**保留 /opt 数据与配置**) |
+| `panixy units` / `panixy log [n]` / `panixy man` / `panixy fw <apply\|teardown\|clean>` | 单元审查 / 日志 / 手册 / 防火墙管理 |
 
-## 自动升级机制(参考 TPClash 的职责划分,但为真·运行时更新)
+TUN vs TPROXY 选型:家用、要稳、少折腾 → **tun**(默认);弱 ARM 跑满千兆、日志必须看到设备真实 IP → tproxy(注意 IPv6 策略路由与容器误劫持坑)。
 
-TPClash 把 UI 编进二进制、内核只在缺失时下载——都不会更新。panixy 的做法:
-
-- **内核**:查 `MetaCubeX/mihomo` 最新稳定版 → 经本机代理下载(直连兜底)→ 试运行校验版本
-  → 原子替换 → 重启 → 双健康检查(API 版本 + 经代理出网 204)→ 失败自动回滚
-- **UI**:查 `MetaCubeX/metacubexd` 最新 release → 比对 `.official.version` 戳 →
-  下载 `compressed-dist.tgz` → 换目录 → `GET /ui/` 探活 → 失败恢复旧版
-- x86 升级时 V3 优先,下载后试运行验证,指令集不兼容自动降级标准版/compatible 版
-- 全部成功会更新 `/opt/panixy/.last-upgrade` 时间戳,`panixy status` 展示——
-  时间过旧说明升级在静默停滞(API 限流/网络),查 `panixy log`
-
-## 订阅导入与无外网初始化(为什么是"预取+重启+验证")
-
-实测 mihomo 行为决定了这套流程:
-
-- **拉不到订阅时内核照常运行、API 照常应答**(组里只有空的 COMPATIBLE)——只查 API 的健康检查会"假成功"
-- **热重载不重建 provider**:换了订阅 URL 热重载后,内核仍按旧 URL 拉取,新订阅永远不生效
-- **有本地缓存时内核秒级加载、不联网**;缓存陈旧则先加载旧内容再后台刷新(刷新流量经自身规则走节点)
-
-因此 `set-sub` 的做法:CLI 用与内核一致的 UA(`clash.meta/vX.Y.Z`)预取订阅(机场按 UA 返回 Clash 格式)→
-校验内容确为含节点的 YAML → 写入配置并**预置缓存**(`proxies/SUB.yaml`)→ 重启重建 provider →
-轮询 API 直到**节点数 > 0** 才算成功;任一步失败恢复原配置与缓存。拉取顺序:本地文件 > 直连 > 经本机代理
-(换被墙订阅时旧节点还能当跳板);都不通时报可执行的离线导入指引。
-
-广告分流规则源在 `raw.githubusercontent.com`(国内直连不可达),离线包已预置规则缓存,首启即生效;
-内核后台刷新规则/订阅的流量会经自身规则走节点,节点通了自然恢复更新。
-
-## 开发与测试
-
-改完 `panixy`/模板后跑冒烟测试(沙箱内模拟假 systemd、假订阅服务器与不可达网络,**不动系统、不需要 root、不联外网**):
+## 构建与打包
 
 ```bash
-tests/smoke.sh            # 内核默认取 /opt/panixy/bin/mihomo,可用 tests/smoke.sh <内核路径> 覆盖
+scripts/build.sh                 # 双架构静态二进制 → dist/
+scripts/package.sh --arch all    # 编译+下载内核/geo(含Country.mmdb)/UI/规则+泄露扫描 → 离线包
 ```
 
-覆盖:模板过内核 `-t`、可达订阅导入并验证节点数、不可达订阅诚实失败且配置零改动、被墙订阅+本地文件离线导入、旧配置自动补 `path`、`status` 节点行。
+CI(推 `V*` 标签)与本地同一脚本。**订阅 URL 永不进包**:占位符 + 打包前泄露扫描(`token=` 等特征命中即中止)。
 
-## 架构
+## 从 bash 版迁移(手动,不做自动转换)
 
+1. 旧机器:`sudo panixy uninstall`(停服务/清单元;`systemctl revert` 恢复 resolved 若曾被接管)
+2. 删除或清空 `/etc/clash.yaml`(含 `dns-hijack` 旧配置;想保留分组可手工去 tun.dns-hijack 段)
+3. 新包 `sudo ./panixy deploy` → `set-sub` 导入订阅
+4. 新 deploy 检测到旧特征(unit 含 resolvectl/配置含 dns-hijack)会主动中止并提示
+
+## 已知限制(必读)
+
+1. **热重载不刷新 proxy-providers**(mihomo 限制):set-sub/sub-rm/mode 一律重启进程生效
+2. kill -9/OOM 会残留防火墙规则:`systemctl restart panixy` 启动即自动清理,无需手工
+3. **DoH(443)无法在内核劫持**:浏览器内置加密 DNS 不走分流,status 已提示,建议关闭
+4. 订阅预取只是预校验;运行期 mihomo 会按 interval 自行远程拉取
+5. set-sub `--name` 依赖配置锚点 `&p`(基础模板自带;纯手写配置需自备)
+6. tun `stack: system` 家用默认;重度 BT/长时 UDP 流媒体/节点频繁掉线/老内核(5.4/5.15)建议改 `gvisor`(进程崩溃可被 systemd 自动拉起,优于静默僵死)
+
+## 开发
+
+```bash
+go test ./internal/...    # 单测(模板过真实 mihomo -t、配置编辑器黄金样例、防火墙规则文本)
+go test ./tests/          # e2e(真实内核+假 systemd 沙箱:deploy/set-sub/mode 全事务链)
+MIHOMO_BIN=/path/to/mihomo GEO_SRC=/path/to/geo go test ./...   # 指定本机内核与 geo
 ```
-LAN 客户端 ──(网关=本机,ip_forward)──> TUN "Meta"
-本机应用 ── resolved(~. → 198.18.0.2)──> mihomo DNS(fake-ip)
-mihomo ── auto-route/auto-detect-interface ──> 物理网卡出站
-```
-
-- `panixy.service`:ExecStartPre 配置校验(-t,坏配置拒启);ExecStartPost 等 TUN 就绪后
-  `resolvectl dns Meta 198.18.0.2 + domain ~.`;停止时 revert,系统 DNS 自动降级直连
-- 配置即事实源:`secret`、`mixed-port`、`external-controller` 改了 `/etc/clash.yaml`,
-  CLI 下次运行自动跟随,**无需再同步工具侧**(可用环境变量 PANIXY_SECRET/PROXY/API 覆盖)
-
-## 注意
-
-1. API 监听 0.0.0.0。密钥在安装时**随机生成并打印**(模板路径;自带配置沿用你自己的),
-   查看:`grep '^secret' /etc/clash.yaml`。网关多网口时仍建议用防火墙限制 9999 来源
-2. LAN 客户端 DNS:本方案靠 TUN `any:53` 劫持——DHCP 给客户端下发**公网 DNS**(如
-   223.5.5.5)即可被劫持;若 DHCP 下发网关 IP 本身,53 端口无人监听,需加 dnsmasq
-   转发到 1053,或改 DHCP 下发公网地址
-3. 双病灶背景(配置模板已内置修复):`stack: gvisor` 治链路事件后栈卡死;
-   `prefer-h3: false` 治 UDP 间歇故障时 DNS 上游陪葬。节点尽量保留 TCP 协议(Vless/Trojan)兜底
 
 ## 故障排查
 
-- `status` 显示"节点: 0 ⚠️ 订阅未加载":订阅没导入成功——重新 `set-sub`(可带本地订阅文件离线导入),仍失败看 `panixy log` 中内核报错
-- 全机断网:`systemctl restart panixy`,恢复后查 `panixy log`
-- 只断代理(直连正常):多为运营商 UDP 波动,通常 1-2 分钟自愈;持续则换 TCP 节点
-- DNS 异常:`resolvectl dns Meta` 应显示 198.18.0.2;没有则 `systemctl restart panixy`
-- set-sub/apply-conf 热重载后怀疑没生效:极少数字段需重启,`sudo systemctl restart panixy` 一次即可
+- `status` 节点=0:订阅没加载 → 重跑 `set-sub`(可 `--file` 离线),仍失败 `panixy log`
+- 断流先 `systemctl restart panixy`(防火墙自愈);持续则 `panixy mode` 确认模式、`--debug` 看规则加载
+- 配置改坏:`panixy check` + 内核报错会透传首条 `level=error msg`
+- 升级异常:`panixy rollback`;`.last-upgrade` 过旧=升级停滞,查 `panixy log`

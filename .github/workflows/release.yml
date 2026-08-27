@@ -1,5 +1,5 @@
-# 自动打包发布:推 V* 标签 → 下载内核/geo/面板 → 组装全离线包 → 建 Release 传资产
-# 用 runner 自带的 GITHUB_TOKEN(permissions: contents: write),无需任何人工凭证
+# Go 版发布:推 V* 标签 → 跑测试 → 调 package.sh 组装双架构离线包 → Release
+# 本地与 CI 同一真源:全部打包逻辑在 scripts/package.sh
 name: Release
 
 on:
@@ -9,71 +9,35 @@ on:
 permissions:
   contents: write
 
-env:
-  MIHOMO_VERSION: v1.19.29   # 包内内核版本;升级时同步改这里
-
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Assemble offline package
-        run: |
-          set -euxo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          PKG="Panixy-${TAG}"
-          mkdir -p "${PKG}/assets/core" "${PKG}/assets/geo" "${PKG}/assets/ui/official"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
 
-          # 内核:与本地离线包同版本(amd64-V3 + arm64 标准版)
-          base="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}"
-          curl -fsSL --retry 3 -o "${PKG}/assets/core/mihomo-linux-amd64-v3-${MIHOMO_VERSION}.gz" \
-            "$base/mihomo-linux-amd64-v3-${MIHOMO_VERSION}.gz"
-          curl -fsSL --retry 3 -o "${PKG}/assets/core/mihomo-linux-arm64-${MIHOMO_VERSION}.gz" \
-            "$base/mihomo-linux-arm64-${MIHOMO_VERSION}.gz"
+      - name: Test
+        run: go test ./internal/... -timeout 120s
 
-          # geo 数据(包内文件名沿用 deploy 认识的写法)
-          geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
-          curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoIP.dat"    "$geo/geoip.dat"
-          curl -fsSL --retry 3 -o "${PKG}/assets/geo/GeoSite.dat"  "$geo/geosite.dat"
-          curl -fsSL --retry 3 -o "${PKG}/assets/geo/Country.mmdb" "$geo/country.mmdb"
-
-          # 分流规则(源站在 raw.githubusercontent.com,国内直连不可达 → 离线预置,
-          # 文件名/路径须与 clash-template.yaml 的 rule-providers.path 一致)
-          mkdir -p "${PKG}/assets/rule"
-          curl -fsSL --retry 3 -o "${PKG}/assets/rule/AWAvenue-Ads.yaml" \
-            "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml"
-          test -s "${PKG}/assets/rule/AWAvenue-Ads.yaml"
-
-          # metacubexd 面板(最新稳定 release)
-          curl -fsSL --retry 3 -o /tmp/ui.tgz \
-            "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"
-          tar xzf /tmp/ui.tgz -C "${PKG}/assets/ui/official"
-          test -f "${PKG}/assets/ui/official/index.html"
-
-          # 源文件就位(仓库根 → 包内布局;全部功能在 panixy 单文件内,含 deploy 引导) + 语法自检
-          cp README.md panixy "${PKG}/"
-          cp clash-template.yaml "${PKG}/assets/clash-template.yaml"
-          bash -n "${PKG}/panixy"
-          "${PKG}/panixy" --help >/dev/null
-
-          tar -czf "Panixy-${TAG}.tar.gz" "${PKG}"
-          sha256sum "Panixy-${TAG}.tar.gz" > "Panixy-${TAG}.tar.gz.sha256"
-          ls -la "Panixy-${TAG}.tar.gz"
+      - name: Package (dual-arch offline bundles)
+        run: ./scripts/package.sh --arch all --ver "${GITHUB_REF_NAME}"
 
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          notes="全离线安装包:内核 ${MIHOMO_VERSION} 双架构(amd64-V3/arm64),geo/广告规则与 metacubexd 面板取打包时最新版。
-          完整性校验:sha256sum -c Panixy-${TAG}.tar.gz.sha256
-          快速开始:tar xzf Panixy-${TAG}.tar.gz && cd Panixy-${TAG} && sudo ./panixy deploy '订阅链接'"
-          # 幂等:Release 已存在(如手工先建过)就补传/覆盖资产,而不是报错退出
+          notes="全离线安装包(双架构):mihomo 内核、geo(含 Country.mmdb)、广告规则、metacubexd 面板、Go 版 panixy 单二进制。
+          完整性校验:sha256sum -c Panixy-${TAG}-<arch>.tar.gz.sha256
+          快速开始:tar xzf Panixy-${TAG}-<arch>.tar.gz && cd Panixy-${TAG}-<arch> && sudo ./panixy deploy
+          随后导入订阅:sudo panixy set-sub(回车进入粘贴模式,URL 无需引号)"
+          # 幂等:Release 已存在则补传/覆盖资产
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG 已存在,覆盖上传资产"
-            gh release upload "$TAG" "Panixy-${TAG}.tar.gz" "Panixy-${TAG}.tar.gz.sha256" --clobber
+            gh release upload "$TAG" Panixy-${TAG}-*.tar.gz Panixy-${TAG}-*.tar.gz.sha256 --clobber
           else
             gh release create "$TAG" --title "Panixy ${TAG}" --notes "$notes" \
-              "Panixy-${TAG}.tar.gz" "Panixy-${TAG}.tar.gz.sha256"
+              Panixy-${TAG}-*.tar.gz Panixy-${TAG}-*.tar.gz.sha256
           fi
