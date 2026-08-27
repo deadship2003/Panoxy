@@ -4,6 +4,8 @@ package systemdunit
 import (
 	"fmt"
 	"os"
+
+	"gopkg.in/yaml.v3"
 	"path/filepath"
 	"strings"
 
@@ -79,10 +81,17 @@ func Active() string {
 	return strings.TrimSpace(out)
 }
 
-// EnableNow / DisableNow / Restart / Stop 服务生命周期。
+// EnableNow 启用并拉起服务;失败时附带 journal 尾部(真机排障的关键线索)。
 func EnableNow() error {
-	_, err := execx.RunOK("启用服务", "systemctl", "enable", "--now", "panixy.service")
-	return err
+	out, err := execx.Run("systemctl", "enable", "--now", "panixy.service")
+	if err != nil {
+		detail := ""
+		if j, jerr := execx.Run("journalctl", "-u", "panixy.service", "-n", "15", "--no-pager"); jerr == nil && j != "" {
+			detail = "\n── journalctl 尾部 ──\n" + j
+		}
+		return fmt.Errorf("启用服务失败: %s%s", strings.TrimSpace(out), detail)
+	}
+	return nil
 }
 func EnableTimer() error {
 	_, err := execx.RunOK("启用升级 timer", "systemctl", "enable", "--now", "panixy-upgrade.timer")
@@ -116,4 +125,61 @@ func DetectLegacy(p paths.Paths) string {
 		}
 	}
 	return ""
+}
+
+// PortCheck 启动前预检:从实际部署的配置解析监听端口,逐一检查占用。
+// 旧实例未清理时新内核绑定失败是最常见的"服务启动失败"根因。
+func PortCheck(confPath string) error {
+	var c struct {
+		MixedPort          int    `yaml:"mixed-port"`
+		SocksPort          int    `yaml:"socks-port"`
+		TproxyPort         int    `yaml:"tproxy-port"`
+		ExternalController string `yaml:"external-controller"`
+		DNS                struct {
+			Listen string `yaml:"listen"`
+		} `yaml:"dns"`
+	}
+	if b, err := os.ReadFile(confPath); err == nil {
+		yaml.Unmarshal(b, &c) // 解析失败则跳过预检(不阻塞主流程)
+	}
+	why := map[int]string{
+		c.MixedPort:                    "mixed-port",
+		c.SocksPort:                    "socks-port",
+		c.TproxyPort:                   "tproxy-port",
+		portTail(c.ExternalController): "external-controller(面板/API)",
+		portTail(c.DNS.Listen):         "DNS 监听",
+	}
+	var list []string
+	for p, w := range why {
+		if p <= 0 {
+			continue
+		}
+		out, _ := execx.Run("sh", "-c",
+			fmt.Sprintf("ss -tlnup 2>/dev/null | grep -qE ':%d\\b' && echo busy", p))
+		if strings.TrimSpace(out) != "" {
+			list = append(list, fmt.Sprintf("%d(%s)", p, w))
+		}
+	}
+	if len(list) > 0 {
+		hint := ""
+		if pout, _ := execx.Run("sh", "-c", "pgrep -af 'bin/mihomo' | head -3"); strings.TrimSpace(pout) != "" {
+			hint = "\n检测到在运行的 mihomo:\n" + pout + "→ 旧部署未清理:先 sudo panixy uninstall(旧版)/停掉旧实例再 deploy\n"
+		}
+		return fmt.Errorf("端口已被占用: %s%s", strings.Join(list, "、"), hint)
+	}
+	return nil
+}
+
+func portTail(addr string) int {
+	if i := strings.LastIndex(addr, ":"); i >= 0 {
+		n := 0
+		for _, ch := range addr[i+1:] {
+			if ch < '0' || ch > '9' {
+				return 0
+			}
+			n = n*10 + int(ch-'0')
+		}
+		return n
+	}
+	return 0
 }

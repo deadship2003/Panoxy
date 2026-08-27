@@ -60,6 +60,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	logx.Step("[3/4] 拉起服务(ExecStartPost 自动加载防火墙)")
+	if err := systemdunit.PortCheck(p.Conf); err != nil {
+		rollback()
+		return err
+	}
 	if err := systemdunit.EnableNow(); err != nil {
 		rollback()
 		return fmt.Errorf("服务启动失败,已回滚")

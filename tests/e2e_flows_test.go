@@ -56,6 +56,9 @@ func TestE2ESetSubFlows(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(e.root, "proxies", "main.yaml")); !strings.Contains(string(b), "e2e-0") {
 		t.Fatal("订阅缓存未预置")
 	}
+	if b, _ := os.ReadFile(e.conf); strings.Contains(string(b), `url: "SUB_URL_PLACEHOLDER"`) {
+		t.Fatal("首个真实订阅导入后,占位订阅应自动退场(配置仍含占位 url)")
+	}
 
 	// 2) 不可达订阅:诚实失败 + 配置零改动
 	before, _ := os.ReadFile(e.conf)
@@ -127,10 +130,7 @@ func bootSandbox(t *testing.T, e *env) {
 		t.Fatal(err)
 	}
 	// geo + ui(-t 与启动需要)
-	geoSrc := os.Getenv("GEO_SRC")
-	if geoSrc == "" {
-		geoSrc = "/opt/panixy"
-	}
+	geoSrc := geoSrcOr(t)
 	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
 		if b, err := os.ReadFile(filepath.Join(geoSrc, f)); err == nil {
 			os.WriteFile(filepath.Join(e.root, f), b, 0o644)
@@ -152,10 +152,7 @@ func buildAssets(t *testing.T, pkg string) {
 	if out, err := exec.Command("sh", "-c", "gzip -c "+mihomo+" > "+gz).CombinedOutput(); err != nil {
 		t.Fatalf("内核打包失败: %s", out)
 	}
-	geoSrc := os.Getenv("GEO_SRC")
-	if geoSrc == "" {
-		geoSrc = "/opt/panixy"
-	}
+	geoSrc := geoSrcOr(t)
 	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
 		if b, err := os.ReadFile(filepath.Join(geoSrc, f)); err == nil {
 			os.WriteFile(filepath.Join(pkg, "assets/geo", f), b, 0o644)
@@ -170,4 +167,18 @@ func checkFile(t *testing.T, p string) {
 	if _, err := os.Stat(p); err != nil {
 		t.Errorf("文件缺失: %s", p)
 	}
+}
+
+func geoSrcOr(t *testing.T) string {
+	t.Helper()
+	if g := os.Getenv("GEO_SRC"); g != "" {
+		return g
+	}
+	for _, c := range []string{"/opt/panixy", homeDir() + "/panixy-e2e"} {
+		if _, err := os.Stat(filepath.Join(c, "GeoSite.dat")); err == nil {
+			return c
+		}
+	}
+	t.Fatal("缺 geo 数据(GEO_SRC 可指定,或放 ~/panixy-e2e)")
+	return ""
 }

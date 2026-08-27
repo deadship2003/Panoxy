@@ -37,7 +37,9 @@ func ipt6(line string) error {
 
 func iptTolerant(out []byte) bool {
 	s := string(out)
-	return strings.Contains(s, "does not exist") || strings.Contains(s, "Too many links")
+	return tolerantError(s) || strings.Contains(s, "Too many links") ||
+		strings.Contains(s, "by that name") || // No chain/target/match by that name
+		strings.Contains(s, "Bad rule") // -D 删除不存在的规则
 }
 
 func (i *iptBackend) CleanAll() error {

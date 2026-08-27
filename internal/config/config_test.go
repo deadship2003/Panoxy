@@ -171,6 +171,12 @@ func TestEditedConfigPassesMihomoCheck(t *testing.T) {
 	geoSrc := os.Getenv("GEO_SRC")
 	if geoSrc == "" {
 		geoSrc = "/opt/panixy"
+		if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
+			h, _ := os.UserHomeDir()
+			if _, err2 := os.Stat(h + "/panixy-e2e/GeoSite.dat"); err2 == nil {
+				geoSrc = h + "/panixy-e2e"
+			}
+		}
 	}
 	dir := t.TempDir()
 	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {

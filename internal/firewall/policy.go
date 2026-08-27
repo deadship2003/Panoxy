@@ -44,11 +44,28 @@ func runIps(cmds [][]string, what string) error {
 	for _, c := range cmds {
 		out, err := exec.Command(c[0], c[1:]...).CombinedOutput()
 		logx.DebugCmd(c[0], c[1:], string(out), err)
-		// 幂等:不存在(清理)/已存在(加载)都视为成功
-		if err != nil && !strings.Contains(string(out), "File exists") &&
-			!strings.Contains(string(out), "No such process") {
+		// 幂等容错:清理时"不存在"、加载时"已存在"都视为成功。
+		// 注意 ip 对不存在的 rule/table 报 "No such file or directory"(RTNETLINK
+		// ENOENT)—— 真机首装必现,漏容会导致 fw apply 失败、服务被判死(实测踩过)。
+		if err != nil && !tolerantError(string(out)) {
 			return fmt.Errorf("%s 失败: %s", what, strings.TrimSpace(string(out)))
 		}
 	}
 	return nil
+}
+
+// tolerantError 判定可忽略的幂等性错误输出。
+func tolerantError(out string) bool {
+	for _, s := range []string{
+		"File exists",               // add 时已存在
+		"No such process",           // del 部分实现
+		"No such file or directory", // rule/table 不存在(RTNETLINK ENOENT)
+		"does not exist",            // 新版 iproute2: FIB rule does not exist
+		"Cannot find device",
+	} {
+		if strings.Contains(out, s) {
+			return true
+		}
+	}
+	return false
 }

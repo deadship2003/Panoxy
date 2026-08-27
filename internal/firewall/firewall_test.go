@@ -113,3 +113,34 @@ func TestConstantsInvariants(t *testing.T) {
 		t.Errorf("DnsListenPort 必须与配置模板 dns.listen 联动(1053)")
 	}
 }
+
+// TestTolerantError 真机首装实测教训:ip rule del 对不存在的规则报
+// RTNETLINK ENOENT("No such file or directory"),漏容会导致 fw apply 失败、
+// systemd 把服务判死。此为回归测试。
+func TestTolerantError(t *testing.T) {
+	for _, s := range []string{
+		"RTNETLINK answers: No such file or directory",
+		"RTNETLINK answers: File exists",
+		"Error: ipv4: FIB rule does not exist",
+	} {
+		if !tolerantError(s) {
+			t.Errorf("应容忍: %q", s)
+		}
+	}
+	for _, s := range []string{
+		"iptables: No chain/target/match by that name.",
+		"iptables: Bad rule (does a matching rule exist in that chain?).",
+	} {
+		if !iptTolerant([]byte(s)) {
+			t.Errorf("iptTolerant 应容忍: %q", s)
+		}
+	}
+	for _, s := range []string{
+		"Operation not permitted",
+		"memory allocation failure",
+	} {
+		if tolerantError(s) {
+			t.Errorf("不应容忍: %q", s)
+		}
+	}
+}

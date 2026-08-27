@@ -125,6 +125,15 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 			systemdunit.Restart()
 		}
 	}
+	// 全新系统:模板占位订阅(SUB_URL_PLACEHOLDER)在首个真实订阅导入时自动退场,
+	// 避免留下一个永远拉不到的空 provider(继承自现有配置的真实条目不受影响)
+	for _, pn := range e.Providers() {
+		if u, ok := e.ProviderURL(pn); ok && u == "SUB_URL_PLACEHOLDER" && pn != name {
+			e.RemoveProvider(pn)
+			e.WireProvider(pn, false, nil)
+			logx.Step("占位订阅 %s 已由真实订阅 %s 取代", pn, name)
+		}
+	}
 	rel := "./proxies/" + name + ".yaml"
 	if err := e.SetProvider(name, url, rel); err != nil {
 		recoverAll(false)

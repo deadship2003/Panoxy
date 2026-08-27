@@ -45,6 +45,15 @@ func TestMain(m *testing.M) {
 		fmt.Println("SKIP: 无 mihomo 内核(MIHOMO_BIN 可指定)")
 		os.Exit(0)
 	}
+	// geo 来源:GEO_SRC > /opt/panixy > 离线包资产(机器清理过 /opt 后仍可测)
+	if os.Getenv("GEO_SRC") == "" {
+		for _, c := range []string{"/opt/panixy", homeDir() + "/panixy-e2e", "Panixy-V0.1.0-local-amd64/assets/geo"} {
+			if _, err := os.Stat(filepath.Join(c, "GeoSite.dat")); err == nil {
+				os.Setenv("GEO_SRC", c)
+				break
+			}
+		}
+	}
 	dir, err := os.MkdirTemp("", "panixy-e2e-bin-")
 	if err != nil {
 		os.Exit(1)
@@ -70,6 +79,8 @@ type env struct {
 	mixPort int
 	dnsPort int
 }
+
+func homeDir() string { h, _ := os.UserHomeDir(); return h }
 
 func freePort(t *testing.T) int {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
