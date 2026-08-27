@@ -90,6 +90,7 @@ func cmdDeploy() *cobra.Command {
 	c.Flags().String("name", "SUB", "订阅 provider 名称(仅 [a-zA-Z0-9_-])")
 	c.Flags().String("file", "", "本地订阅 YAML 文件(无外网时离线导入)")
 	c.Flags().String("proxy-mode", "tun", "透明代理模式: tun | tproxy")
+	c.Flags().String("secret", "deadship", "面板/API 密钥")
 	return c
 }
 

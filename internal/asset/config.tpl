@@ -47,7 +47,8 @@ proxy-providers:
 
 # ============ 基础设置 ============
 mixed-port: {{.MixedPort}}
-socks-port: 6696
+port: 6666
+socks-port: 6699
 allow-lan: true
 mode: rule
 log-level: warning

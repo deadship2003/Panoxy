@@ -114,6 +114,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if mode != "tun" && mode != "tproxy" {
 		return fmt.Errorf("--proxy-mode 只能是 tun 或 tproxy")
 	}
+	secret, _ := cmd.Flags().GetString("secret")
 
 	snap := snapshot(p)
 	defer func() { /* 失败路径各自显式回滚 */ _ = snap }()
@@ -139,7 +140,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	} else {
 		d := asset.DefaultConfigData()
 		d.TProxy = mode == "tproxy"
-		d.Secret = randHex(16)
+		d.Secret = secret
 		out, err := asset.RenderConfig(d)
 		if err != nil {
 			return err

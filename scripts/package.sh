@@ -1,23 +1,94 @@
 #!/usr/bin/env bash
-# panixy 离线包打包脚本(本地与 CI 同一真源):
-#   编译双架构 CLI → 下载目标平台 mihomo 内核/geo(含 Country.mmdb)/metacubexd/广告规则
-#   → 订阅泄露扫描 → 组装 Panixy-V<ver>-<arch>.tar.gz + sha256
-# 用法: scripts/package.sh [--arch amd64|arm64|all] [--ver V]
-# 订阅 URL 处理:包内配置一律 SUB_URL_PLACEHOLDER 占位 + 打包前泄露扫描;
-# 真实订阅由部署时 panixy set-sub 导入,绝不进包
+# panixy 离线包打包脚本(本地与 CI 同一真源)
+# 用法: scripts/package.sh [选项]
+#   --arch <amd64|arm64|all>   目标架构,默认仅当前硬件平台(省时省流量)
+#   --ver <V0.1.0>             版本号,默认取 git describe
+#   --sub-url <订阅URL>        直连下载失败时,经订阅节点建立本地代理再下载
+#   -h | -? | --help           显示本帮助
+# 环境变量:ASSETS_SRC=本地资产目录(默认 /opt/panixy,存在即优先复制,断网可打包)
+#          MIHOMO_VERSION=内核版本(默认 v1.19.30)
+#          MIHOMO_BOOT_BIN=引导代理内核(默认 /opt/panixy/bin/mihomo)
+#          PROXY_PORT=引导代理端口(默认 33999)
+# 流程:编译 CLI → 资产获取(本地优先/直连 15s 检测/订阅代理兜底)→ 订阅泄露扫描
+#      → 组装 Panixy-V<ver>-<arch>.tar.gz + sha256(订阅 URL 永不进包)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+host_arch() { case "$(uname -m)" in x86_64) echo amd64 ;; aarch64) echo arm64 ;; *) echo "" ;; esac; }
 
-ARCH=all; VER=""
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+ARCH=""; VER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --arch) ARCH="$2"; shift 2 ;;
     --ver)  VER="$2"; shift 2 ;;
-    *) echo "未知参数: $1"; exit 1 ;;
+    --sub-url) SUB_URL="$2"; shift 2 ;;
+    -h|-\?|--help) usage ;;
+    *) echo "未知参数: $1(查看用法: $0 -h)"; exit 1 ;;
   esac
 done
+[ -n "$ARCH" ] || ARCH="$(host_arch)"   # 默认:仅当前硬件平台
+[ -n "$ARCH" ] || { echo "无法识别当前架构,请 --arch amd64|arm64|all 指定"; exit 1; }
 [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "V0.1.0-dev")"
 MIHOMO_VER="${MIHOMO_VERSION:-v1.19.30}"   # 升级内核时同步改这里/环境变量
+# 本地资产源(断网打包):存在则优先复制,缺失才联网下载
+SRC="${ASSETS_SRC:-/opt/panixy}"
+
+# ---- 订阅引导代理:直连下载不了 GitHub 时,用订阅节点建本地代理再下 ----
+# 用法:SUB_URL='订阅链接' scripts/package.sh ...(引导内核取 MIHOMO_BOOT_BIN,默认 /opt/panixy/bin/mihomo)
+SUB_URL="${SUB_URL:-}"
+PROXY_PORT="${PROXY_PORT:-33999}"
+PROXYX=""
+BOOT_DIRF="$(mktemp -d)/panixy-boot-proxy.dir"; : > "$BOOT_DIRF" 2>/dev/null || BOOT_DIRF=/tmp/panixy-boot-proxy.$$.dir
+boot_proxy() {
+  [ -n "$SUB_URL" ] || return 1
+  local BOOT_BIN="${MIHOMO_BOOT_BIN:-/opt/panixy/bin/mihomo}"
+  [ -x "$BOOT_BIN" ] || { echo "      ⚠️ 无引导内核($BOOT_BIN),无法经订阅下载"; return 1; }
+  local d; d="$(mktemp -d)"
+  cat > "$d/boot.yaml" <<YEOF
+mixed-port: $PROXY_PORT
+mode: rule
+log-level: warning
+proxy-providers:
+  boot:
+    type: http
+    url: "$SUB_URL"
+    path: ./boot.sub.yaml
+    interval: 86400
+    health-check: {enable: false}
+proxy-groups:
+  - {name: P, type: select, use: [boot]}
+rules:
+  - MATCH,P
+YEOF
+  (cd "$d" && nohup "$BOOT_BIN" -f boot.yaml -d "$d" > boot.log 2>&1 & echo $! > "$d/pid")
+  local i ok=0
+  for i in $(seq 1 25); do
+    if curl -s -m 3 -x "http://127.0.0.1:$PROXY_PORT" -o /dev/null https://www.gstatic.com/generate_204; then ok=1; break; fi
+    sleep 1
+  done
+  if [ "$ok" = 1 ]; then
+    echo "$d" > "$BOOT_DIRF"
+    echo "      已用订阅建立引导代理(127.0.0.1:$PROXY_PORT)"
+    PROXYX="http://127.0.0.1:$PROXY_PORT"
+    return 0
+  fi
+  echo "      ⚠️ 引导代理未就绪(订阅不可达?)"; kill "$(cat "$d/pid")" 2>/dev/null; rm -rf "$d"; return 1
+}
+boot_proxy_stop() {
+  [ -s "$BOOT_DIRF" ] || return 0
+  local d; d="$(cat "$BOOT_DIRF")"
+  [ -f "$d/pid" ] && kill "$(cat "$d/pid")" 2>/dev/null
+  rm -rf "$d"; : > "$BOOT_DIRF"
+}
+trap 'boot_proxy_stop; rm -rf "$TMP"' EXIT
+
+# dl:直连优先(短超时),失败且配了 SUB_URL 则经引导代理
+dl() {
+  curl -fsSL --connect-timeout 6 --retry 1 -o "$1" "$2" && return 0
+  [ -n "$SUB_URL" ] || return 1
+  [ -z "$PROXYX" ] && { boot_proxy || return 1; }
+  curl -fsSL --connect-timeout 10 --retry 2 -x "$PROXYX" -o "$1" "$2"
+}
 
 # ---- 订阅泄露扫描:任何真实订阅特征都不得进入公开包 ----
 leak_scan() {
@@ -32,19 +103,36 @@ leak_scan() {
 echo "== [1/5] 编译(scripts/build.sh) =="
 ./scripts/build.sh "${VER#V}"
 
-echo "== [2/5] 下载资产(内核 $MIHOMO_VER / geo / UI / 广告规则) =="
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-base="https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER"
-curl -fsSL --retry 3 -o "$TMP/mihomo-linux-amd64.gz"    "$base/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
-curl -fsSL --retry 3 -o "$TMP/mihomo-linux-arm64.gz"    "$base/mihomo-linux-arm64-$MIHOMO_VER.gz"
+echo "== [2/5] 资产获取(本地优先: $SRC;缺失才下载) =="
+TMP=$(mktemp -d)
+# geo 三件
 geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
-curl -fsSL --retry 3 -o "$TMP/GeoIP.dat"    "$geo/geoip.dat"
-curl -fsSL --retry 3 -o "$TMP/GeoSite.dat"  "$geo/geosite.dat"
-curl -fsSL --retry 3 -o "$TMP/Country.mmdb" "$geo/country.mmdb"     # ★ 按需打包 country.mmdb
-curl -fsSL --retry 3 -o "$TMP/ui.tgz" "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"
-curl -fsSL --retry 3 -o "$TMP/AWAvenue-Ads.yaml" \
-  "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml"
-[ -s "$TMP/Country.mmdb" ] && [ -s "$TMP/AWAvenue-Ads.yaml" ] || { echo "资产下载不完整"; exit 1; }
+for f in GeoIP.dat GeoSite.dat Country.mmdb; do
+  if [ -f "$SRC/$f" ]; then cp "$SRC/$f" "$TMP/$f"; echo "      本地: $f"
+  else dl "$TMP/$f" "$geo/$(echo $f | tr 'A-Z' 'a-z' | sed 's/\.dat$/.dat/;s/country\.mmdb/country.mmdb/')" || true; fi
+done
+# 广告规则
+if [ -f "$SRC/rule_provider/AWAvenue-Ads.yaml" ]; then cp "$SRC/rule_provider/AWAvenue-Ads.yaml" "$TMP/"; echo "      本地: AWAvenue-Ads.yaml"
+else dl "$TMP/AWAvenue-Ads.yaml" "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml" || true; fi
+# 面板
+if [ -d "$SRC/ui/official" ] && [ -f "$SRC/ui/official/index.html" ]; then
+  (cd "$SRC/ui/official" && tar czf "$TMP/ui.tgz" .); echo "      本地: metacubexd UI"
+else dl "$TMP/ui.tgz" "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz" || true; fi
+# 内核:本机架构可来自本地二进制(gzip),其余架构需下载
+base="https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER"
+HA=$(host_arch)
+KERNEL_ARCHS="$ARCH"
+[ "$ARCH" = all ] && KERNEL_ARCHS="amd64 arm64"
+for arch in $KERNEL_ARCHS; do
+  if [ "$arch" = "$HA" ] && [ -x "$SRC/bin/mihomo" ]; then
+    gzip -c "$SRC/bin/mihomo" > "$TMP/mihomo-linux-$arch.gz"; echo "      本地: mihomo 内核($arch)"
+  elif [ "$arch" = amd64 ]; then
+    echo "      下载: mihomo 内核(amd64-v3)"; dl "$TMP/mihomo-linux-amd64.gz" "$base/mihomo-linux-amd64-v3-$MIHOMO_VER.gz" || true
+  else
+    echo "      下载: mihomo 内核(arm64)"; dl "$TMP/mihomo-linux-arm64.gz" "$base/mihomo-linux-arm64-$MIHOMO_VER.gz" || true
+  fi
+done
+[ -s "$TMP/Country.mmdb" ] && [ -s "$TMP/AWAvenue-Ads.yaml" ] && [ -s "$TMP/ui.tgz" ] || { echo "geo/规则/UI 资产不完整(本地与网络均不可得)"; exit 1; }
 
 echo "== [3/5] 订阅泄露扫描 =="
 leak_scan .
@@ -67,9 +155,10 @@ build_one() {
 }
 
 echo "== [4/5] 组装 =="
+missing_kernel() { [ -s "$TMP/mihomo-linux-$1.gz" ] || { echo "      ⚠️ 无 $1 内核(本地非本机架构且下载不可得),跳过该架构"; return 0; }; return 1; }
 case "$ARCH" in
-  amd64|arm64) build_one "$ARCH" ;;
-  all) build_one amd64; build_one arm64 ;;
+  amd64|arm64) missing_kernel "$ARCH" || build_one "$ARCH" ;;
+  all) missing_kernel amd64 || build_one amd64; missing_kernel arm64 || build_one arm64 ;;
   *) echo "--arch 只能是 amd64|arm64|all"; exit 1 ;;
 esac
 

@@ -59,6 +59,7 @@ type ConfigData struct {
 // DefaultConfigData 常用默认值。
 func DefaultConfigData() ConfigData {
 	return ConfigData{
+		Secret:      "deadship",
 		MixedPort:   constants.MixedPortDef,
 		ApiPort:     constants.ApiPortDef,
 		TProxy:      false,

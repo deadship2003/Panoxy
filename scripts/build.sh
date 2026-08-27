@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# panixy 编译脚本:双架构静态二进制 + sha256
-# 用法: scripts/build.sh [版本号]      (默认取 git describe/tag,无 git 时 0.1.0-dev)
+# panixy 编译脚本:静态二进制 + sha256(CGO_ENABLED=0)
+# 用法: scripts/build.sh [版本号]
+#   版本号缺省取 git describe/tag,无 git 时 0.1.0-dev
+#   -h | -? | --help 显示本帮助
+#   环境变量 GOOS/GOARCH 可覆盖(默认双架构 linux/amd64+arm64,GOAMD64=v1 兼容老 CPU)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+case "${1:-}" in
+  -h|-\?|--help) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
 
 VER="${1:-$(git describe --tags 2>/dev/null || echo "")}"
 [ -n "$VER" ] || VER="0.1.0-dev"
