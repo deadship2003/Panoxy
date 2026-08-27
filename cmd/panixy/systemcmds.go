@@ -220,11 +220,11 @@ func modeSwitch(want string) error {
 		logx.Info("当前已是 %s 模式", want)
 		return nil
 	}
-	if want == "tproxy" {
+	if want == "tproxy" && os.Getenv("PANIXY_SKIP_TPROXY_PROBE") == "" {
 		if err := checkTproxySupport(); err != nil {
 			return fmt.Errorf("TPROXY 前置条件不满足:%v", err)
 		}
-	}
+	} // PANIXY_SKIP_TPROXY_PROBE=1 仅测试沙箱用
 	logx.Step("切换 %s → %s:卸载旧防火墙", old, want)
 	if fw, err := firewallNew(); err == nil {
 		fw.Teardown()

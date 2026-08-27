@@ -46,6 +46,9 @@ func Write(p paths.Paths, mode string) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(p.UnitDir, 0o755); err != nil {
+		return fmt.Errorf("创建单元目录失败: %w", err)
+	}
 	for name, content := range units {
 		dst := filepath.Join(p.UnitDir, name)
 		if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
@@ -102,9 +105,14 @@ func DetectLegacy(p paths.Paths) string {
 		}
 	}
 	if b, err := os.ReadFile(p.Conf); err == nil {
-		s := string(b)
-		if strings.Contains(s, "dns-hijack") {
-			return "/etc/clash.yaml 含 tun dns-hijack(bash 旧版配置)"
+		for _, l := range strings.Split(string(b), "\n") {
+			t := strings.TrimSpace(l)
+			if strings.HasPrefix(t, "#") {
+				continue // 注释里的字样不算(新模板注释会提及历史字段)
+			}
+			if strings.HasPrefix(t, "dns-hijack:") {
+				return "/etc/clash.yaml 含 tun dns-hijack(bash 旧版配置)"
+			}
 		}
 	}
 	return ""

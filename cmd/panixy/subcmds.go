@@ -25,6 +25,9 @@ import (
 )
 
 func needRoot() error {
+	if os.Getenv("PANIXY_ALLOW_NONROOT") != "" {
+		return nil // 测试沙箱钩子:e2e 用,生产勿设
+	}
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("请用 sudo 运行")
 	}
