@@ -18,10 +18,10 @@ const (
 	NftFamily = "inet"
 	NftTable  = "panixy"
 
-	MarkSelf = 6666 // mihomo routing-mark:自身出站流量标记,防火墙据此放行防 DNS 回环(勿改,与配置模板联动)
-	MarkTproxy = 1 // TPROXY 模式流量标记
-	TproxyTable = 100 // TPROXY 策略路由表号
-	TproxyPort = 7893 // mihomo tproxy-port
+	MarkSelf    = 6666 // mihomo routing-mark:自身出站流量标记,防火墙据此放行防 DNS 回环(勿改,与配置模板联动)
+	MarkTproxy  = 1    // TPROXY 模式流量标记
+	TproxyTable = 100  // TPROXY 策略路由表号
+	TproxyPort  = 7893 // mihomo tproxy-port
 
 	DnsListenPort = 1053 // mihomo DNS 监听端口(防火墙 redirect 目标)
 	MixedPortDef  = 33833

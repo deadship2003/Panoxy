@@ -16,7 +16,7 @@ func TestBuildNftScriptGolden(t *testing.T) {
 		"iifname != \"lo\" meta l4proto { tcp, udp } th dport 53 redirect to :1053",
 		"ip daddr @keep4 return",
 		"ip6 daddr @keep6 return",
-		"meta mark 6666 return",                    // mihomo 自身放行(防 DNS 回环)
+		"meta mark 6666 return", // mihomo 自身放行(防 DNS 回环)
 		"th dport 53 redirect to :1053",
 		"th dport 853 reject",                      // DoT/DoQ 拒绝
 		"type nat hook prerouting priority dstnat", // PREROUTING:LAN 客户端

@@ -1,0 +1,180 @@
+// Package mihomoapi 封装 mihomo external-controller REST API。
+// 注意(实测事实,写入注释防止误用):PUT /configs 热重载不会重建/刷新
+// proxy-providers —— 修改 provider 必须重启进程,本包不提供该假象。
+package mihomoapi
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Client struct {
+	Base   string // http://127.0.0.1:9999
+	Secret string
+	Mixed  int // mixed-port(本机代理跳板)
+	hc     *http.Client
+}
+
+// NewFromConf 从 mihomo 配置文件解析 secret/external-controller/mixed-port,
+// 环境变量 PANIXY_API/PANIXY_SECRET/PANIXY_PROXY_PORT 可覆盖(沙箱测试用)。
+func NewFromConf(confPath string) *Client {
+	c := &Client{hc: &http.Client{Timeout: 5 * time.Second}}
+	var raw struct {
+		Secret             string `yaml:"secret"`
+		ExternalController string `yaml:"external-controller"`
+		MixedPort          int    `yaml:"mixed-port"`
+	}
+	if b, err := os.ReadFile(confPath); err == nil {
+		yaml.Unmarshal(b, &raw) // 解析失败则全走默认
+	}
+	c.Secret = raw.Secret
+	if c.Secret == "" {
+		c.Secret = "deadship"
+	}
+	c.Mixed = raw.MixedPort
+	api := "http://127.0.0.1:" + portOf(raw.ExternalController, 9999)
+	if p := os.Getenv("PANIXY_API_PORT"); p != "" {
+		api = "http://127.0.0.1:" + p
+	}
+	if u := os.Getenv("PANIXY_API"); u != "" {
+		api = u
+	}
+	if s := os.Getenv("PANIXY_SECRET"); s != "" {
+		c.Secret = s
+	}
+	if p := os.Getenv("PANIXY_PROXY_PORT"); p != "" && c.Mixed == 0 {
+		fmt.Sscanf(p, "%d", &c.Mixed)
+	}
+	c.Base = strings.TrimRight(api, "/")
+	return c
+}
+
+func portOf(ctrl string, def int) string {
+	if i := strings.LastIndex(ctrl, ":"); i >= 0 && i+1 < len(ctrl) {
+		return ctrl[i+1:]
+	}
+	return fmt.Sprint(def)
+}
+
+func (c *Client) do(method, path string, body any) ([]byte, error) {
+	var rdr io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		rdr = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, c.Base+path, rdr)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Secret)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return b, fmt.Errorf("API %s %s → HTTP %d", method, path, resp.StatusCode)
+	}
+	return b, nil
+}
+
+// Version 返回内核版本号(如 v1.19.30);不可达返回错误。
+func (c *Client) Version() (string, error) {
+	b, err := c.do("GET", "/version", nil)
+	if err != nil {
+		return "", err
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil || v.Version == "" {
+		return "", fmt.Errorf("version 响应异常: %s", string(b))
+	}
+	return v.Version, nil
+}
+
+// ProviderStat 单个订阅的健康快照。
+type ProviderStat struct {
+	Name  string `json:"name"`
+	Nodes int    `json:"nodes"`
+	Type  string `json:"type"`
+	Error string `json:"error,omitempty"`
+}
+
+type providerResp struct {
+	Name        string `json:"name"`
+	VehicleType string `json:"vehicleType"`
+	Proxies     []struct {
+		Name string `json:"name"`
+	} `json:"proxies"`
+}
+
+// Provider 查询单个 provider 节点数(正确解码 JSON,而非 bash 时代的 grep 计数)。
+func (c *Client) Provider(name string) (ProviderStat, error) {
+	b, err := c.do("GET", "/providers/proxies/"+name, nil)
+	var st ProviderStat
+	st.Name = name
+	if err != nil {
+		st.Error = "获取失败:" + err.Error()
+		return st, err
+	}
+	var pr providerResp
+	if err := json.Unmarshal(b, &pr); err != nil {
+		st.Error = "解析失败:" + err.Error()
+		return st, err
+	}
+	st.Nodes = len(pr.Proxies)
+	st.Type = pr.VehicleType
+	return st, nil
+}
+
+// Providers 查询全部 provider。
+func (c *Client) Providers() ([]ProviderStat, error) {
+	b, err := c.do("GET", "/providers/proxies", nil)
+	if err != nil {
+		return nil, err
+	}
+	var top struct {
+		Providers map[string]providerResp `json:"providers"`
+	}
+	if err := json.Unmarshal(b, &top); err != nil {
+		return nil, err
+	}
+	var out []ProviderStat
+	for name, pr := range top.Providers {
+		if pr.VehicleType == "Compatible" {
+			continue // 兼容组不是订阅
+		}
+		out = append(out, ProviderStat{Name: name, Nodes: len(pr.Proxies), Type: pr.VehicleType})
+	}
+	return out, nil
+}
+
+// ReloadConf 热重载配置(仅适用于非 provider 改动!)。
+func (c *Client) ReloadConf(path string) error {
+	_, err := c.do("PUT", "/configs?force=0", map[string]string{"path": path})
+	return err
+}
+
+// RawGet 探活类 GET:返回 HTTP 状态码字符串(不做 JSON 解码)。
+func (c *Client) RawGet(path string) (string, error) {
+	resp, err := c.hc.Get(c.Base + path)
+	if err != nil {
+		return "000", err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	return fmt.Sprintf("%d", resp.StatusCode), nil
+}

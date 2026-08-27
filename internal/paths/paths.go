@@ -9,20 +9,20 @@ import (
 )
 
 type Paths struct {
-	Root      string // /opt/panixy
-	Bin       string // 内核
-	UiDir     string
-	UiStamp   string
-	State     string // /opt/panixy/panixy.yaml:panixy 自身状态(proxy-mode 等)
-	Conf      string // /etc/clash.yaml:mihomo 配置(唯一事实源)
-	UnitDir   string
-	Cli       string
-	ManGz     string
-	Sysctl    string
-	Lock      string
-	LastUp    string
-	Proxies   string // 订阅缓存目录
-	RuleProv  string // 规则缓存目录
+	Root     string // /opt/panixy
+	Bin      string // 内核
+	UiDir    string
+	UiStamp  string
+	State    string // /opt/panixy/panixy.yaml:panixy 自身状态(proxy-mode 等)
+	Conf     string // /etc/clash.yaml:mihomo 配置(唯一事实源)
+	UnitDir  string
+	Cli      string
+	ManGz    string
+	Sysctl   string
+	Lock     string
+	LastUp   string
+	Proxies  string // 订阅缓存目录
+	RuleProv string // 规则缓存目录
 }
 
 func env(key, def string) string {

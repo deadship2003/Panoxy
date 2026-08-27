@@ -38,10 +38,10 @@ func TestRoundTripPreservesCommentsAndAnchors(t *testing.T) {
 	s := string(got)
 	for _, want := range []string{
 		"# ============ 订阅源",      // 注释保留
-		"SUB_URL_PLACEHOLDER",        // 原内容保留
-		"<<: *p",                     // merge 锚点保留
-		"p: &p",                      // 锚点定义保留
-		"- {name: dns, <<: *use,",    // flow 组保留
+		"SUB_URL_PLACEHOLDER",     // 原内容保留
+		"<<: *p",                  // merge 锚点保留
+		"p: &p",                   // 锚点定义保留
+		"- {name: dns, <<: *use,", // flow 组保留
 		"🔃 自动选择",                  // emoji 不被转义成 \U 形式
 		"stack: system",
 	} {

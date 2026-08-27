@@ -9,7 +9,10 @@ import (
 )
 
 func TestRenderConfigVariants(t *testing.T) {
-	for _, tc := range []struct{ name string; tproxy bool }{{"tun", false}, {"tproxy", true}} {
+	for _, tc := range []struct {
+		name   string
+		tproxy bool
+	}{{"tun", false}, {"tproxy", true}} {
 		d := DefaultConfigData()
 		d.TProxy = tc.tproxy
 		d.Secret = "test-secret"
@@ -64,7 +67,10 @@ func TestConfigPassesMihomoCheck(t *testing.T) {
 	if geoSrc == "" {
 		geoSrc = "/opt/panixy"
 	}
-	for _, tc := range []struct{ name string; tproxy bool }{{"tun", false}, {"tproxy", true}} {
+	for _, tc := range []struct {
+		name   string
+		tproxy bool
+	}{{"tun", false}, {"tproxy", true}} {
 		d := DefaultConfigData()
 		d.TProxy = tc.tproxy
 		out, err := RenderConfig(d)

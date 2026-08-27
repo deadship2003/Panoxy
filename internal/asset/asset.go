@@ -15,7 +15,7 @@ var files embed.FS
 
 // UnitData 渲染主服务单元所需字段。
 type UnitData struct {
-	Mode string // tun / tproxy(仅用于 Description)
+	Mode                        string // tun / tproxy(仅用于 Description)
 	Bin, Conf, Root, UiDir, Cli string
 }
 
@@ -47,23 +47,23 @@ func RenderUpgradeTimer() (string, error) { return render("upgrade-timer.tpl", n
 
 // ConfigData 渲染 mihomo 配置所需字段。
 type ConfigData struct {
-	MixedPort  int
-	ApiPort    int
-	Secret     string
-	TProxy     bool // true=TPROXY 变体(无 tun 段,加 tproxy-port)
-	TproxyPort int
-	DnsPort    int
+	MixedPort   int
+	ApiPort     int
+	Secret      string
+	TProxy      bool // true=TPROXY 变体(无 tun 段,加 tproxy-port)
+	TproxyPort  int
+	DnsPort     int
 	RoutingMark int
 }
 
 // DefaultConfigData 常用默认值。
 func DefaultConfigData() ConfigData {
 	return ConfigData{
-		MixedPort:  constants.MixedPortDef,
-		ApiPort:    constants.ApiPortDef,
-		TProxy:     false,
-		TproxyPort: constants.TproxyPort,
-		DnsPort:    constants.DnsListenPort,
+		MixedPort:   constants.MixedPortDef,
+		ApiPort:     constants.ApiPortDef,
+		TProxy:      false,
+		TproxyPort:  constants.TproxyPort,
+		DnsPort:     constants.DnsListenPort,
 		RoutingMark: constants.MarkSelf,
 	}
 }

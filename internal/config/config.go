@@ -335,3 +335,45 @@ func Restore(path string) error {
 }
 
 func ClearBackup(path string) { os.Remove(path + ".panixy-bak") }
+
+// SetMode 切换 tun/tproxy 配置变体(mode 命令用;tun 块与模板常量保持一致)。
+func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
+	tm := e.topMap()
+	if tproxy {
+		mapDel(tm, "tun")
+		mapSet(tm, "tproxy-port", &yaml.Node{
+			Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(tproxyPort),
+			LineComment: "TPROXY 模式(mark/策略路由由 panixy 防火墙管理)",
+		})
+		return
+	}
+	mapDel(tm, "tproxy-port")
+	tun := &yaml.Node{Kind: yaml.MappingNode}
+	for _, kv := range [][2]string{
+		{"enable", "true"},
+		{"stack", "system"},
+		{"auto-route", "true"},
+		{"auto-detect-interface", "true"},
+		{"strict-route", "true"},
+		{"mtu", "1500"},
+	} {
+		tag := "!!str"
+		if kv[1] == "true" || kv[1] == "1500" {
+			tag = "!!bool"
+			if kv[1] == "1500" {
+				tag = "!!int"
+			}
+		}
+		tun.Content = append(tun.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: kv[0]},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: kv[1]})
+	}
+	exc := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, cidr := range []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+		exc.Content = append(exc.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: cidr})
+	}
+	tun.Content = append(tun.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "route-exclude-address",
+			LineComment: "排除回环/内网,防代理循环"}, exc)
+	mapSet(tm, "tun", tun)
+}

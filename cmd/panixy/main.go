@@ -32,11 +32,6 @@ func main() {
 	}
 }
 
-// notImplemented 是 P0 阶段的占位:命令注册与帮助先行,实现按阶段交付。
-func notImplemented(name string) error {
-	return fmt.Errorf("%s 尚未实现(按开发计划在后续阶段交付,当前为 P0 骨架)", name)
-}
-
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "panixy",
@@ -87,7 +82,7 @@ func cmdDeploy() *cobra.Command {
 示例:
   sudo ./panixy deploy 'https://example.com/sub?token=x&sid=y'   # 部署并导入订阅
   sudo ./panixy deploy --proxy-mode tproxy                        # 以 TPROXY 模式部署`,
-		RunE: func(cmd *cobra.Command, args []string) error { return notImplemented("deploy") },
+		RunE: runDeploy,
 	}
 	c.Flags().String("name", "SUB", "订阅 provider 名称(仅 [a-zA-Z0-9_-])")
 	c.Flags().String("file", "", "本地订阅 YAML 文件(无外网时离线导入)")
@@ -99,7 +94,7 @@ func cmdInstall() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
 		Short: "仅部署 systemd 服务与防火墙(文件已就位时;deploy 的内部步骤)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("install") },
+		RunE:  runInstall,
 	}
 }
 
@@ -116,7 +111,7 @@ func cmdSetSub() *cobra.Command {
 
 前置要求:配置中存在锚点 &p(基础模板自带)。`,
 		Example: "  sudo panixy set-sub --name airport2 'https://example.com/sub2'\n  sudo panixy set-sub   # 粘贴模式",
-		RunE:    func(cmd *cobra.Command, args []string) error { return notImplemented("set-sub") },
+		RunE:    runSetSub,
 	}
 	c.Flags().String("name", "SUB", "订阅 provider 名称(默认 SUB;仅 [a-zA-Z0-9_-])")
 	c.Flags().String("file", "", "本地订阅 YAML 文件(跳过联网拉取)")
@@ -128,7 +123,7 @@ func cmdSubRm() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "sub-rm --name NAME",
 		Short: "删除指定订阅 provider(备份、校验、重启;失败回滚)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("sub-rm") },
+		RunE:  runSubRm,
 	}
 	c.Flags().String("name", "", "要删除的 provider 名称(必填)")
 	_ = c.MarkFlagRequired("name")
@@ -142,7 +137,7 @@ func cmdSubList() *cobra.Command {
 		Long: `读取配置全部 proxy-providers,逐个调用 mihomo API 查询状态。
 
 状态:✅正常 / ⚠️获取失败 / ⚠️解析失败 / ⚠️节点为0。--json 输出机器可读格式。`,
-		RunE: func(cmd *cobra.Command, args []string) error { return notImplemented("sub-list") },
+		RunE: runSubList,
 	}
 	c.Flags().Bool("json", false, "以 JSON 输出")
 	return c
@@ -158,7 +153,7 @@ func cmdStatus() *cobra.Command {
   -v  追加明细:当前代理模式(tun/tproxy)、TUN 栈风险提示、路由/缓存细节
   -q  静默,仅退出码:0健康 1降级(节点0或代理出网不通) 2故障(服务/API 不可用)
   --json 机器可读单行`,
-		RunE: func(cmd *cobra.Command, args []string) error { return notImplemented("status") },
+		RunE: runStatus,
 	}
 	c.Flags().BoolP("verbose", "v", false, "追加明细")
 	c.Flags().BoolP("quiet", "q", false, "静默,仅退出码")
@@ -177,7 +172,7 @@ func cmdMode() *cobra.Command {
 
 注意:模式无法在 Web 面板切换 —— 防火墙规则与配置必须同事务变更,面板只管数据面(节点/组)。
 不带参数则显示当前模式。`,
-		RunE: func(cmd *cobra.Command, args []string) error { return notImplemented("mode") },
+		RunE: runMode,
 	}
 }
 
@@ -191,7 +186,7 @@ func cmdUpgrade() *cobra.Command {
 compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", constants.CoreKeep) + ` 份)→ 原子替换 → 重启 →
 健康检查(API 版本+出口连通)→ 失败自动回滚旧二进制。`,
 		Example: "  panixy upgrade --check            # 只看可升级项\n  sudo panixy upgrade --core         # 只升内核\n  sudo panixy upgrade --core-version v1.19.31",
-		RunE:    func(cmd *cobra.Command, args []string) error { return notImplemented("upgrade") },
+		RunE:    runUpgrade,
 	}
 	c.Flags().Bool("core", false, "仅升级内核")
 	c.Flags().Bool("ui", false, "仅升级面板(默认两者都升)")
@@ -205,7 +200,7 @@ func cmdUpdateUI() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update-ui",
 		Short: "仅升级 metacubexd 面板(等价 upgrade --ui)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("update-ui") },
+		RunE:  runUpdateUI,
 	}
 }
 
@@ -213,7 +208,7 @@ func cmdRollback() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rollback [版本]",
 		Short: "回滚内核二进制(默认最近备份;UI 靠升级事务内自动回滚)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("rollback") },
+		RunE:  runRollback,
 	}
 }
 
@@ -221,7 +216,7 @@ func cmdUninstall() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
 		Short: "停止服务、清理防火墙与 systemd 单元(保留 /opt 数据与配置)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("uninstall") },
+		RunE:  runUninstall,
 	}
 }
 
@@ -229,7 +224,7 @@ func cmdUnits() *cobra.Command {
 	return &cobra.Command{
 		Use:   "units",
 		Short: "输出渲染后的 systemd 单元文本(离线审查,不动系统)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("units") },
+		RunE:  runUnits,
 	}
 }
 
@@ -237,7 +232,7 @@ func cmdLog() *cobra.Command {
 	return &cobra.Command{
 		Use:   "log [行数]",
 		Short: "查看 panixy/mihomo 服务日志(journalctl)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("log") },
+		RunE:  runLog,
 	}
 }
 
@@ -245,7 +240,7 @@ func cmdCheck() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check [yaml]",
 		Short: "用 mihomo -t 校验配置(默认当前配置;只读免 root)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("check") },
+		RunE:  runCheck,
 	}
 }
 
@@ -253,7 +248,7 @@ func cmdApplyConf() *cobra.Command {
 	return &cobra.Command{
 		Use:   "apply-conf <yaml>",
 		Short: "应用自定义配置(优先热重载;注意热重载不刷新 proxy-providers)",
-		RunE:  func(cmd *cobra.Command, args []string) error { return notImplemented("apply-conf") },
+		RunE:  runApplyConf,
 	}
 }
 
@@ -266,7 +261,7 @@ func cmdFw() *cobra.Command {
   apply     无条件清理自有表后加载当前模式完整规则(幂等;kill -9 残留随服务 restart 自愈)
   teardown  删除自有全部表/链/策略路由(服务停止时调用)
   clean     仅清理不加载`,
-		Args: cobra.ExactValidArgs(1),
+		Args:      cobra.ExactValidArgs(1),
 		ValidArgs: []string{"apply", "teardown", "clean"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fw, err := firewall.New()
@@ -293,8 +288,8 @@ func cmdFw() *cobra.Command {
 }
 
 func cmdMan() *cobra.Command {
-	return &cobra.Command{
-		Use:   "man",
+	c := &cobra.Command{
+		Use:   "man [--raw]",
 		Short: "显示手册(部署后也可直接 man panixy)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.MkdirTemp("", "panixy-man-")
@@ -310,6 +305,11 @@ func cmdMan() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// --raw:输出原始 roff(installMan 用来生成系统手册)
+			if raw, _ := cmd.Flags().GetBool("raw"); raw {
+				os.Stdout.Write(b)
+				return nil
+			}
 			// 优先交给系统 man 渲染;无 man/groff 时退化为可读纯文本(去 roff 控制行)
 			if _, err := exec.LookPath("man"); err == nil {
 				c := exec.Command("man", "-l", dir+"/panixy.1")
@@ -322,6 +322,8 @@ func cmdMan() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().Bool("raw", false, "输出原始 roff(供部署安装手册用)")
+	return c
 }
 
 // roffToText 极简 roff 降级:丢控制行、还原转义,保证无 man 环境仍可读。
