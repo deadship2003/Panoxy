@@ -14,8 +14,9 @@ command -v curl     >/dev/null || { echo "缺 curl"; exit 1; }
 
 T=$(mktemp -d /tmp/panixy-smoke.XXXXXX)
 # 端口基址随机(20000-39999):避免与上次异常退出残留的监听/本机其他实例撞车
+# 注意:ss 第 4 列才是本端地址,不能整行 grep(地址后还有进程信息,$ 锚永不命中)
 BASE=$(( (RANDOM % 20000) + 20000 ))
-ports_busy() { ss -tln 2>/dev/null | grep -qE ":(${BASE}|$((BASE+1))|$((BASE+2))|$((BASE+3)))\$"; }
+ports_busy() { ss -tln 2>/dev/null | awk '{print $4}' | grep -qE ":(${BASE}|$((BASE+1))|$((BASE+2))|$((BASE+3)))\$"; }
 while ports_busy; do BASE=$(( (RANDOM % 20000) + 20000 )); done
 CTL=$BASE; MIX=$((BASE+1)); DNP=$((BASE+2)); SRV=$((BASE+3))
 PASS=0; FAIL=0
@@ -56,8 +57,9 @@ chmod +x "$T/bin/systemctl"
 printf '#!/bin/sh\nexit 0\n' > "$T/bin/ip";      chmod +x "$T/bin/ip"
 printf '#!/bin/sh\nexit 0\n' > "$T/bin/sysctl";  chmod +x "$T/bin/sysctl"
 
-# 假订阅服务器:任意路径返回 4 节点 Clash YAML(模拟机场)
-python3 - "$SRV" <<'PY' &
+# 假订阅服务器:任意路径返回 4 节点 Clash YAML(模拟机场);启动探活,撞端口自动换
+srv_start() {
+  python3 - "$SRV" <<'PY' &
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
@@ -70,7 +72,15 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
 PY
-echo $! > "$T/pid.svr"; sleep 1
+  echo $! > "$T/pid.svr"
+}
+srv_start; sleep 1
+for i in 1 2 3 4 5; do
+  curl -fsS -m 2 "http://127.0.0.1:$SRV/probe" >/dev/null 2>&1 && break
+  kill "$(cat "$T/pid.svr")" 2>/dev/null
+  SRV=$(( (RANDOM % 20000) + 20000 )); srv_start; sleep 1
+done
+curl -fsS -m 2 "http://127.0.0.1:$SRV/probe" >/dev/null 2>&1 || { echo "假订阅服务器无法启动"; exit 1; }
 
 # 测试配置:保留改动点(SUB path / #dns 接线),去掉 tun(无 root 不能建设备)
 CONF=$T/clash.yaml
@@ -129,7 +139,7 @@ fi
 echo "== 1. 可达订阅:set-sub 应成功并验证节点加载 =="
 if run_cli set-sub "http://127.0.0.1:$SRV/sub?token=ok" > "$T/out1" 2>&1; then ok "exit 0"
 else bad "exit 非 0: $(tail -3 "$T/out1")"; fi
-grep -q '订阅加载成功:4 个节点' "$T/out1" && ok "日志报告 4 节点" || bad "未见节点数报告"
+grep -q '加载成功:4 个节点' "$T/out1" && ok "日志报告 4 节点" || bad "未见节点数报告"
 grep -q "token=ok" "$CONF" && ok "URL 已写入配置" || bad "URL 未写入"
 [ "$(api_nodes)" -ge 4 ] && ok "内核实际加载 $(api_nodes) 节点" || bad "内核节点数=$(api_nodes)"
 [ -s "$T/root/proxies/SUB.yaml" ] && ok "缓存已预置 proxies/SUB.yaml" || bad "缓存未预置"
@@ -153,6 +163,24 @@ echo "== 4. 旧版配置(无 path):set-sub 应自动补写 =="
 grep -v '^    path:' "$CONF" > "$T/nopath" && mv "$T/nopath" "$CONF"
 run_cli set-sub "http://127.0.0.1:$SRV/sub?token=v2" > "$T/out4" 2>&1
 grep -q '^    path: ./proxies/SUB.yaml' "$CONF" && ok "path 已自动补写" || bad "path 未补写"
+
+echo "== 4b. 自定义 provider 名(airport):set-sub/status 应自动识别 =="
+sed -e 's/^  SUB:/  airport:/' -e 's/use: \[SUB\]/use: [airport]/' "$CONF" > "$T/air" && mv "$T/air" "$CONF"
+rm -rf "$T/root/proxies"
+if PATH="$T/bin:$PATH" PANIXY_ROOT="$T/root" PANIXY_CONF="$CONF" PANIXY_UNIT_DIR="$T/units" \
+     PANIXY_LOCK="$T/lck" PANIXY_API_PORT=$CTL PANIXY_PROXY_PORT=$MIX PANIXY_SECRET=deadship \
+     PANIXY_SYSCTL="$T/99.conf" bash -x "$T/panixy" set-sub "http://127.0.0.1:$SRV/sub?token=air" > "$T/out4b" 2>&1; then ok "exit 0"
+else bad "自定义 provider 名失败: $(grep 'panixy\]' "$T/out4b" | tail -2)"; fi
+grep -q 'provider airport' "$T/out4b" && ok "日志识别 provider 名 airport" || bad "未识别 provider 名"
+grep -A2 '^  airport:' "$CONF" | grep -q "token=air" && ok "URL 写入 airport 块" || bad "URL 未写入 airport 块"
+run_cli status > "$T/st4b" 2>&1
+grep -q '^节点:     4 个' "$T/st4b" && ok "status 按名统计 airport 节点" || bad "status 节点行异常: $(grep '^节点' "$T/st4b")"
+
+echo "== 4c. 无参数粘贴模式(管道喂 URL,免引号场景)== "
+printf 'http://127.0.0.1:%s/sub?token=paste&sid=x&flag=1\n' "$SRV" | run_cli set-sub > "$T/out4c" 2>&1
+grep -q 'token=paste&sid=x&flag=1' "$CONF" && ok "整行 URL(含多个 & )完整写入" || bad "粘贴模式 URL 不完整"
+sed -i -e 's/^  airport:/  SUB:/' -e 's/use: \[airport\]/use: [SUB]/' "$CONF"   # 还原名
+run_cli set-sub "http://127.0.0.1:$SRV/sub?token=back" >/dev/null 2>&1          # 重启内核对齐改名后的配置
 
 echo "== 5. status 展示节点行 =="
 run_cli status > "$T/out5" 2>&1

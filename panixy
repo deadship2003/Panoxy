@@ -77,6 +77,10 @@ egress_ok() {  # 经代理出网 204,重试 $1 次(默认3)
 # ---- 订阅导入辅助 ----
 # 关键事实(实测 mihomo v1.19.x):订阅拉不到时内核照常运行、API 照常应答(0 节点),
 # 且热重载不重建 provider(换 URL 不生效)——所以必须:CLI 预取订阅→预置缓存→重启→验证节点数。
+sub_name() {  # 配置里第一个 proxy-provider 名(模板为 SUB;自定义配置自动识别),空=无 provider
+  [ -f "$CONF" ] || return 0
+  awk '/^proxy-providers:/{f=1;next} f && /^  [^ #]/{sub(/:.*/,"",$1); gsub(/"/,"",$1); print $1; exit}' "$CONF" 2>/dev/null
+}
 sub_ua() {  # 与内核拉订阅一致的 UA(机场按 UA 返回 Clash 格式)
   echo "clash.meta/$("$BIN" -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 }
@@ -90,18 +94,21 @@ sub_yaml_ok() {  # $1=文件:是否为含节点的 Clash YAML(机场对无效 to
   grep -qE '^[[:space:]]*proxies:' "$1" \
     && grep -qE '^[[:space:]]*-[[:space:]]*(\{|"?name"?:)' "$1"
 }
-sub_cache_path() {  # SUB provider 的缓存落盘位:取配置 path 字段(相对 $ROOT),缺省兜底
-  local p
-  p=$(awk '/^  SUB:/{f=1;next} f&&/^    path:/{sub(/^    path:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null)
+sub_cache_path() {  # 第一个 provider 的缓存落盘位:取其 path 字段(相对 $ROOT),缺省按名兜底
+  local n p
+  n=$(sub_name); n=${n:-SUB}
+  p=$(awk -v n="$n" 'index($0,"  " n ":")==1{f=1;next} f&&/^    path:/{sub(/^    path:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null)
   case "$p" in
     /*) echo "$p" ;;
-    '') echo "$ROOT/proxies/SUB.yaml" ;;
+    '') echo "$ROOT/proxies/$n.yaml" ;;
     *)  echo "$ROOT/${p#./}" ;;
   esac
 }
-provider_nodes() {  # SUB provider 已加载的节点数(0=未加载;API 不可达亦为 0)
-  # 按 provider-name 计数:不能按 "alive"(extra 里每个测速 URL 还有一份,会翻倍)
-  curl -s -m 4 -H "Authorization: Bearer $SECRET" "$API/providers/proxies/SUB" 2>/dev/null \
+provider_nodes() {  # $1=provider名(默认取配置首个);已加载节点数(0=未加载/不可达/名字无法拼API路径)
+  local n="${1:-$(sub_name)}"
+  [ -n "$n" ] || { echo 0; return; }
+  case "$n" in *[!A-Za-z0-9_.-]*) echo 0; return ;; esac
+  curl -s -m 4 -H "Authorization: Bearer $SECRET" "$API/providers/proxies/$n" 2>/dev/null \
     | grep -o '"provider-name":"[^"]*"' | wc -l
 }
 sub_recover() {  # $1=缓存路径(空=只恢复配置) $2=非空则重启服务;set-sub 失败路径恢复原状
@@ -321,14 +328,21 @@ cmd_upgrade() {   # timer 入口: 内核 + UI;全成功才更新时间戳(status
   return $rc
 }
 
-cmd_set_sub() {  # 用法: panixy set-sub <订阅URL> [本地订阅文件] — 导入订阅并验证真实加载
+cmd_set_sub() {  # 用法: panixy set-sub [订阅URL] [本地订阅文件] — 无 URL 时交互粘贴(免引号,免疫 & ? 等字符)
   # 无外网环境要点:订阅内容预取(直连→经本机代理两级,或直接给本地文件)→ 预置 provider 缓存
   # → 重启重建 provider(热重载对换 URL 无效)→ 以节点数>0 作为成功标准,绝不假成功
   need_root; lock
-  local url="${1:-}" seed="${2:-}" cache tmp n i
-  [ -n "$url" ] || die "用法: panixy set-sub <订阅URL> [本地订阅文件]"
-  case "$url" in http://*|https://*) ;; *) die "URL 需以 http(s):// 开头" ;; esac
+  local url="${1:-}" seed="${2:-}" cache tmp n i blk
+  if [ -z "$url" ]; then  # 未给 URL:进入粘贴模式(read 读整行,不经 shell 解析)
+    # stdin 是终端→提示后读;是管道→直接读(支持 echo URL | panixy set-sub)
+    if [ -t 0 ]; then read -r -p "请粘贴订阅链接(整行粘贴后回车,无需加引号): " url
+    else read -r url; fi
+    [ -n "$url" ] || die "用法: panixy set-sub <订阅URL> [本地订阅文件](或无参数进入粘贴模式)"
+  fi
+  case "$url" in http://*|https://*) ;; *) die "URL 需以 http(s):// 开头(命令行传参时记得整体加单引号)" ;; esac
   [ -f "$CONF" ] || die "配置不存在: $CONF"
+  blk=$(sub_name)
+  [ -n "$blk" ] || die "配置 $CONF 无 proxy-providers 段,无法写入订阅 URL(自定义配置请手工修改后 sudo panixy apply-conf)"
 
   # 1) 取订阅内容:本地文件 > 直连 > 经本机代理
   tmp=$(mktemp)
@@ -339,9 +353,9 @@ cmd_set_sub() {  # 用法: panixy set-sub <订阅URL> [本地订阅文件] — �
   elif ! fetch_sub "$url" "$tmp"; then
     rm -f "$tmp"
     die "订阅拉取失败(直连与经本机代理均不通): $url
-  无外网环境可离线导入:在任意能访问订阅的设备下载好 Clash 订阅 YAML 后
-  sudo panixy set-sub '<URL>' <订阅文件>
-  或指定可用代理: sudo PANIXY_PROXY=http://主机:端口 panixy set-sub '<URL>'"
+  提示:命令行传 URL 须整体加单引号(含 & ? 等字符会被 shell 拆掉),或直接
+  sudo panixy set-sub 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
+  sudo panixy set-sub '<URL>' <订阅文件>),或指定可用代理 PANIXY_PROXY=http://主机:端口"
   fi
   if ! sub_yaml_ok "$tmp"; then
     rm -f "$tmp"
@@ -350,42 +364,43 @@ cmd_set_sub() {  # 用法: panixy set-sub <订阅URL> [本地订阅文件] — �
 
   # 2) 备份 → 写 URL(块内无 path 时顺手补上,保证缓存可预置)→ 内核校验 → 预置缓存
   cp "$CONF" "$CONF.panixy-bak"
-  if awk '/^  SUB:/{f=1} f&&/^    path:/{found=1} END{exit !found}' "$CONF.panixy-bak"; then haspath=1; else haspath=0; fi
-  awk -v u="$url" -v p="$haspath" '
+  if awk -v n="$blk" 'index($0,"  " n ":")==1{f=1} f&&/^    path:/{found=1} END{exit !found}' "$CONF.panixy-bak"; then haspath=1; else haspath=0; fi
+  awk -v u="$url" -v n="$blk" -v p="$haspath" '
     /^[^ #]/{insub=0}
-    /^  SUB:/{insub=1}
-    insub && /^    url:/{print "    url: \"" u "\""; if(p=="0") print "    path: ./proxies/SUB.yaml"; next}
+    index($0,"  " n ":")==1{insub=1}
+    insub && /^    url:/{print "    url: \"" u "\""; if(p=="0") print "    path: ./proxies/" n ".yaml"; next}
     {print}
   ' "$CONF.panixy-bak" > "$CONF" || { sub_recover ""; die "配置写入失败,已恢复原文件"; }
-  grep -q "\"$url\"" "$CONF" || { sub_recover ""; die "写入失败(未找到 SUB 的 url 行),已恢复原文件"; }
-  if ! "$BIN" -t -f "$CONF" -d "$ROOT" >/dev/null 2>&1; then
+  grep -q "\"$url\"" "$CONF" || { sub_recover ""; die "写入失败(未找到 $blk 的 url 行),已恢复原文件"; }
+  trc=0
+  # 注意:mihomo 的日志(含 -t 报错)走 stdout,必须合并捕获,否则错误被吞
+  "$BIN" -t -f "$CONF" -d "$ROOT" >"$CONF.panixy-terr" 2>&1 || trc=$?
+  if [ "$trc" -ne 0 ]; then
+    cp -f "$CONF" "$CONF.panixy-rej" 2>/dev/null   # 留档被拒配置,便于排查
     sub_recover ""
-    die "配置校验未通过,已恢复原配置"
+    die "配置校验未通过(rc=$trc $(grep -m1 -oE 'msg="[^"]*"' "$CONF.panixy-terr" 2>/dev/null)),已恢复原配置"
   fi
+  rm -f "$CONF.panixy-terr"
   cache=$(sub_cache_path)
   [ -f "$cache" ] && cp "$cache" "$cache.panixy-bak"
   mkdir -p "$(dirname "$cache")"
   cp "$tmp" "$cache" && rm -f "$tmp"
 
   # 3) 重启重建 provider:内核从预置缓存秒级加载节点,不依赖当时的网络
-  log "订阅已写入,缓存已预置,重启内核生效(换 URL 必须重启,热重载不重建 provider)"
+  log "订阅已写入 provider $blk,缓存已预置,重启内核生效(换 URL 必须重启,热重载不重建 provider)"
   if ! systemctl restart panixy.service >/dev/null 2>&1; then
     sub_recover "$cache" restart; die "重启失败,已恢复原订阅"
   fi
   wait_healthy 30 || { sub_recover "$cache" restart; die "重启后健康检查超时,已恢复原订阅"; }
 
   # 4) 成功标准 = 节点真实加载(这一步是内核能转发流量的前提)
-  if grep -q '^  SUB:' "$CONF"; then
-    n=0
-    for i in 1 2 3 4 5; do n=$(provider_nodes); [ "$n" -gt 0 ] 2>/dev/null && break; sleep 2; done
-    if [ "${n:-0}" -eq 0 ] 2>/dev/null; then
-      sub_recover "$cache" restart
-      die "订阅未加载(节点数为 0),已恢复原订阅;排查: panixy log / panixy check"
-    fi
-    log "订阅加载成功:$n 个节点(测速选优由 🔃 自动选择 组负责,默认走最快节点)"
-  else
-    log "提示:自定义配置无 SUB provider,跳过节点数验证"
+  n=0
+  for i in 1 2 3 4 5; do n=$(provider_nodes "$blk" || true); [ "$n" -gt 0 ] 2>/dev/null && break; sleep 2; done
+  if [ "${n:-0}" -eq 0 ] 2>/dev/null; then
+    sub_recover "$cache" restart
+    die "订阅未加载(节点数为 0),已恢复原订阅;排查: panixy log / panixy check"
   fi
+  log "订阅($blk)加载成功:$n 个节点(测速选优由 🔃 自动选择 组负责,默认走最快节点)"
   rm -f "$CONF.panixy-bak" "$cache.panixy-bak"
   log "订阅导入完成: $url"
   cmd_status
@@ -442,14 +457,16 @@ cmd_status() {  # 用法: panixy status [-v|-q|--json] — 健康一览
     esac
     shift
   done
-  local svc api_ver nodes egress direct has_sub nodes_txt
+  local svc api_ver nodes egress direct has_sub nodes_txt blk
   # 探测赋值一律 || true:探测失败不是错误(在 deploy 的 set -e 子壳里尤其不能炸)
+  blk=$(sub_name || true)
   svc=$(systemctl is-active panixy.service 2>/dev/null || true)
   api_ver=$(curl -s -m 4 -H "Authorization: Bearer $SECRET" "$API/version" 2>/dev/null | grep -oE '"version":"[^"]*"' | cut -d'"' -f4 || true)
-  has_sub=$(grep -c '^  SUB:' "$CONF" 2>/dev/null || true)
-  if [ "${has_sub:-0}" -gt 0 ] 2>/dev/null; then nodes=$(provider_nodes || true); else nodes=-1; fi
-  egress=$(curl -s -m 8 -x "$PROXY" -o /dev/null -w '%{http_code}' https://www.gstatic.com/generate_204 2>/dev/null || echo 000)
-  direct=$(curl -s -m 6 -o /dev/null -w '%{http_code}' http://connect.rom.miui.com/generate_204 2>/dev/null || echo 000)
+  if [ -n "$blk" ]; then nodes=$(provider_nodes "$blk" || true); else nodes=-1; fi
+  egress=$(curl -s -m 8 -x "$PROXY" -o /dev/null -w '%{http_code}' https://www.gstatic.com/generate_204 2>/dev/null || true)
+  egress=${egress:-000}
+  direct=$(curl -s -m 6 -o /dev/null -w '%{http_code}' http://connect.rom.miui.com/generate_204 2>/dev/null || true)
+  direct=${direct:-000}
 
   # -q:静默,仅以退出码表达健康(0=健康 1=降级 2=故障),供监控/巡检
   if [ -n "$q" ]; then
@@ -471,15 +488,17 @@ cmd_status() {  # 用法: panixy status [-v|-q|--json] — 健康一览
 
   if [ "$nodes" -ge 0 ] 2>/dev/null; then
     nodes_txt="$nodes 个"
-    [ "$nodes" = "0" ] && nodes_txt="0 ⚠️ 订阅未加载(重新导入: sudo panixy set-sub '<URL>',仍失败查 panixy log)"
+    [ "$nodes" = "0" ] && nodes_txt="0 ⚠️ 订阅未加载(重新导入: sudo panixy set-sub,仍失败查 panixy log)"
   else
-    nodes_txt="-(自定义配置,不统计)"
+    nodes_txt="-(无订阅 provider)"
   fi
   echo "== panixy v$VER_TAG  ($ROOT) =="
   if grep -q 'url:.*SUB_URL_PLACEHOLDER' "$CONF" 2>/dev/null; then
-    echo "订阅:     ⚠️ 尚未设置! 用 sudo panixy set-sub '<订阅URL>'"
+    echo "订阅:     ⚠️ 尚未设置! 用 sudo panixy set-sub(可回车进入粘贴模式)"
+  elif [ -n "$blk" ]; then
+    echo "订阅:     $(awk -v n="$blk" 'index($0,"  " n ":")==1{f=1} f&&/^    url:/{sub(/^    url:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null | cut -c1-60)..."
   else
-    echo "订阅:     $(awk '/^  SUB:/{f=1} f&&/^    url:/{sub(/^    url:[ ]*/,"");gsub(/^"|"$/,"");print;exit}' "$CONF" 2>/dev/null | cut -c1-60)..."
+    echo "订阅:     -(配置无 proxy-providers 段)"
   fi
   echo "节点:     $nodes_txt"
   echo "服务:     $svc"
@@ -546,8 +565,10 @@ panixy v$VER_TAG — 基于 mihomo 的 Linux 透明代理网关部署/管理工�
   install                           仅部署 systemd 服务(文件已就位时)
 
 日常管理:
-  set-sub <订阅URL> [本地订阅文件]  导入/更换订阅:预取(本地文件>直连>经代理)→预置缓存
-                                    →重启→验证节点数>0,失败自动恢复原状
+  set-sub [订阅URL] [本地订阅文件]   导入/更换订阅:预取(本地文件>直连>经代理)→预置缓存
+                                    →重启→验证节点数>0,失败自动恢复原状;无参数时进入
+                                    粘贴模式(回车读整行,免引号,免疫 URL 里的 & ? 等字符);
+                                    自动识别配置里的 provider 名(模板 SUB / 自定义配置均可)
   status [-v|-q|--json]             健康一览:订阅/节点/服务/升级/DNS/出网
                                     -v 追加 TUN/路由/缓存明细  -q 只以退出码表达健康
                                     (0=健康 1=降级 2=故障,供监控)  --json 机器可读
@@ -597,8 +618,10 @@ panixy \- 基于 mihomo 的 Linux 透明代理网关部署/管理工具(单文�
 .B install
 仅部署 systemd 服务与 sysctl(文件已就位时;deploy 的内部步骤)。
 .TP
-.BI set-sub " <订阅URL> [本地订阅文件]"
+.BI set-sub " [订阅URL] [本地订阅文件]"
 导入/更换订阅。拉取顺序:本地文件 > 直连 > 经本机代理(换被墙订阅时旧节点可当跳板)。
+无参数时进入粘贴模式(读整行,URL 含 & ? 等字符无需加引号)。自动识别配置里第一个
+proxy\-provider 的名字(模板为 SUB,自定义配置亦可)。
 .TP
 .BI status " [\-v|\-q|\-\-json]"
 健康一览。\-v 追加 TUN/路由/缓存明细;\-q 静默,仅以退出码表达健康
@@ -785,7 +808,16 @@ cmd_deploy() {  # 用法(离线包根目录): panixy deploy [订阅URL] [本地�
   if [ "$#" -gt 0 ]; then
     cmd_set_sub "$@"
   else
-    log "deploy 完成。提示: sudo panixy set-sub '<订阅链接>' 设置订阅;panixy status 查看健康"
+    local u=""
+    # 只在 stdin 是终端时询问(自动化/管道场景不打扰、不阻塞)
+    if [ -t 0 ]; then
+      read -r -p "现在导入订阅?粘贴订阅链接(直接回车跳过,稍后 sudo panixy set-sub): " u || u=""
+    fi
+    if [ -n "$u" ]; then
+      cmd_set_sub "$u"
+    else
+      log "deploy 完成。提示: sudo panixy set-sub 设置订阅(回车进入粘贴模式);panixy status 查看健康"
+    fi
   fi
 }
 
