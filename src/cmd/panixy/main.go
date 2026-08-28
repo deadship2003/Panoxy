@@ -293,6 +293,13 @@ func cmdMode() *cobra.Command {
 加载新防火墙 → 健康检查,任一步失败整体回滚。TPROXY 前置依赖内核 xt_TPROXY
 模块,不可用时拒绝切换。
 
+流量策略(两种模式统一):
+  不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流)
+  DNS 53 劫持(为大多数设备提供域名级分流)
+  28 条基础服务直连:SSH(22) RDP(3389) VNC(5900)
+    VPN(Tailscale/WG/OpenVPN) VoIP(SIP) 域认证(Kerberos/LDAP)
+    IoT(MQTT/CoAP) 存储(iSCSI/MySQL/PG/Redis/Mongo) 等
+
 TUN(默认) vs TPROXY 选型:
   TUN:    简单稳定,auto-route 自动处理路由;家用推荐
           源 IP 丢失(全部显示为网关 IP)

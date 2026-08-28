@@ -78,6 +78,32 @@ sudo panixy merge-conf --dry-run ~/我的.yaml   # 先看融合决策
 - mihomo 自身出站 `routing-mark: 6666` 放行 → 防 DNS 回环死锁
 - systemd 单元零 resolvectl;`fw apply` 自清洁 → restart 自愈
 
+### 流量策略(不阻断任何协议)
+
+透明代理的第一目标是**正常访问**,分流只是优化走向:
+
+| 协议 | 处理 | 说明 |
+|---|---|---|
+| 普通 DNS(53) | **劫持** → mihomo | 为大多数设备提供域名级分流(fake-ip) |
+| QUIC/HTTP3(UDP 443) | **正常分流** | HTTP/3 原生体验;SNI 加密,域名规则不生效(IP 分流) |
+| DoT(TCP 853) | **正常分流** | 加密 DNS 走代理(为自定义设备保留访问) |
+| DoQ(UDP 853) | **正常分流** | 同上 |
+| DoH(TCP 443) | **正常分流** | 与 HTTPS 同端口,无法也不应阻断 |
+
+### 基础服务直连(28 条规则,不走代理)
+
+| 类别 | 端口 | 服务 |
+|---|---|---|
+| **远程管理** | 22, 23 | SSH/SFTP, Telnet |
+| **远程桌面** | 3389, 5900 | RDP, VNC |
+| **VPN/组网** | 41641, 3478, 51820, 1194 | Tailscale, STUN/TURN, WireGuard, OpenVPN |
+| **VoIP** | 5060, 5061 | SIP, SIPS |
+| **域认证** | 88, 389, 636, 1812, 1813 | Kerberos, LDAP, LDAPS, RADIUS |
+| **发现/时间** | 5353, 123, 161, 1900 | mDNS, NTP, SNMP, SSDP/UPnP |
+| **IoT** | 1883, 8883, 5683 | MQTT, MQTT/TLS, CoAP |
+| **存储/数据库** | 3260, 3306, 5432, 6379, 27017, 873 | iSCSI, MySQL, PostgreSQL, Redis, MongoDB, Rsync |
+| **Tailscale 专属** | 100.100.100.100, 100.64.0.0/10 | MagicDNS, CGNAT 子网 |
+
 ## 📂 仓库布局
 
 ```
