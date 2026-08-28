@@ -20,6 +20,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 
 	r := health.Collect(p.Conf, p.Bin, p.UiStamp, p.LastUp, p.State)
+	// 修正残留规则判定:表存在+服务 active=正常;表存在+服务 inactive=真残留
+	if r.Stale && r.Service == "active" {
+		r.Stale = false // 服务在跑,表里有规则是正常状态
+	}
 
 	// -q:仅退出码(0健康 1降级 2故障)
 	if q {
