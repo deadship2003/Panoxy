@@ -323,9 +323,10 @@ TPROXY 前置检测:
 
 func cmdUpgrade() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "upgrade [--core|--ui] [--core-version vX] [--ui-version vX] [--check]",
-		Short: "升级内核与/或面板(timer 每日自动调用)",
-		Long: `升级 mihomo 内核与 metacubexd 面板。默认两者都升;全成功才更新 .last-upgrade。
+		Use:   "upgrade [--core|--ui|--cli] [--core-version vX] [--ui-version vX] [--check]",
+		Short: "升级内核/面板/CLI 自身(timer 每日自动调用)",
+		Long: `升级 mihomo 内核、metacubexd 面板与 panixy CLI 自身。默认全部;全成功才更新 .last-upgrade。
+CLI 升级:查 GitHub Release 最新版 → 下载对应架构 → 备份旧版 → 替换 /usr/local/bin/panixy。
 
 内核流程:查最新 release(经本机代理,失败直连)→ 下载(amd64 按 avx2 优选 v3,失败降级
 compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", constants.CoreKeep) + ` 份)→ 原子替换 → 重启 →
@@ -338,6 +339,7 @@ compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", 
 	c.Flags().String("core-version", "", "指定内核版本(如 v1.19.31)")
 	c.Flags().String("ui-version", "", "指定面板版本")
 	c.Flags().Bool("check", false, "dry-run:显示当前/最新版本与将执行动作")
+	c.Flags().Bool("cli", false, "仅升级 CLI(panixy 自身)")
 	return c
 }
 
