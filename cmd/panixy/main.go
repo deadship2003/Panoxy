@@ -45,15 +45,18 @@ func NewRootCmd() *cobra.Command {
 数据面(节点/策略组选择)在 Web 面板;传输面(tun/tproxy 模式、防火墙)在本 CLI。
 
 引导:
-  sudo ./panixy init '订阅链接'          # 裸机直装(不打包,自带进度条)
-  sudo ./panixy deploy '订阅链接'        # 离线包内部署(给朋友准备的)
+  panixy init --dry-run                  # 只读预演(不需要 root)
+  panixy try '订阅链接'                   # 沙箱实测完整安装(不需要 root)
+  sudo panixy init '订阅链接'             # 直接初始化部署
+  sudo ./panixy deploy '订阅链接'         # 从离线包部署
 
 日常管理:
-  sudo panixy set-sub '订阅链接'          # 回车进入粘贴模式,URL 无需加引号
-  panixy status                          # 健康一览(节点/服务/防火墙/出网)
+  sudo panixy set-sub '订阅链接'           # 回车粘贴模式,URL 无需加引号
+  sudo panixy merge-conf ~/my.yaml        # 融合个人配置(--dry-run 预览)
+  panixy status                          # 健康一览(服务/防火墙/订阅/出网)
   sudo panixy upgrade --check            # 查看可升级项
 
-详细说明: man panixy(部署后可用)或 panixy man`,
+详细说明: panixy man 或 man panixy-<命令>(部署后可用)`,
 		Version: version,
 	}
 	root.PersistentFlags().String("root", "", "安装目录(默认 /opt/panixy;数据家目录可整体重定位,/etc/clash.yaml 仍为系统级配置)")
