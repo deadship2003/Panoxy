@@ -43,8 +43,9 @@ func NewRootCmd() *cobra.Command {
 
 数据面(节点/策略组选择)在 Web 面板;传输面(tun/tproxy 模式、防火墙)在本 CLI。
 
-引导(在解压的离线包根目录运行):
-  sudo ./panixy deploy '订阅链接'        # 全新部署,可顺带导入订阅
+引导:
+  sudo ./panixy init '订阅链接'          # 裸机直装(不打包,自带进度条)
+  sudo ./panixy deploy '订阅链接'        # 离线包内部署(给朋友准备的)
 
 日常管理:
   sudo panixy set-sub '订阅链接'          # 回车进入粘贴模式,URL 无需加引号
@@ -64,12 +65,42 @@ func NewRootCmd() *cobra.Command {
 		}
 	}
 	root.AddCommand(
-		cmdDeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
+		cmdInit(), cmdDeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
 		cmdStatus(), cmdMode(), cmdUpgrade(), cmdUpdateUI(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
 		cmdFw(), cmdMan(),
 	)
 	return root
+}
+
+func cmdInit() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "init [订阅URL]",
+		Short: "不打包直接初始化:单二进制裸机下载资产+部署+导订阅(自带进度)",
+		Long: `不打包、不用离线资产的单二进制初始化 —— 在任何裸机上直接完成部署。
+
+下载三级策略(每一步带进度条,--verbose 看分步,--debug 看全部细节):
+  直连(15s 失败硬顶)> 订阅引导代理(用订阅节点起本地代理;需本机已有
+  任意 mihomo 内核,--boot-bin 指定,默认 /opt/panixy/bin/mihomo)> gh 镜像
+  (--mirror,第三方源,内核会做试运行校验;给朋友用建议离线包 deploy)
+
+九步:预检 → 取订阅 → 网络探测 → 下载内核(按架构/AVX2 降级)→ geo/规则
+→ 面板 → 资产就位+渲染配置 → 部署服务(防火墙/健康)→ 导入订阅(节点数>0)。
+
+示例:
+  sudo panixy init 'https://example.com/sub?token=x&sid=y'
+  sudo panixy init --name Nano          # 回车粘贴订阅
+  sudo panixy init --file sub.yaml URL  # 订阅离线导入
+  sudo panixy init --mirror https://ghfast.top/ URL   # 直连不通时`,
+		RunE: runInit,
+	}
+	c.Flags().String("name", "SUB", "订阅 provider 名称")
+	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
+	c.Flags().String("proxy-mode", "tun", "tun | tproxy")
+	c.Flags().String("secret", "deadship", "面板/API 密钥")
+	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认 /opt/panixy/bin/mihomo)")
+	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
+	return c
 }
 
 func cmdDeploy() *cobra.Command {

@@ -129,3 +129,65 @@ func hasAVX2() bool {
 	b, err := os.ReadFile("/proc/cpuinfo")
 	return err == nil && strings.Contains(string(b), "avx2")
 }
+
+// DownloadProgress 带进度条下载:直连尝试 15s 硬顶(失败检测上限),
+// 经代理/镜像下载放宽到 10 分钟;Content-Length 已知时渲染百分比。
+func DownloadProgress(urlStr, proxy, dst, label string) error {
+	if err := downloadOnce(urlStr, "", dst, label, 15*time.Second); err == nil {
+		return nil
+	} else {
+		logx.Step("%s:直连失败(15s 硬顶),改走代理/镜像", label)
+	}
+	if proxy == "" {
+		return fmt.Errorf("直连失败且无代理可用")
+	}
+	return downloadOnce(urlStr, proxy, dst, label, 600*time.Second)
+}
+
+func downloadOnce(urlStr, proxy, dst, label string, timeout time.Duration) error {
+	hc := &http.Client{Timeout: timeout}
+	if proxy != "" {
+		u, _ := url.Parse(proxy)
+		hc.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
+	}
+	req, _ := http.NewRequest("GET", urlStr, nil)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	pg := logx.NewProgress(label, resp.ContentLength)
+	f, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	var n int64
+	buf := make([]byte, 64<<10)
+loop:
+	for {
+		m, rerr := resp.Body.Read(buf)
+		if m > 0 {
+			if _, werr := f.Write(buf[:m]); werr != nil {
+				f.Close()
+				pg.Done(werr)
+				return werr
+			}
+			n += int64(m)
+			pg.Update(n)
+		}
+		if rerr != nil {
+			if rerr == io.EOF {
+				break loop
+			}
+			f.Close()
+			pg.Done(rerr)
+			return rerr
+		}
+	}
+	err = f.Close()
+	pg.Done(err)
+	return err
+}
