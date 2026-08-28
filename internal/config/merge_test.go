@@ -98,7 +98,8 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.WireAfterMerge([]string{"SUB", "Nano"}, rep.PersonalProxies, MergeOpts{})
+	provs := base.Providers() // 融合后取(占位已退场,真实订阅名原样)
+	base.WireAfterMerge(provs, rep.PersonalProxies, MergeOpts{})
 	base.SetPath(filepath.Join(dir, "merged.yaml"))
 	base.Save()
 	s := string(mustRead(t, filepath.Join(dir, "merged.yaml")))
@@ -127,10 +128,15 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 	if !strings.Contains(s, "find-process-mode: strict") {
 		t.Error("进程规则未触发 find-process-mode=strict")
 	}
-	// 接线:Nano 已被个人组引用(合并后追加),SUB 占位仍留(未被 wire 引用检查跳过?见下)
-	// 个人组含 use: [mine2] → WireAfterMerge 会把 Nano/SUB 追加进该组
-	if !strings.Contains(s, "use: [mine2, Nano, SUB]") && !strings.Contains(s, "use: [mine2, SUB, Nano]") {
-		t.Errorf("基底订阅未接线进个人组:\n%s", subSnippet(s))
+	// 接线:Nano 追加进个人组;占位 SUB 应已退场(真实订阅就位)
+	if !strings.Contains(s, "use: [mine2, Nano]") {
+		t.Errorf("基底订阅未按名接线进个人组:\n%s", subSnippet(s))
+	}
+	if got := base.Providers(); strings.Contains(strings.Join(got, ","), "SUB") {
+		t.Errorf("占位订阅应退场,现有: %v", got)
+	}
+	if strings.Contains(s, `url: "SUB_URL_PLACEHOLDER"`) {
+		t.Error("占位订阅 URL 残留")
 	}
 	// 个人 proxies 追加进有 proxies 列表的组(末尾,默认不变)
 	if !strings.Contains(s, "proxies: [家庭VPS, 公司出口]") {
@@ -175,7 +181,7 @@ func TestMergedConfigPassesMihomoCheck(t *testing.T) {
 	geoSrc := geoFallback(t)
 	base, per, dir := mergeSetup(t)
 	rep, _ := base.MergePersonal(per, MergeOpts{})
-	base.WireAfterMerge([]string{"SUB", "Nano"}, rep.PersonalProxies, MergeOpts{})
+	base.WireAfterMerge(base.Providers(), rep.PersonalProxies, MergeOpts{})
 	merged := filepath.Join(dir, "merged.yaml")
 	base.SetPath(merged)
 	base.Save()

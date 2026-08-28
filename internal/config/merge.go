@@ -121,6 +121,29 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 		}
 	}
 
+	// 5.5) 占位订阅退场:模板占位(SUB_URL_PLACEHOLDER)在真实订阅(基底或个人)
+	//      任一存在时移除 —— 订阅名一律原样保留,融合绝不重命名;占位符是模板
+	//      脚手架,不是订阅,留着会被接线进个人组成为永远拉不到的条目
+	ppNow := mapGet(tmB, "proxy-providers")
+	var retired []string
+	if ppNow != nil && ppNow.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(ppNow.Content); i += 2 {
+			pn, pv := ppNow.Content[i].Value, ppNow.Content[i+1]
+			if u := mapGet(pv, "url"); u != nil && u.Value == "SUB_URL_PLACEHOLDER" {
+				// 仅当还有其他真实 provider 时才移除(否则组会失去全部 use,-t 拒绝)
+				if len(ppNow.Content) > 2 {
+					retired = append(retired, pn)
+				}
+			}
+		}
+		for _, pn := range retired {
+			mapDel(ppNow, pn)
+		}
+	}
+	if len(retired) > 0 {
+		r.Adjustments = append(r.Adjustments, fmt.Sprintf("占位订阅 %v 移除(真实订阅已就位;订阅名一律原样保留)", retired))
+	}
+
 	// 6) 自动调整:进程分流
 	if hasProcessRules {
 		mapSet(tmB, "find-process-mode", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "strict",
