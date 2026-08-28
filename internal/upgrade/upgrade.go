@@ -130,17 +130,10 @@ func hasAVX2() bool {
 	return err == nil && strings.Contains(string(b), "avx2")
 }
 
-// DownloadProgress 带进度条下载:直连尝试 15s 硬顶(失败检测上限),
-// 经代理/镜像下载放宽到 10 分钟;Content-Length 已知时渲染百分比。
+// DownloadProgress 带进度条下载:统一 10 分钟超时(Content-Length 已知时渲染百分比)。
+// 连通性探测(15s 硬顶)已由调用方 directAssetReachable 完成,此处不做重复判定;
+// 18MB 内核正常下载约需 10-30s,15s 硬顶会误杀大文件下载(实测教训)。
 func DownloadProgress(urlStr, proxy, dst, label string) error {
-	if err := downloadOnce(urlStr, "", dst, label, 15*time.Second); err == nil {
-		return nil
-	} else {
-		logx.Step("%s:直连失败(15s 硬顶),改走代理/镜像", label)
-	}
-	if proxy == "" {
-		return fmt.Errorf("直连失败且无代理可用")
-	}
 	return downloadOnce(urlStr, proxy, dst, label, 600*time.Second)
 }
 
