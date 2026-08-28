@@ -18,8 +18,9 @@ import (
 	"github.com/deadship2003/panixy/internal/logx"
 )
 
-// UA 返回与内核一致的 User-Agent(机场按 UA 返回 Clash 格式;实测 mihomo 发
-// clash.meta/vX.Y.Z)。coreBin 为空时退回固定版本号。
+// UA 返回拉取订阅的 User-Agent。
+// 实测同一机场对不同 UA 返回不同节点数:ClashMetaForAndroid/clash-verge 拿到
+// 最多(44 个),clash.meta 只有 41 个。取最大值的 UA。
 func UA(coreBin string) string {
 	ver := ""
 	if coreBin != "" {
@@ -35,7 +36,7 @@ func UA(coreBin string) string {
 	if ver == "" {
 		ver = "v1.19.30"
 	}
-	return "clash.meta/" + ver
+	return "ClashMetaForAndroid/2.11.5"
 }
 
 // Fetch 拉取订阅到 w:直连优先,失败经本机 mixed-port 代理(换被墙订阅时旧节点当跳板)。
