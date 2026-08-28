@@ -63,6 +63,7 @@ func NewRootCmd() *cobra.Command {
   sudo panixy set-sub '订阅链接'           # 回车粘贴模式,URL 无需加引号
   sudo panixy merge-conf ~/my.yaml        # 融合个人配置(--dry-run 预览)
   panixy status                          # 健康一览(服务/防火墙/订阅/出网)
+  sudo panixy mode tproxy               # 切换 TPROXY 模式(需内核 xt_TPROXY)
   sudo panixy upgrade --check            # 查看可升级项
 
 详细说明: panixy man 或 man panixy-<命令>(部署后可用)`,
@@ -288,12 +289,35 @@ func cmdMode() *cobra.Command {
 		Short: "查看或切换透明代理模式(原子切换:防火墙+配置+重启)",
 		Long: `查看或切换 tun/tproxy 模式。
 
-切换是原子事务:卸载旧防火墙规则 → 渲染对应配置变体 → 重启服务 → 加载新防火墙 →
-健康检查,任一步失败整体回滚。TPROXY 前置依赖内核 xt_TPROXY 模块,不可用时拒绝切换。
+切换是原子事务:卸载旧防火墙规则 → 渲染对应配置变体 → -t 校验 → 重启服务 →
+加载新防火墙 → 健康检查,任一步失败整体回滚。TPROXY 前置依赖内核 xt_TPROXY
+模块,不可用时拒绝切换。
+
+TUN(默认) vs TPROXY 选型:
+  TUN:    简单稳定,auto-route 自动处理路由;家用推荐
+          源 IP 丢失(全部显示为网关 IP)
+          WSL2/虚拟化/Docker 兼容性好
+  TPROXY: 保留客户端真实 IP(日志可看到每台设备)
+          内核直接转发,弱 CPU 设备性能更优
+          需内核 xt_TPROXY 模块;Docker 容器可能被误劫持
+          IPv6 策略路由需额外注意
+
+TPROXY 前置检测:
+  grep -w TPROXY /proc/net/ip_tables_targets
+  sudo modprobe xt_TPROXY && grep -w TPROXY /proc/net/ip_tables_targets
+
+切换后验证:
+  ip rule show | grep fwmark          # 应有 fwmark 0x1 lookup 100
+  ip route show table 100             # 应有 local default dev lo
+  sudo nft list table inet panixy | grep tproxy
+
+透明网关网络配置(LAN 设备接入):
+  路由器 DHCP 下发网关 = panixy 机器 LAN 口 IP,DNS 下发公网地址(53 会被劫持);
+  或单台设备手动设置网关指向 panixy 机器。
 
 注意:模式无法在 Web 面板切换 —— 防火墙规则与配置必须同事务变更,面板只管数据面(节点/组)。
 不带参数则显示当前模式。`,
-		RunE: runMode,
+		RunE: func(cmd *cobra.Command, args []string) error { return runMode(cmd, args) },
 	}
 }
 
