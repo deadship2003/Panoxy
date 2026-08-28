@@ -28,10 +28,13 @@ func BuildNftScript(dnsPort, markSelf int) string {
   }
   chain dns_prerouting {
     type nat hook prerouting priority dstnat; policy accept;
+    ip daddr 100.100.100.100 return
+    iifname "tailscale0" return
     iifname != "lo" meta l4proto { tcp, udp } th dport 53 redirect to :%d
   }
   chain dns_output {
     type nat hook output priority dstnat; policy accept;
+    ip daddr 100.100.100.100 return
     ip daddr @keep4 return
     ip6 daddr @keep6 return
     meta mark %d return
@@ -75,10 +78,13 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
   }
   chain dns_prerouting {
     type nat hook prerouting priority dstnat; policy accept;
+    ip daddr 100.100.100.100 return
+    iifname "tailscale0" return
     iifname != "lo" meta l4proto { tcp, udp } th dport 53 redirect to :%d
   }
   chain dns_output {
     type nat hook output priority dstnat; policy accept;
+    ip daddr 100.100.100.100 return
     ip daddr @keep4 return
     ip6 daddr @keep6 return
     meta mark %d return
@@ -101,6 +107,14 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
   }
   chain tproxy_prerouting {
     type filter hook prerouting priority mangle; policy accept;
+
+    # ===== 基础服务直连(在 mark/tproxy 之前 return,保证 SSH/VPN 正常)=====
+    iifname "tailscale0" return
+    tcp dport { 22, 23 } return
+    udp dport { 41641, 3478, 51820, 1194 } return
+    udp dport { 5353, 123 } return
+
+    # ===== 原有排除 =====
     iifname "lo" return
     ip daddr @keep4 return
     ip6 daddr @keep6 return

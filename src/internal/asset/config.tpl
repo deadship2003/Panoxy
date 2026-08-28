@@ -208,6 +208,20 @@ rule-providers:
 
 # ============ 分流规则 ============
 rules:
+  # ===== 基础服务直连(不走代理,保证 SSH/VPN/mDNS 等正常)=====
+  - DST-PORT,22,DIRECT                              # SSH/SFTP
+  - DST-PORT,23,DIRECT                              # Telnet
+  - DST-PORT,41641,DIRECT                           # Tailscale 直连 UDP
+  - DST-PORT,3478,DIRECT                            # STUN/TURN(NAT 穿透)
+  - DST-PORT,51820,DIRECT                           # WireGuard
+  - DST-PORT,1194,DIRECT                            # OpenVPN
+  - DST-PORT,5353,DIRECT                            # mDNS(局域网发现)
+  - DST-PORT,123,DIRECT                             # NTP(时间同步)
+  - DST-PORT,161,DIRECT                             # SNMP(网管)
+  - IP-CIDR,100.100.100.100/32,DIRECT,no-resolve    # Tailscale MagicDNS
+  - IP-CIDR,100.64.0.0/10,DIRECT,no-resolve         # Tailscale 子网(CGNAT)
+
+  # ===== 应用分流 =====
   - GEOSITE,TikTok,TikTok
   - DOMAIN-SUFFIX,chatgpt.com,🤖 ChatGPT
   - DOMAIN-SUFFIX,oaistatic.com,🤖 ChatGPT
