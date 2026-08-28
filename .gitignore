@@ -10,3 +10,4 @@ dist/
 /tmp-panixy*
 Panixy-V*/
 dist/
+*.sha256
