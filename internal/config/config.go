@@ -377,3 +377,9 @@ func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
 			LineComment: "排除回环/内网,防代理循环"}, exc)
 	mapSet(tm, "tun", tun)
 }
+
+// SetPath 改变 Save 目标(预览/临时校验用)。
+func (e *Editor) SetPath(p string) { e.path = p }
+
+// Path 返回当前落盘路径。
+func (e *Editor) Path() string { return e.path }

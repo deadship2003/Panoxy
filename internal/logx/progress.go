@@ -73,7 +73,7 @@ func (p *Progress) render(n int64) string {
 		pct = 100
 	}
 	const width = 24
- filled := pct * width / 100
+	filled := pct * width / 100
 	bar := strings.Repeat("█", filled) + strings.Repeat("─", width-filled)
 	return fmt.Sprintf("  %s %3d%% [%s] %s", p.label, pct, bar, humanBytes(n, p.total))
 }

@@ -1,0 +1,212 @@
+package config
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/deadship2003/panixy/internal/asset"
+)
+
+// personalSample 模拟个人配置:自定义分组(进程/地理分流)、自建节点、端口密钥、
+// 其他订阅、规则订阅 —— merge-conf 的全部输入形态。
+const personalSample = `mixed-port: 7897
+port: 18080
+socks-port: 10808
+secret: mysecret
+external-controller: 127.0.0.1:19090
+
+# 我的自建节点
+proxies:
+  - name: "家庭VPS"
+    type: vmess
+    server: 1.2.3.4
+    port: 443
+    uuid: aaaabbbb-cccc-dddd-eeee-ffff00001111
+    alterId: 0
+    cipher: auto
+  - name: "公司出口"
+    type: socks5
+    server: 5.6.7.8
+    port: 1080
+
+proxy-providers:
+  mine2:
+    type: http
+    url: "https://other-airport.example/sub2"
+    path: ./proxies/mine2.yaml
+    interval: 86400
+
+proxy-groups:
+  - name: 我的分组
+    type: select
+    proxies: [家庭VPS, 公司出口]
+    use: [mine2]
+  - name: 进程分流
+    type: select
+    proxies: [我的分组, DIRECT]
+
+rule-providers:
+  my-reject:
+    type: http
+    behavior: domain
+    format: yaml
+    url: "https://example.com/reject.yaml"
+    interval: 86400
+
+rules:
+  - PROCESS-NAME,ssh,DIRECT
+  - RULE-SET,my-reject,REJECT
+  - GEOIP,CN,DIRECT
+  - MATCH,我的分组
+`
+
+func mergeSetup(t *testing.T) (*Editor, *Editor, string) {
+	t.Helper()
+	// 基底:模板 + 已导入订阅 Nano(set-sub 后的形态)
+	out, err := asset.RenderConfig(asset.DefaultConfigData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	baseP := filepath.Join(dir, "base.yaml")
+	os.WriteFile(baseP, []byte(out), 0o644)
+	base, err := Load(baseP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := base.SetProvider("Nano", "https://nano.example/sub", "./proxies/Nano.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	base.WireProvider("Nano", true, nil)
+	base.Save()
+
+	perP := filepath.Join(dir, "personal.yaml")
+	os.WriteFile(perP, []byte(personalSample), 0o644)
+	per, err := Load(perP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base, per, dir
+}
+
+func TestMergePersonalDecisionTable(t *testing.T) {
+	base, per, dir := mergeSetup(t)
+	rep, err := base.MergePersonal(per, MergeOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.WireAfterMerge([]string{"SUB", "Nano"}, rep.PersonalProxies, MergeOpts{})
+	base.SetPath(filepath.Join(dir, "merged.yaml"))
+	base.Save()
+	s := string(mustRead(t, filepath.Join(dir, "merged.yaml")))
+
+	// 接管(个人)
+	for _, want := range []string{
+		"mixed-port: 7897", "port: 18080", "socks-port: 10808",
+		"secret: mysecret", "127.0.0.1:19090",
+		"name: 我的分组", "PROCESS-NAME,ssh,DIRECT", "家庭VPS",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("未接管: %q", want)
+		}
+	}
+	// 保留(基底暗号/基础设施)
+	for _, want := range []string{"routing-mark: 6666", "listen: 0.0.0.0:1053", "stack: system", "ntp.aliyun.com"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("基底未保留: %q", want)
+		}
+	}
+	// 合并:providers(Nano 保留 + mine2 新增)
+	if !strings.Contains(s, "mine2:") || !strings.Contains(s, "Nano:") {
+		t.Error("订阅合并不符")
+	}
+	// 自动调整:进程规则 → strict
+	if !strings.Contains(s, "find-process-mode: strict") {
+		t.Error("进程规则未触发 find-process-mode=strict")
+	}
+	// 接线:Nano 已被个人组引用(合并后追加),SUB 占位仍留(未被 wire 引用检查跳过?见下)
+	// 个人组含 use: [mine2] → WireAfterMerge 会把 Nano/SUB 追加进该组
+	if !strings.Contains(s, "use: [mine2, Nano, SUB]") && !strings.Contains(s, "use: [mine2, SUB, Nano]") {
+		t.Errorf("基底订阅未接线进个人组:\n%s", subSnippet(s))
+	}
+	// 个人 proxies 追加进有 proxies 列表的组(末尾,默认不变)
+	if !strings.Contains(s, "proxies: [家庭VPS, 公司出口]") {
+		t.Errorf("个人组 proxies 列表被破坏(应原样保留,追加不重复)")
+	}
+	// 锚点清理:个人组未引用 pr/prd/use → 移除
+	if strings.Contains(s, "pr: &pr") || strings.Contains(s, "use: &use") {
+		t.Error("未引用锚点未清理")
+	}
+	if !strings.Contains(s, "p: &p") {
+		t.Error("&p 锚点应保留(set-sub 依赖)")
+	}
+}
+
+func subSnippet(s string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if strings.Contains(l, "use:") {
+			return l
+		}
+	}
+	return ""
+}
+
+// TestMergedConfigPassesMihomoCheck 融合产物过真实内核 -t。
+func TestMergedConfigPassesMihomoCheck(t *testing.T) {
+	bin := os.Getenv("MIHOMO_BIN")
+	if bin == "" {
+		if _, err := os.Stat("/opt/panixy/bin/mihomo"); err == nil {
+			bin = "/opt/panixy/bin/mihomo"
+		} else {
+			if h, _ := os.UserHomeDir(); h != "" {
+				if _, err := os.Stat(h + "/panixy-e2e/mihomo"); err == nil {
+					bin = h + "/panixy-e2e/mihomo"
+				} else {
+					t.Skip("无 mihomo 内核,跳过 -t 实测")
+				}
+			} else {
+				t.Skip("无 mihomo 内核,跳过 -t 实测")
+			}
+		}
+	}
+	geoSrc := geoFallback(t)
+	base, per, dir := mergeSetup(t)
+	rep, _ := base.MergePersonal(per, MergeOpts{})
+	base.WireAfterMerge([]string{"SUB", "Nano"}, rep.PersonalProxies, MergeOpts{})
+	merged := filepath.Join(dir, "merged.yaml")
+	base.SetPath(merged)
+	base.Save()
+	// geo 就位
+	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
+		if b, err := os.ReadFile(filepath.Join(geoSrc, f)); err == nil {
+			os.WriteFile(filepath.Join(dir, f), b, 0o644)
+		}
+	}
+	os.MkdirAll(filepath.Join(dir, "ui", "official"), 0o755)
+	out, err := exec.Command(bin, "-t", "-f", merged, "-d", dir).CombinedOutput()
+	if err != nil {
+		t.Errorf("融合产物未过 -t:\n%s", out)
+	}
+}
+
+func geoFallback(t *testing.T) string {
+	t.Helper()
+	for _, c := range []string{"/opt/panixy", os.Getenv("GEO_SRC")} {
+		if c == "" {
+			continue
+		}
+		if st, err := os.Stat(filepath.Join(c, "GeoSite.dat")); err == nil && st != nil {
+			return c
+		}
+	}
+	if h, _ := os.UserHomeDir(); h != "" {
+		if _, err := os.Stat(h + "/panixy-e2e/GeoSite.dat"); err == nil {
+			return h + "/panixy-e2e"
+		}
+	}
+	t.Fatal("缺 geo")
+	return ""
+}

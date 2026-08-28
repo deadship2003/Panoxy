@@ -66,11 +66,41 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(
 		cmdInit(), cmdDeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
-		cmdStatus(), cmdMode(), cmdUpgrade(), cmdUpdateUI(), cmdRollback(),
+		cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdUpdateUI(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
 		cmdFw(), cmdMan(),
 	)
 	return root
+}
+
+func cmdMergeConf() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "merge-conf <个人配置.yaml>",
+		Short: "个人配置定向融合:分组/规则/节点/端口密钥接管,模式参数/暗号保留基底",
+		Long: `把个人 clash.yaml(文件名任意)按字段级决策表融合进当前部署配置 —— 不是整体接管。
+
+接管(个人):proxy-groups(进程/域名/地理分流分组)、rules、proxies(自建节点,
+全部带入并追加进各组末尾,面板中自行挑选)、mixed-port/port/socks-port/secret、
+external-controller、rule-providers(同名个人优先)
+保留(基底):tun/tproxy 模式段、routing-mark、dns.listen(暗号)、external-ui、
+geo、ntp、sniffer、锚点 &p;set-sub 之后继续正常工作
+合并:proxy-providers(同名基底优先 —— 已导入订阅含缓存,不失效)
+自动:个人 rules 含 PROCESS- 规则 → find-process-mode=strict(进程分流仅对本机
+流量生效,网关转发流量无进程信息);个人组未引用的基底订阅自动接线进组
+
+流程:决策报告 → -t 校验 → 备份 → 重启生效(热重载不刷新 provider)→
+健康验证 → 失败自动恢复。--dry-run 只看决策与结果预览,不落盘。
+
+示例:
+  panixy merge-conf --dry-run ~/my-clash.yaml
+  sudo panixy merge-conf ~/my-clash.yaml
+  sudo panixy merge-conf --dns mine ~/my-clash.yaml    # DNS 解析策略也用个人的(listen 仍强制 1053)`,
+		RunE: runMergeConf,
+	}
+	c.Flags().Bool("dry-run", false, "只输出决策报告与融合结果预览,不落盘")
+	c.Flags().String("dns", "keep", "DNS 段策略: keep(基底)| mine(个人,listen 强制 1053)")
+	c.Flags().Bool("no-wire", false, "不把基底订阅自动接线进个人组")
+	return c
 }
 
 func cmdInit() *cobra.Command {
