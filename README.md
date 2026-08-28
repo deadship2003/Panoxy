@@ -56,8 +56,13 @@ panixy status                        # 节点/服务/防火墙/出口 一览
 /opt/panixy/            # 数据家目录:bin/mihomo、ui/official、proxies/(订阅缓存)、
                         # rule_provider/、geo、panixy.yaml(状态:proxy-mode)、.last-upgrade
 /etc/clash.yaml         # mihomo 配置(管理员可手编;唯一事实源)
-/usr/local/bin/panixy   # CLI         /usr/local/share/man/man1/panixy.1.gz  # 手册
+/usr/local/bin/panixy   # CLI         /usr/local/share/man/man1/panixy*.1.gz  # 手册
 ```
+
+自定义安装目录:全局参数 `--root /srv/panixy`(init/deploy/install/uninstall/
+upgrade/status 等全部命令通用;默认 /opt/panixy)。服务单元自动注入
+`Environment=PANIXY_ROOT`,fw apply/升级定时任务在自定义目录下正常工作;
+`/etc/clash.yaml` 仍为系统级配置(如需一并重定位可用 PANIXY_CONF 环境变量)。
 
 ## 命令
 

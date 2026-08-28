@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
+# 自定义安装目录时,fw apply/upgrade 子进程据此找到状态与数据(与 --root 一致)
+Environment=PANIXY_ROOT={{.Root}}
 # 启动前配置校验(mihomo -t;其日志走 stdout,由 journald 收)
 ExecStartPre={{.Bin}} -t -f {{.Conf}} -d {{.Root}}
 ExecStart={{.Bin}} -f {{.Conf}} -d {{.Root}} -ext-ui {{.UiDir}}

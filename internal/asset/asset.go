@@ -40,8 +40,8 @@ func render(name string, data any) (string, error) {
 func RenderService(d UnitData) (string, error) { return render("service.tpl", d) }
 
 // RenderUpgradeService / RenderUpgradeTimer 渲染每日自动升级单元。
-func RenderUpgradeService(cli string) (string, error) {
-	return render("upgrade-service.tpl", map[string]string{"Cli": cli})
+func RenderUpgradeService(cli, root string) (string, error) {
+	return render("upgrade-service.tpl", map[string]string{"Cli": cli, "Root": root})
 }
 func RenderUpgradeTimer() (string, error) { return render("upgrade-timer.tpl", nil) }
 

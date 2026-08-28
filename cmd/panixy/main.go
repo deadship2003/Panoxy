@@ -56,9 +56,17 @@ func NewRootCmd() *cobra.Command {
 详细说明: man panixy(部署后可用)或 panixy man`,
 		Version: version,
 	}
+	root.PersistentFlags().String("root", "", "安装目录(默认 /opt/panixy;数据家目录可整体重定位,/etc/clash.yaml 仍为系统级配置)")
 	root.PersistentFlags().Bool("verbose", false, "分步明细:每个事务步骤、写入的文件、应用的规则")
 	root.PersistentFlags().Bool("debug", false, "全量透传:外部命令原样回显、mihomo API 请求响应、配置 diff")
 	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if r, _ := cmd.Flags().GetString("root"); r != "" {
+			if !filepath.IsAbs(r) {
+				logx.Error("--root 需要绝对路径: %s", r)
+				os.Exit(1)
+			}
+			os.Setenv("PANIXY_ROOT", r) // 所有 paths.Get() 即时生效;服务单元亦会注入
+		}
 		if d, _ := cmd.Flags().GetBool("debug"); d {
 			logx.SetLevel(logx.LevelDebug)
 		} else if v, _ := cmd.Flags().GetBool("verbose"); v {

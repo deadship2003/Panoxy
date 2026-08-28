@@ -27,7 +27,7 @@ func Render(p paths.Paths, mode string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	us, err := asset.RenderUpgradeService(p.Cli)
+	us, err := asset.RenderUpgradeService(p.Cli, p.Root)
 	if err != nil {
 		return nil, err
 	}

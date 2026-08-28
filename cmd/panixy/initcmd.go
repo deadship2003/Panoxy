@@ -329,7 +329,7 @@ func syscallKill(pid string) {
 func bootProxyFromSub(body []byte, cmd *cobra.Command) string {
 	bootBin, _ := cmd.Flags().GetString("boot-bin")
 	if bootBin == "" {
-		bootBin = "/opt/panixy/bin/mihomo"
+		bootBin = paths.Get().Bin // 跟随 --root/环境;无安装时退回默认 /opt
 	}
 	if _, err := os.Stat(bootBin); err != nil {
 		logx.Step("无引导内核(%s),跳过订阅代理路径", bootBin)
