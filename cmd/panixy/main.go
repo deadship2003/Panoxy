@@ -32,8 +32,19 @@ func main() {
 	}
 	if err := NewRootCmd().Execute(); err != nil {
 		logx.Error("%v", err)
-		os.Exit(1)
+		cleanExit(1)
 	}
+	cleanExit(0)
+}
+
+// cleanExit 确保所有命令执行后终端干净返回 prompt:
+// 进度条的 \r 残留、后台进程的 stdin 持有,都会导致 shell 不显示提示符。
+func cleanExit(code int) {
+	fmt.Fprintln(os.Stdout)
+	fmt.Fprintln(os.Stderr)
+	os.Stdout.Sync()
+	os.Stderr.Sync()
+	os.Exit(code)
 }
 
 func NewRootCmd() *cobra.Command {
