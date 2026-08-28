@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -354,8 +355,8 @@ func cmdFw() *cobra.Command {
 
 func cmdMan() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "man [--raw]",
-		Short: "显示手册(部署后也可直接 man panixy)",
+		Use:   "man [命令] [--raw]",
+		Short: "显示手册(根页或子命令页;部署后也可 man panixy / man panixy-<命令>)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.MkdirTemp("", "panixy-man-")
 			if err != nil {
@@ -366,9 +367,23 @@ func cmdMan() *cobra.Command {
 			if err := doc.GenManTree(cmd.Root(), hdr, dir); err != nil {
 				return fmt.Errorf("生成手册失败: %w", err)
 			}
-			b, err := os.ReadFile(dir + "/panixy.1")
+			page := "panixy.1"
+			if len(args) > 0 { // 子命令页:panixy man init → panixy-init.1
+				page = "panixy-" + args[0] + ".1"
+			}
+			b, err := os.ReadFile(dir + "/" + page)
 			if err != nil {
-				return err
+				pages, _ := filepath.Glob(dir + "/panixy*.1")
+				names := []string{}
+				for _, f := range pages {
+					n := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "panixy"), ".1")
+					if n == "" {
+						names = append(names, "(root)")
+					} else {
+						names = append(names, strings.TrimPrefix(n, "-"))
+					}
+				}
+				return fmt.Errorf("无 %q 的手册页;可用: %v", args[0], names)
 			}
 			// --raw:输出原始 roff(installMan 用来生成系统手册)
 			if raw, _ := cmd.Flags().GetBool("raw"); raw {

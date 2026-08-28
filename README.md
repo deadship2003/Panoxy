@@ -18,7 +18,13 @@
 
 ## 🚀 快速开始
 
-从 [Releases](../../releases) 下载对应架构离线包(amd64/arm64,含内核+geo+UI+规则):
+方式一(自用,推荐)—— 单二进制直装,不用打包:
+
+```bash
+sudo panixy init '订阅链接'           # 裸机初始化:下载资产+部署+导订阅(九步带进度)
+```
+
+方式二(给朋友)—— 离线包(amd64/arm64,含内核+geo+UI+规则):
 
 ```bash
 tar xzf Panixy-V0.1.0-amd64.tar.gz && cd Panixy-V0.1.0-amd64
@@ -27,7 +33,7 @@ sudo panixy set-sub                  # 回车进入粘贴模式,粘订阅链接,
 panixy status                        # 节点/服务/防火墙/出口 一览
 ```
 
-一条命令到位:`sudo ./panixy deploy '订阅链接'`。无外网导入:`sudo panixy set-sub --file 订阅.yaml`。
+已有个人配置?融合而非接管:`sudo panixy merge-conf ~/我的.yaml`(分组/规则/节点/端口密钥按你的,模式参数/暗号留基底;`--dry-run` 预览)。无外网导订阅:`sudo panixy set-sub --file 订阅.yaml`。
 
 ## 架构
 
@@ -57,6 +63,8 @@ panixy status                        # 节点/服务/防火墙/出口 一览
 
 | 命令 | 作用 |
 |---|---|
+| `sudo panixy init [URL]` | **不打包直接初始化**:单二进制裸机下载资产+部署+导订阅(九步带进度;直连 15s→订阅引导代理→镜像三级下载;`--mirror`/`--boot-bin`) |
+| `sudo panixy merge-conf <个人.yaml>` | 个人配置定向融合(分组/规则/节点/端口密钥接管,模式/暗号留基底;订阅名原样;`--dry-run` 预览;进程规则自动开 strict) |
 | `sudo ./panixy deploy [URL]` | 全新部署(离线包内运行;`--proxy-mode tproxy`;失败全量回滚;检测 bash 旧版残留并中止) |
 | `sudo panixy install` | 仅部署服务/防火墙(文件已就位) |
 | `sudo panixy set-sub [URL]` | 导入/更换订阅(`--name/--file/--group`;粘贴模式免引号;节点数>0 才成功) |
@@ -68,7 +76,8 @@ panixy status                        # 节点/服务/防火墙/出口 一览
 | `sudo panixy rollback [vX.Y.Z]` | 内核回滚(默认最近备份) |
 | `panixy check [yaml]` / `sudo panixy apply-conf <yaml>` | 校验 / 应用配置(热重载优先;**热重载不刷新 provider**) |
 | `sudo panixy uninstall` | 停服务+清防火墙+删单元(**保留 /opt 数据与配置**) |
-| `panixy units` / `panixy log [n]` / `panixy man` / `panixy fw <apply\|teardown\|clean>` | 单元审查 / 日志 / 手册 / 防火墙管理 |
+| `panixy units` / `panixy log [n]` / `panixy man [命令]` | 单元审查 / 日志 / 手册(根页或子命令页,如 `panixy man init`) |
+| `sudo panixy fw <apply\|teardown\|clean>` | 防火墙管理(服务自动调用;apply 先清后载,自愈残留) |
 
 TUN vs TPROXY 选型:家用、要稳、少折腾 → **tun**(默认);弱 ARM 跑满千兆、日志必须看到设备真实 IP → tproxy(注意 IPv6 策略路由与容器误劫持坑)。
 

@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 
 	"github.com/deadship2003/panixy/internal/execx"
 	"github.com/deadship2003/panixy/internal/firewall"
@@ -94,17 +97,35 @@ func copyDir(src, dst string) error {
 
 func randRead(b []byte) { _, _ = rand.Read(b) }
 
-// installMan 生成并压缩 man 手册(从当前二进制的 cobra 树,保证与 --help 同源)。
-// 此处直接调用一次自身 `panixy man` 的生成逻辑等价物:复用 doc 生成在 main.go 内实现,
-// 简化为调用自身子进程,避免引 doc 包循环。
+// installMan 生成并安装全部 man 手册(根页 + 每个子命令页,与 --help 同源):
+// man panixy / man panixy-init / man panixy-set-sub ...
 func installMan(manGz, self string) {
-	os.MkdirAll(filepath.Dir(manGz), 0o755)
-	out, err := exec.Command(self, "man", "--raw").CombinedOutput()
+	dir, err := os.MkdirTemp("", "panixy-man-")
 	if err != nil {
+		return
+	}
+	defer os.RemoveAll(dir)
+	hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册"}
+	if err := doc.GenManTree(newRootForMan(), hdr, dir); err != nil {
 		logx.Debug("man 生成失败(跳过): %v", err)
 		return
 	}
-	os.WriteFile(manGz, out, 0o644)
+	files, _ := filepath.Glob(dir + "/panixy*.1")
+	dstDir := filepath.Dir(manGz)
+	os.MkdirAll(dstDir, 0o755)
+	for _, f := range files {
+		base := filepath.Base(f)
+		dst := filepath.Join(dstDir, strings.TrimSuffix(base, ".1")+".1.gz")
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		zw.Write(b)
+		zw.Close()
+		os.WriteFile(dst, buf.Bytes(), 0o644)
+	}
 }
 
 func journal(n string) (string, error) {
@@ -139,3 +160,6 @@ func runExtractTgz(tgz, dst string) error {
 	}
 	return nil
 }
+
+// newRootForMan 重建命令树供手册生成(与 main 同构)。
+func newRootForMan() *cobra.Command { return NewRootCmd() }
