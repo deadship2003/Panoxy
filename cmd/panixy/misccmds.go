@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/deadship2003/panixy/internal/config"
+	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/health"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
@@ -46,6 +49,7 @@ func runApplyConf(cmd *cobra.Command, args []string) error {
 	if out, err := mihomoTest(p, src); err != nil {
 		return fmt.Errorf("该文件未通过内核校验(%s),系统未做任何改动", firstErrLine(out))
 	}
+	warnCompat(src)
 	if err := config.Backup(p.Conf); err != nil {
 		return err
 	}
@@ -102,4 +106,37 @@ func runLog(cmd *cobra.Command, args []string) error {
 	out, err := journal(n)
 	fmt.Print(out)
 	return err
+}
+
+// warnCompat 个人配置融合前的兼容自检:与防火墙方案的三个"暗号"对不上会出实际问题。
+//
+//	routing-mark 6666 —— 防火墙据此放行 mihomo 自身流量,缺失会 DNS 回环
+//	dns.listen 0.0.0.0:1053 —— nft redirect 的落点,不一致则 DNS 劫持落空
+//	tun.dns-hijack —— 防火墙已统一做 DNS 劫持,保留会双重处理
+func warnCompat(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var c struct {
+		RoutingMark int `yaml:"routing-mark"`
+		DNS         struct {
+			Listen string `yaml:"listen"`
+		} `yaml:"dns"`
+		TUN struct {
+			DNSHijack []string `yaml:"dns-hijack"`
+		} `yaml:"tun"`
+	}
+	if yaml.Unmarshal(b, &c) != nil {
+		return
+	}
+	if c.RoutingMark != constants.MarkSelf {
+		logx.Warn("配置缺 routing-mark: %d —— 防火墙将无法放行 mihomo 自身流量,可能造成 DNS 回环死锁(模板默认已带,勿删)", constants.MarkSelf)
+	}
+	if !strings.Contains(c.DNS.Listen, ":1053") {
+		logx.Warn("dns.listen=%q 与防火墙劫持落点(0.0.0.0:1053)不一致 —— DNS 劫持将落空,请改为 0.0.0.0:1053", c.DNS.Listen)
+	}
+	if len(c.TUN.DNSHijack) > 0 {
+		logx.Warn("tun.dns-hijack 仍存在 —— DNS 劫持已由防火墙统一处理,请删除该项避免双重劫持")
+	}
 }
