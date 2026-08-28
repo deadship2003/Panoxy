@@ -39,7 +39,7 @@ func runTry(cmd *cobra.Command, args []string) error {
 PIDF=%s
 start_mh() {
   awk '/^tun:/{s=1;next} /^routing-mark:/{next} s && /^[^ \t#]/{s=0} !s{print}' "$PANIXY_CONF" > "$PANIXY_CONF.notun"
-  "$PANIXY_ROOT/bin/mihomo" -f "$PANIXY_CONF.notun" -d "$PANIXY_ROOT" >> "$PANIXY_ROOT/run.log" 2>&1 &
+  "$PANIXY_ROOT/bin/mihomo" -f "$PANIXY_CONF.notun" -d "$PANIXY_ROOT" >> "$PANIXY_ROOT/run.log" 2>&1 < /dev/null &
   echo $! > "$PIDF"
 }
 case "$1" in
@@ -108,6 +108,11 @@ esac
 	logx.Info("预安装通过 ✓ 真实部署请执行: sudo panixy init %s", subArgsHint(args))
 	logx.Info("沙箱复用: set -a; . %s; set +a; panixy status   # 对沙箱执行只读命令", envFile)
 	logx.Info("清理沙箱: rm -rf %s   # 随时可删,不影响系统", dir)
+	// 确保终端干净返回 prompt(stdout+stderr 各补一个换行并 flush)
+	fmt.Fprintln(os.Stdout)
+	os.Stdout.Sync()
+	fmt.Fprintln(os.Stderr)
+	os.Stderr.Sync()
 	return nil
 }
 
