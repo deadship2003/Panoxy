@@ -63,6 +63,7 @@ panixy status                        # 节点/服务/防火墙/出口 一览
 
 | 命令 | 作用 |
 |---|---|
+| `panixy try [URL]` | **预安装(免 root)**:沙箱实测完整安装流程(真实下载/内核/订阅/健康验证,不触碰真实系统);通过=可放心 `sudo init` 真装;`--dir` 指定沙箱 |
 | `sudo panixy init [URL]` | **不打包直接初始化**:单二进制裸机下载资产+部署+导订阅(九步带进度;直连 15s→订阅引导代理→镜像三级下载;`--mirror`/`--boot-bin`) |
 | `sudo panixy merge-conf <个人.yaml>` | 个人配置定向融合(分组/规则/节点/端口密钥接管,模式/暗号留基底;订阅名原样;`--dry-run` 预览;进程规则自动开 strict) |
 | `sudo ./panixy deploy [URL]` | 全新部署(离线包内运行;`--proxy-mode tproxy`;失败全量回滚;检测 bash 旧版残留并中止) |

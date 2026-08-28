@@ -67,11 +67,40 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.AddCommand(
 		cmdInit(), cmdDeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
-		cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdUpdateUI(), cmdRollback(),
+		cmdTry(), cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdUpdateUI(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
 		cmdFw(), cmdMan(),
 	)
 	return root
+}
+
+func cmdTry() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "try [订阅URL]",
+		Short: "预安装:免 root 沙箱实测完整安装流程(通过=可放心真装)",
+		Long: `预安装(测试安装,不需要 root):把 init 的全流程在沙箱里真跑一遍 ——
+真实下载资产、真实启动 mihomo 内核、真实导入订阅并验证节点数>0、真实健康检查;
+一切落在沙箱目录,不触碰真实系统(不写 /opt、/etc,不装服务,不动防火墙)。
+
+沙箱与真实部署仅两处差异(均为非 root 限制,真机 sudo 部署不存在):
+  - 内核引导时剥离 tun 段(TUN 建设备需 CAP_NET_ADMIN)
+  - 剥离 routing-mark(SO_MARK 需权限);防火墙规则不落地
+通过后,真实部署执行: sudo panixy init '订阅URL'
+
+示例:
+  panixy try 'https://example.com/sub?token=x'    # 全流程实测
+  panixy try --dir ~/panixy-sandbox               # 指定沙箱目录(默认临时目录)
+  panixy try                                      # 回车粘贴订阅`,
+		RunE: runTry,
+	}
+	c.Flags().String("name", "SUB", "订阅 provider 名称")
+	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
+	c.Flags().String("proxy-mode", "tun", "tun | tproxy(沙箱仅影响配置渲染)")
+	c.Flags().String("secret", "deadship", "面板/API 密钥")
+	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认 /opt/panixy/bin/mihomo)")
+	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
+	c.Flags().String("dir", "", "沙箱目录(默认 /tmp/panixy-try-<时间戳>)")
+	return c
 }
 
 func cmdMergeConf() *cobra.Command {
