@@ -31,6 +31,9 @@ import (
 // runInit:不打包、单二进制裸机初始化 —— 自己下载全部资产并部署,随后导入订阅。
 // 下载三级策略:直连(15s 硬顶)> 订阅引导代理(需本机有可用内核) > gh 镜像。
 func runInit(cmd *cobra.Command, args []string) error {
+	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+		return initDryRun(cmd, args)
+	}
 	if err := needRoot(); err != nil {
 		return err
 	}
@@ -407,3 +410,78 @@ func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// initDryRun 只读预演:环境检查 + 下载策略判定 + 落位清单 + 配置渲染预览。
+// 不下载、不写盘、不需要 root;完整沙箱实测用 panixy try。
+func initDryRun(cmd *cobra.Command, args []string) error {
+	p := paths.Get()
+	logx.Info("== init --dry-run(预演,不执行)==")
+	logx.Info("目标目录: %s(--root 可改;配置仍为系统级 %s)", p.Root, p.Conf)
+	logx.Info("CLI/手册: %s / %s", p.Cli, p.ManGz)
+
+	logx.Step("[预检] 环境")
+	arch := runtimeArch()
+	if arch == "" {
+		return fmt.Errorf("不支持的架构(仅 amd64/arm64)")
+	}
+	logx.Info("  架构 %s ✓  systemd:%s", arch, orOK(statOK("/usr/bin/systemctl") || statOK("/bin/systemctl")))
+	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
+		logx.Warn("  ⚠️ 检测到 bash 旧版残留:%s(真装会被中止,先清理)", legacy)
+	} else {
+		logx.Info("  旧版残留: 无 ✓")
+	}
+	if _, err := os.Stat(p.Conf); err == nil {
+		logx.Info("  现有配置: 存在,将原样继承(分组/自定义参数不动)")
+	} else {
+		logx.Info("  现有配置: 无,将渲染默认模板(密钥 %s,端口 33833/6666/6699/9999)", drySecret(cmd))
+	}
+
+	logx.Step("[预检] 下载策略(探测真实资产域,15s 硬顶)")
+	probe := "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
+	if directAssetReachable(probe, 15*time.Second) {
+		logx.Info("  直连可用 → 直接下载")
+	} else {
+		logx.Info("  直连不可用 → 订阅引导代理(需本机有内核:%s)%s",
+			orOK(statOK(bootDefaultBin(cmd))), " → 镜像(--mirror)")
+	}
+
+	logx.Step("[计划] 下载清单")
+	logx.Info("  内核: mihomo-linux-%s-v1.19.30.gz(候选降级 v3→标准→compatible)", arch)
+	logx.Info("  geo:  GeoIP.dat / GeoSite.dat / Country.mmdb")
+	logx.Info("  规则: AWAvenue-Ads.yaml   面板: metacubexd compressed-dist.tgz")
+
+	logx.Step("[计划] 配置渲染预览(stdout)")
+	d := asset.DefaultConfigData()
+	d.TProxy = modeOf(cmd) == "tproxy"
+	d.Secret = drySecret(cmd)
+	out, err := asset.RenderConfig(d)
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
+	logx.Info("== 预演结束。真装: sudo panixy init ...;完整沙箱实测: panixy try ...")
+	return nil
+}
+
+func drySecret(cmd *cobra.Command) string {
+	s, _ := cmd.Flags().GetString("secret")
+	return s
+}
+func modeOf(cmd *cobra.Command) string {
+	m, _ := cmd.Flags().GetString("proxy-mode")
+	return m
+}
+func bootDefaultBin(cmd *cobra.Command) string {
+	b, _ := cmd.Flags().GetString("boot-bin")
+	if b == "" {
+		b = paths.Get().Bin
+	}
+	return b
+}
+func orOK(ok bool) string {
+	if ok {
+		return "可用 ✓"
+	}
+	return "缺失"
+}
+func statOK(p string) bool { _, err := os.Stat(p); return err == nil }

@@ -84,6 +84,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 // runDeploy 全新部署(离线包内运行):资产→配置→CLI/手册→服务→可选订阅导入。
 func runDeploy(cmd *cobra.Command, args []string) error {
+	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+		return deployDryRun(cmd, args)
+	}
 	if err := needRoot(); err != nil {
 		return err
 	}
@@ -417,4 +420,49 @@ func firstLineOf(s string) string {
 		return s[:i]
 	}
 	return strings.TrimSpace(s)
+}
+
+// deployDryRun 只读预演:核对离线包资产、配置来源决策、落位清单与单元预览。
+func deployDryRun(cmd *cobra.Command, args []string) error {
+	p := paths.Get()
+	logx.Info("== deploy --dry-run(预演,不执行)==")
+	pkgDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	assets := filepath.Join(pkgDir, "assets")
+	logx.Step("[预检] 离线包资产(%s)", assets)
+	if _, err := os.Stat(assets); err != nil {
+		return fmt.Errorf("当前目录无离线资产 —— deploy 需在解压的离线包内运行(裸机直装用 panixy init)")
+	}
+	arch := runtimeArch()
+	for _, item := range []struct{ name, path string }{
+		{"内核(" + arch + ")", filepath.Join(assets, "core")},
+		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
+		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
+		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
+		{"广告规则", filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")},
+		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
+	} {
+		if statOK(item.path) {
+			logx.Info("  ✓ %s", item.name)
+		} else {
+			logx.Warn("  ✗ %s 缺失", item.name)
+		}
+	}
+	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
+		logx.Warn("[预检] ⚠️ bash 旧版残留:%s(真装会被中止)", legacy)
+	}
+	logx.Step("[决策] 配置来源")
+	switch {
+	case statOK(p.Conf):
+		logx.Info("  现有 %s 存在 → 原样继承", p.Conf)
+	case statOK(filepath.Join(pkgDir, "clash.yaml")):
+		logx.Info("  包内手工 clash.yaml → 采用")
+	default:
+		logx.Info("  渲染默认模板(密钥 %s)", drySecret(cmd))
+	}
+	logx.Step("[计划] 落位:%s(内核/geo/规则/面板 → 服务 → 可选订阅导入)", p.Root)
+	logx.Info("== 预演结束。真装: sudo ./panixy deploy ...")
+	return nil
 }

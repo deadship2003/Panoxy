@@ -144,7 +144,7 @@ geo、ntp、sniffer、锚点 &p;set-sub 之后继续正常工作
 func cmdInit() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "init [订阅URL]",
-		Short: "不打包直接初始化:单二进制裸机下载资产+部署+导订阅(自带进度)",
+		Short: "不打包直接初始化:单二进制裸机下载资产+部署+导订阅(自带进度;--dry-run 预演)",
 		Long: `不打包、不用离线资产的单二进制初始化 —— 在任何裸机上直接完成部署。
 
 下载三级策略(每一步带进度条,--verbose 看分步,--debug 看全部细节):
@@ -159,22 +159,24 @@ func cmdInit() *cobra.Command {
   sudo panixy init 'https://example.com/sub?token=x&sid=y'
   sudo panixy init --name Nano          # 回车粘贴订阅
   sudo panixy init --file sub.yaml URL  # 订阅离线导入
-  sudo panixy init --mirror https://ghfast.top/ URL   # 直连不通时`,
+  sudo panixy init --mirror https://ghfast.top/ URL   # 直连不通时
+  panixy init --dry-run                              # 只读预演(不需要 root)`,
 		RunE: runInit,
 	}
 	c.Flags().String("name", "SUB", "订阅 provider 名称")
 	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
 	c.Flags().String("proxy-mode", "tun", "tun | tproxy")
 	c.Flags().String("secret", "deadship", "面板/API 密钥")
-	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认 /opt/panixy/bin/mihomo)")
+	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认取安装目录下 bin/mihomo)")
 	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
+	c.Flags().Bool("dry-run", false, "只读预演:环境/下载策略/落位/配置渲染预览,不执行不需要 root")
 	return c
 }
 
 func cmdDeploy() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "deploy [订阅URL]",
-		Short: "全新部署(离线包内运行):资产就位+服务拉起+可选订阅导入",
+		Short: "全新部署(离线包内运行;--dry-run 预演)",
 		Long: `全新部署,须在解压的离线包根目录运行。
 
 流程:放置内核/geo/面板/广告规则 → 渲染配置(现有 > 包内手工 > 模板)→
@@ -190,6 +192,7 @@ func cmdDeploy() *cobra.Command {
 	c.Flags().String("file", "", "本地订阅 YAML 文件(无外网时离线导入)")
 	c.Flags().String("proxy-mode", "tun", "透明代理模式: tun | tproxy")
 	c.Flags().String("secret", "deadship", "面板/API 密钥")
+	c.Flags().Bool("dry-run", false, "只读预演:环境/资产/下载策略/配置渲染预览,不执行不需要 root")
 	return c
 }
 
