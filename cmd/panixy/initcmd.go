@@ -411,11 +411,11 @@ func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// initDryRun 只读预演:环境检查 + 下载策略判定 + 落位清单 + 配置渲染预览。
+// initDryRun 试运行模式:环境检查 + 下载策略判定 + 落位清单 + 配置渲染预览。
 // 不下载、不写盘、不需要 root;完整沙箱实测用 panixy try。
 func initDryRun(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
-	logx.Info("== init --dry-run(预演,不执行)==")
+	logx.Info("== init --dry-run(试运行模式,不执行)==")
 	logx.Info("目标目录: %s(--root 可改;配置仍为系统级 %s)", p.Root, p.Conf)
 	logx.Info("CLI/手册: %s / %s", p.Cli, p.ManGz)
 
@@ -459,7 +459,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Print(out)
-	logx.Info("== 预演结束。真装: sudo panixy init ...;完整沙箱实测: panixy try ...")
+	logx.Info("== 试运行结束。真装: sudo panixy init ...;完整沙箱实测: panixy try ...")
 	return nil
 }
 

@@ -45,7 +45,7 @@ func NewRootCmd() *cobra.Command {
 数据面(节点/策略组选择)在 Web 面板;传输面(tun/tproxy 模式、防火墙)在本 CLI。
 
 引导:
-  panixy init --dry-run                  # 只读预演(不需要 root)
+  panixy init --dry-run                  # 试运行模式(不需要 root)
   panixy try '订阅链接'                   # 沙箱实测完整安装(不需要 root)
   sudo panixy init '订阅链接'             # 直接初始化部署
   sudo ./panixy deploy '订阅链接'         # 从离线包部署
@@ -138,7 +138,7 @@ geo、ntp、sniffer、锚点 &p;set-sub 之后继续正常工作
   sudo panixy merge-conf --dns mine ~/my-clash.yaml    # DNS 解析策略也用个人的(listen 仍强制 1053)`,
 		RunE: runMergeConf,
 	}
-	c.Flags().Bool("dry-run", false, "只输出决策报告与融合结果预览,不落盘")
+	c.Flags().Bool("dry-run", false, "试运行模式:只输出决策报告与融合结果预览,不落盘")
 	c.Flags().String("dns", "keep", "DNS 段策略: keep(基底)| mine(个人,listen 强制 1053)")
 	c.Flags().Bool("no-wire", false, "不把基底订阅自动接线进个人组")
 	return c
@@ -147,7 +147,7 @@ geo、ntp、sniffer、锚点 &p;set-sub 之后继续正常工作
 func cmdInit() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "init [订阅URL]",
-		Short: "不打包直接初始化:单二进制裸机下载资产+部署+导订阅(自带进度;--dry-run 预演)",
+		Short: "不打包直接初始化:单二进制裸机下载资产+部署+导订阅(自带进度;--dry-run 试运行)",
 		Long: `不打包、不用离线资产的单二进制初始化 —— 在任何裸机上直接完成部署。
 
 下载三级策略(每一步带进度条,--verbose 看分步,--debug 看全部细节):
@@ -163,7 +163,7 @@ func cmdInit() *cobra.Command {
   sudo panixy init --name Nano          # 回车粘贴订阅
   sudo panixy init --file sub.yaml URL  # 订阅离线导入
   sudo panixy init --mirror https://ghfast.top/ URL   # 直连不通时
-  panixy init --dry-run                              # 只读预演(不需要 root)`,
+  panixy init --dry-run                              # 试运行模式(不需要 root)`,
 		RunE: runInit,
 	}
 	c.Flags().String("name", "SUB", "订阅 provider 名称")
@@ -172,14 +172,14 @@ func cmdInit() *cobra.Command {
 	c.Flags().String("secret", "deadship", "面板/API 密钥")
 	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认取安装目录下 bin/mihomo)")
 	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
-	c.Flags().Bool("dry-run", false, "只读预演:环境/下载策略/落位/配置渲染预览,不执行不需要 root")
+	c.Flags().Bool("dry-run", false, "试运行模式:环境/下载策略/落位/配置渲染预览,不执行不需要 root")
 	return c
 }
 
 func cmdDeploy() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "deploy [订阅URL]",
-		Short: "全新部署(离线包内运行;--dry-run 预演)",
+		Short: "全新部署(离线包内运行;--dry-run 试运行)",
 		Long: `全新部署,须在解压的离线包根目录运行。
 
 流程:放置内核/geo/面板/广告规则 → 渲染配置(现有 > 包内手工 > 模板)→
@@ -195,7 +195,7 @@ func cmdDeploy() *cobra.Command {
 	c.Flags().String("file", "", "本地订阅 YAML 文件(无外网时离线导入)")
 	c.Flags().String("proxy-mode", "tun", "透明代理模式: tun | tproxy")
 	c.Flags().String("secret", "deadship", "面板/API 密钥")
-	c.Flags().Bool("dry-run", false, "只读预演:环境/资产/下载策略/配置渲染预览,不执行不需要 root")
+	c.Flags().Bool("dry-run", false, "试运行模式:环境/资产/下载策略/配置渲染预览,不执行不需要 root")
 	return c
 }
 

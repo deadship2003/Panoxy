@@ -422,10 +422,10 @@ func firstLineOf(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// deployDryRun 只读预演:核对离线包资产、配置来源决策、落位清单与单元预览。
+// deployDryRun 试运行模式:核对离线包资产、配置来源决策、落位清单与单元预览。
 func deployDryRun(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
-	logx.Info("== deploy --dry-run(预演,不执行)==")
+	logx.Info("== deploy --dry-run(试运行模式,不执行)==")
 	pkgDir, err := os.Getwd()
 	if err != nil {
 		return err
@@ -463,6 +463,6 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 		logx.Info("  渲染默认模板(密钥 %s)", drySecret(cmd))
 	}
 	logx.Step("[计划] 落位:%s(内核/geo/规则/面板 → 服务 → 可选订阅导入)", p.Root)
-	logx.Info("== 预演结束。真装: sudo ./panixy deploy ...")
+	logx.Info("== 试运行结束。真装: sudo ./panixy deploy ...")
 	return nil
 }
