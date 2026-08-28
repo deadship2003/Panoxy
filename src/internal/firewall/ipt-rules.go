@@ -19,14 +19,6 @@ func BuildIptDnsCmds(dnsPort, markSelf int) []string {
 			fmt.Sprintf("%s -t nat -A PANIXY_DNS -p tcp --dport 53 -j REDIRECT --to-ports %d", bin, dnsPort),
 			fmt.Sprintf("%s -t nat -C OUTPUT -j PANIXY_DNS || %s -t nat -A OUTPUT -j PANIXY_DNS", bin, bin),
 			fmt.Sprintf("%s -t nat -C PREROUTING -j PANIXY_DNS || %s -t nat -A PREROUTING -j PANIXY_DNS", bin, bin),
-			// filter:853 拒绝
-			fmt.Sprintf("%s -t filter -N PANIXY_DOT", bin),
-			fmt.Sprintf("%s -t filter -F PANIXY_DOT", bin),
-			fmt.Sprintf("%s -t filter -A PANIXY_DOT -m mark --mark %d -j RETURN", bin, markSelf),
-			fmt.Sprintf("%s -t filter -A PANIXY_DOT -p tcp --dport 853 -j REJECT", bin),
-			fmt.Sprintf("%s -t filter -A PANIXY_DOT -p udp --dport 853 -j REJECT", bin),
-			fmt.Sprintf("%s -t filter -C OUTPUT -j PANIXY_DOT || %s -t filter -A OUTPUT -j PANIXY_DOT", bin, bin),
-			fmt.Sprintf("%s -t filter -C PREROUTING -j PANIXY_DOT || %s -t filter -A PREROUTING -j PANIXY_DOT", bin, bin),
 		)
 	}
 	// v4 专属:OUTPUT 里先放行保留网段(防内网 DNS 异常与回环)
@@ -66,10 +58,6 @@ func BuildIptCleanCmds() []string {
 			fmt.Sprintf("%s -t nat -D PREROUTING -j PANIXY_DNS", bin),
 			fmt.Sprintf("%s -t nat -F PANIXY_DNS", bin),
 			fmt.Sprintf("%s -t nat -X PANIXY_DNS", bin),
-			fmt.Sprintf("%s -t filter -D OUTPUT -j PANIXY_DOT", bin),
-			fmt.Sprintf("%s -t filter -D PREROUTING -j PANIXY_DOT", bin),
-			fmt.Sprintf("%s -t filter -F PANIXY_DOT", bin),
-			fmt.Sprintf("%s -t filter -X PANIXY_DOT", bin),
 			fmt.Sprintf("%s -t mangle -D PREROUTING -j PANIXY_TP", bin),
 			fmt.Sprintf("%s -t mangle -F PANIXY_TP", bin),
 			fmt.Sprintf("%s -t mangle -X PANIXY_TP", bin),

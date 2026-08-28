@@ -2,20 +2,12 @@ package firewall
 
 import (
 	"fmt"
-	"strings"
 )
 
-// BuildNftScript 生成 TUN 模式的完整 nft 脚本(纯函数,便于黄金单测)。
-// 结构:一张独立表 inet panixy:
-//   - 保留网段集合(OUTPUT 放行,防内网/回环 DNS 被劫持与环路)
-//   - prerouting(nat):LAN 客户端 53 → redirect :1053(落入接口主地址,v4/v6 通吃)
-//   - output(nat):本机 53 → redirect :1053(落 127.0.0.1);
-//     先放行 保留网段 与 mark=markSelf(mihomo 自身上游,防回环)
-//   - input(filter):放行 lo/内网 到 1053(防宿主防火墙默认 DROP 挡掉劫持流量)
-//   - prerouting/output(filter):拒绝 853(DoT/DoQ;DoH 443 无法在内核劫持)
+// BuildNftScript 生成 TUN 模式的完整 nft 脚本。
+// 原则:不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流);正常访问优先于分流精度。
 func BuildNftScript(dnsPort, markSelf int) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, `table inet panixy {
+	return fmt.Sprintf(`table inet panixy {
   set keep4 {
     type ipv4_addr
     flags interval
@@ -46,26 +38,13 @@ func BuildNftScript(dnsPort, markSelf int) string {
     ip saddr @keep4 th dport %d accept
     ip6 saddr @keep6 th dport %d accept
   }
-  chain dot_prerouting {
-    type filter hook prerouting priority filter; policy accept;
-    meta l4proto { tcp, udp } th dport 853 reject
-  }
-  chain dot_output {
-    type filter hook output priority filter; policy accept;
-    meta mark %d return
-    meta l4proto { tcp, udp } th dport 853 reject
-  }
 }
-`, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort, markSelf)
-	return b.String()
+`, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
-// BuildNftTproxyScript 生成 TPROXY 模式脚本:在 TUN 版之上增加
-// mangle 打标与 tproxy 投递,并放行 mark=markSelf 与保留网段。
-// 策略路由(ip rule/route table)由 iptables/nft 外的 ip 命令维护,见 TproxyPolicy*。
+// BuildNftTproxyScript 生成 TPROXY 模式脚本:在 TUN 版之上增加 tproxy 链。
 func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, `table inet panixy {
+	return fmt.Sprintf(`table inet panixy {
   set keep4 {
     type ipv4_addr
     flags interval
@@ -96,25 +75,12 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
     ip saddr @keep4 th dport %d accept
     ip6 saddr @keep6 th dport %d accept
   }
-  chain dot_prerouting {
-    type filter hook prerouting priority filter; policy accept;
-    meta l4proto { tcp, udp } th dport 853 reject
-  }
-  chain dot_output {
-    type filter hook output priority filter; policy accept;
-    meta mark %d return
-    meta l4proto { tcp, udp } th dport 853 reject
-  }
   chain tproxy_prerouting {
     type filter hook prerouting priority mangle; policy accept;
-
-    # ===== 基础服务直连(在 mark/tproxy 之前 return,保证 SSH/VPN 正常)=====
     iifname "tailscale0" return
     tcp dport { 22, 23 } return
     udp dport { 41641, 3478, 51820, 1194 } return
     udp dport { 5353, 123 } return
-
-    # ===== 原有排除 =====
     iifname "lo" return
     ip daddr @keep4 return
     ip6 daddr @keep6 return
@@ -124,7 +90,6 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
     meta nfproto ipv6 meta l4proto { tcp, udp } tproxy ip6 to :%d meta mark set %d accept
   }
 }
-`, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort, markSelf,
+`, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort,
 		markSelf, tproxyPort, markTproxy, tproxyPort, markTproxy)
-	return b.String()
 }

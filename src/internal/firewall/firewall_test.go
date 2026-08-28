@@ -18,13 +18,17 @@ func TestBuildNftScriptGolden(t *testing.T) {
 		"ip6 daddr @keep6 return",
 		"meta mark 6666 return", // mihomo 自身放行(防 DNS 回环)
 		"th dport 53 redirect to :1053",
-		"th dport 853 reject",                      // DoT/DoQ 拒绝
+		"ip daddr 100.100.100.100 return",          // Tailscale MagicDNS 不劫持
 		"type nat hook prerouting priority dstnat", // PREROUTING:LAN 客户端
 		"type nat hook output priority dstnat",     // OUTPUT:本机
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("nft 脚本缺少关键规则: %q", want)
 		}
+	}
+	// 不阻断任何协议(DoT/DoQ 已移除阻断,纳入正常分流)
+	if strings.Contains(s, "853 reject") {
+		t.Errorf("不应阻断 853(DoT/DoQ 已纳入正常分流)")
 	}
 	if strings.Contains(s, "127.0.0.1:1053") || strings.Contains(s, "dnat to 127.0.0.1") {
 		t.Errorf("不应 DNAT 到 127.0.0.1(PREROUTING 场景不可达,应使用 redirect)")
@@ -55,7 +59,6 @@ func TestBuildIptCmdsGolden(t *testing.T) {
 		"iptables -t nat -A PANIXY_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053",
 		"ip6tables -t nat -A PREROUTING -j PANIXY_DNS",
 		"iptables -t nat -I PANIXY_DNS 1 -d 10.0.0.0/8 -j RETURN",
-		"iptables -t filter -A PANIXY_DOT -p tcp --dport 853 -j REJECT",
 	} {
 		if !strings.Contains(dns, want) {
 			t.Errorf("iptables DNS 命令缺少: %q", want)

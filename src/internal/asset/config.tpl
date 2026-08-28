@@ -207,10 +207,22 @@ rule-providers:
     interval: 86400
 
 # ============ 分流规则 ============
+# 原则:不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流);透明代理的第一目标是正常访问。
+# DNS 53 端口照常劫持(为大多数设备提供域名级分流);加密 DNS(853/443)走代理(为自定义设备保留访问)。
 rules:
-  # ===== 基础服务直连(不走代理,保证 SSH/VPN/mDNS 等正常)=====
+  # ===== 基础服务直连(不走代理,保证 SSH/VPN/远程桌面/VoIP/IoT 等正常)=====
   - DST-PORT,22,DIRECT                              # SSH/SFTP
   - DST-PORT,23,DIRECT                              # Telnet
+  - DST-PORT,3389,DIRECT                            # RDP 远程桌面(延迟敏感)
+  - DST-PORT,5900,DIRECT                            # VNC 远程桌面
+  - DST-PORT,5060,DIRECT                            # SIP(VoIP 信令)
+  - DST-PORT,5061,DIRECT                            # SIPS(SIP over TLS)
+  - DST-PORT,1900,DIRECT                            # SSDP/UPnP 设备发现
+  - DST-PORT,88,DIRECT                              # Kerberos 域认证
+  - DST-PORT,389,DIRECT                             # LDAP
+  - DST-PORT,636,DIRECT                             # LDAPS
+  - DST-PORT,1812,DIRECT                            # RADIUS 认证
+  - DST-PORT,1813,DIRECT                            # RADIUS 计费
   - DST-PORT,41641,DIRECT                           # Tailscale 直连 UDP
   - DST-PORT,3478,DIRECT                            # STUN/TURN(NAT 穿透)
   - DST-PORT,51820,DIRECT                           # WireGuard
@@ -218,6 +230,15 @@ rules:
   - DST-PORT,5353,DIRECT                            # mDNS(局域网发现)
   - DST-PORT,123,DIRECT                             # NTP(时间同步)
   - DST-PORT,161,DIRECT                             # SNMP(网管)
+  - DST-PORT,1883,DIRECT                            # MQTT(IoT)
+  - DST-PORT,8883,DIRECT                            # MQTT over TLS
+  - DST-PORT,5683,DIRECT                            # CoAP(IoT)
+  - DST-PORT,3260,DIRECT                            # iSCSI(IP 存储)
+  - DST-PORT,3306,DIRECT                            # MySQL
+  - DST-PORT,5432,DIRECT                            # PostgreSQL
+  - DST-PORT,6379,DIRECT                            # Redis
+  - DST-PORT,27017,DIRECT                           # MongoDB
+  - DST-PORT,873,DIRECT                             # Rsync
   - IP-CIDR,100.100.100.100/32,DIRECT,no-resolve    # Tailscale MagicDNS
   - IP-CIDR,100.64.0.0/10,DIRECT,no-resolve         # Tailscale 子网(CGNAT)
 
@@ -254,7 +275,6 @@ rules:
   - GEOSITE,netflix,🎥 网飞视频
   - GEOSITE,spotify,Spotify
   - GEOSITE,geolocation-!cn,其他
-  - AND,(AND,(DST-PORT,443),(NETWORK,UDP)),(NOT,((GEOIP,CN))),REJECT # quic
   - GEOIP,google,📢 谷歌FCM
   - GEOIP,netflix,🎥 网飞视频
   - GEOIP,telegram,📲 电报服务
