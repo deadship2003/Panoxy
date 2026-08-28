@@ -149,8 +149,8 @@ build_one() {
   cp "$TMP/AWAvenue-Ads.yaml" "$pkg/assets/rule/"
   cp README.md "$pkg/"
   leak_scan "$pkg"
-  tar -czf "$pkg.tar.gz" "$pkg"
-  (cd . && sha256sum "$pkg.tar.gz" > "$pkg.tar.gz.sha256")
+  mkdir -p dist && tar -czf "dist/$pkg.tar.gz" "$pkg"
+  (cd . && (cd dist && sha256sum "$pkg.tar.gz" > "$pkg.tar.gz.sha256"))
   echo "      产出: $pkg.tar.gz"
 }
 

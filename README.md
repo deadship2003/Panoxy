@@ -86,68 +86,9 @@ upgrade/status 等全部命令通用;默认 /opt/panixy)。服务单元自动注
 | `panixy units` / `panixy log [n]` / `panixy man [命令]` | 单元审查 / 日志 / 手册(根页或子命令页,如 `panixy man init`) |
 | `sudo panixy fw <apply\|teardown\|clean>` | 防火墙管理(服务自动调用;apply 先清后载,自愈残留) |
 
-### TPROXY 模式详细指南
+### TPROXY 模式
 
-**前置检测(物理机/真机)**:
-```bash
-grep -w TPROXY /proc/net/ip_tables_targets    # 有输出 = 可用
-sudo modprobe xt_TPROXY                       # 无输出时尝试加载
-```
-Arch/Debian/Ubuntu 标准内核默认包含;WSL2 微信裁剪内核不支持。
-
-**切换**:
-```bash
-sudo panixy mode tproxy     # 原子切换:旧规则卸载→配置变体→重启→新规则→健康检查
-sudo panixy mode tun        # 切回 TUN(自动清理 TPROXY 规则)
-```
-
-**切换后验证**:
-```bash
-panixy mode                              # "tproxy"
-ip rule show | grep fwmark              # fwmark 0x1 lookup 100
-ip route show table 100                 # local default dev lo
-sudo nft list table inet panixy | grep tproxy
-```
-
-**TUN vs TPROXY 对比**:
-
-| 对比项 | TUN(默认) | TPROXY |
-|---|---|---|
-| 源 IP | ❌ 丢失(显示为网关 IP) | ✅ **保留客户端真实 IP** |
-| 性能 | gvisor 用户态 | 内核转发,**理论最优** |
-| 配置复杂度 | 低(auto-route) | 中(mark/策略路由) |
-| 内核要求 | TUN 驱动 | xt_TPROXY 模块 |
-| Docker/容器 | 兼容好 | 可能误劫持 |
-| WSL2/虚拟化 | ✅ | ❌(内核裁剪) |
-
-**透明网关网络拓扑**:
-```
-Internet ←─ WAN ── panixy 机器(LAN 口 192.168.1.1)── LAN 设备
-                    │                        ↑
-                    │ nftables DNS 劫持       │ DHCP 网关=192.168.1.1
-                    │ TPROXY mark+tproxy      │ DNS=公网(53 被劫持)
-                    └─ mihomo :7893          │
-                                              └─ 设备无需任何配置
-```
-
-**LAN 设备接入(三选一)**:
-1. 路由器 DHCP 下发网关 = panixy 机器 LAN IP,DNS = 公网地址
-2. 单台设备手动设网关指向 panixy 机器
-3. panixy 机器自身跑 DHCP(dnsmasq 示例):
-```bash
-sudo tee /etc/dnsmasq.conf << 'EOF'
-interface=eth0
-dhcp-range=192.168.1.100,192.168.1.200,12h
-dhcp-option=3,192.168.1.1
-dhcp-option=6,223.5.5.5
-EOF
-sudo systemctl enable --now dnsmasq
-```
-
-**故障排查**:
-- 切换后断网:`sudo systemctl restart panixy`(自愈)
-- 策略路由丢:`ip rule show | grep fwmark` 确认;`sudo panixy fw apply` 重载
-- 某设备不走代理:检查其网关是否指向 panixy 机器
+详细指南(前置检测/切换/验证/网络拓扑/故障排查)见 [docs/TPROXY.md](docs/TPROXY.md)。
 
 ## 构建与打包
 
@@ -158,12 +99,9 @@ scripts/package.sh --arch all    # 编译+下载内核/geo(含Country.mmdb)/UI/�
 
 CI(推 `V*` 标签)与本地同一脚本。**订阅 URL 永不进包**:占位符 + 打包前泄露扫描(`token=` 等特征命中即中止)。
 
-## 从 bash 版迁移(手动,不做自动转换)
+## 从 bash 版迁移
 
-1. 旧机器:`sudo panixy uninstall`(停服务/清单元;`systemctl revert` 恢复 resolved 若曾被接管)
-2. 删除或清空 `/etc/clash.yaml`(含 `dns-hijack` 旧配置;想保留分组可手工去 tun.dns-hijack 段)
-3. 新包 `sudo ./panixy deploy` → `set-sub` 导入订阅
-4. 新 deploy 检测到旧特征(unit 含 resolvectl/配置含 dns-hijack)会主动中止并提示
+详细步骤见 [docs/MIGRATION.md](docs/MIGRATION.md)。
 
 ## 已知限制(必读)
 
@@ -173,6 +111,10 @@ CI(推 `V*` 标签)与本地同一脚本。**订阅 URL 永不进包**:占位符
 4. 订阅预取只是预校验;运行期 mihomo 会按 interval 自行远程拉取
 5. set-sub `--name` 依赖配置锚点 `&p`(基础模板自带;纯手写配置需自备)
 6. tun `stack: system` 家用默认;重度 BT/长时 UDP 流媒体/节点频繁掉线/老内核(5.4/5.15)建议改 `gvisor`(进程崩溃可被 systemd 自动拉起,优于静默僵死)
+
+## 已知限制
+
+详细列表见 [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md)。
 
 ## 开发
 
@@ -184,7 +126,4 @@ MIHOMO_BIN=/path/to/mihomo GEO_SRC=/path/to/geo go test ./...   # 指定本机�
 
 ## 故障排查
 
-- `status` 节点=0:订阅没加载 → 重跑 `set-sub`(可 `--file` 离线),仍失败 `panixy log`
-- 断流先 `systemctl restart panixy`(防火墙自愈);持续则 `panixy mode` 确认模式、`--debug` 看规则加载
-- 配置改坏:`panixy check` + 内核报错会透传首条 `level=error msg`
-- 升级异常:`panixy rollback`;`.last-upgrade` 过旧=升级停滞,查 `panixy log`
+详细指南见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
