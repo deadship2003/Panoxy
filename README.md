@@ -1,129 +1,363 @@
-# Panixy(Go 版)
+<div align="center">
 
-> 基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理网关部署/管理工具。
-> 单二进制(CGO=0,amd64/arm64);**管理工具,不实现任何转发逻辑** —— 流量与 DNS 全部由 mihomo 完成。
+# Panixy
 
-取代 bash 版:模板渲染、增量配置编辑、防火墙 DNS 劫持、订阅管理、升级回滚、健康检测,事务式 + 全量回滚。
+**基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理网关部署/管理工具**
+
+[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%7Carm64-lightgrey)]()
+[![Release](https://img.shields.io/badge/Release-V0.1.0-orange)](../../releases)
+
+单二进制 · 零依赖 · 事务式部署 · 全量回滚
+
+</div>
+
+---
 
 ## ✨ 特性
 
-- **TUN / TPROXY 双模式**(默认 tun):TUN 开箱稳定;TPROXY 保留客户端真实源 IP、内核转发性能最优
-- **DNS 劫持 = nftables(降级 iptables)**:独立表 `inet panixy`,53 redirect → mihomo:1053,拒绝 853(DoT/DoQ);mihomo 自身流量按 `routing-mark 6666` 放行防回环
-- **自愈**:服务 `ExecStartPost` 调 `panixy fw apply`(先无条件清表再加载)—— **kill -9/OOM 残留随 `systemctl restart panixy` 自动清除**,正常 stop 由 `ExecStop` 清理
-- **订阅可验证**:预取(直连→本机代理/`--file` 离线导入)→ 校验 → 增量写入 provider(锚点复用、保注释)→ 重启 → **节点数>0 才算成功**;`--name` 多订阅并存,自动融合进策略组
-- **完整模板资产**:bash 版 v0.1.4 全量分组/规则移植(地区组/应用组/GEO 规则/广告拦截),set-sub 只动 provider 与 use 列表
-- **升级参数化**:`upgrade --core/--ui/--check/--core-version`;试运行校验、双健康检查、失败自动回滚、备份 KEEP=3
-- **全量文档**:`-h/-?/--help` 每命令含示例;`man panixy` 与 `--help` 同源生成(cobra),永不漂移
-- **调试友好**:`--verbose` 分步明细;`--debug` 外部命令/API I/O 零遮蔽(吸取 bash 版吞 stderr 教训)
+- 🔧 **TUN / TPROXY 双模式** — TUN 开箱稳定(默认);TPROXY 保留客户端真实源 IP、内核转发性能最优
+- 🛡️ **DNS 劫持 = nftables** — 独立表 `inet panixy`,53 redirect → mihomo:1053,拒绝 853(DoT/DoQ)
+- 🔄 **自愈** — kill -9/OOM 残留随 `systemctl restart panixy` 自动清除,无需手工干预
+- 📡 **订阅可验证** — 预取 → 校验 → 增量写入 → 重启 → **节点数 > 0 才算成功**,绝不假成功
+- 🧩 **配置融合** — `merge-conf` 同名组字段级合并(proxies/use 并集),基底组保留不删
+- ⬆️ **参数化升级** — `--core/--ui/--check/--core-version`,试运行校验、失败自动回滚
+- 📖 **全量文档** — `-h/-?/--help` 每命令含示例;`man panixy` 与 `--help` 同源生成
+- 🔍 **调试友好** — `--verbose` 分步明细;`--debug` 外部命令/API I/O 零遮蔽
 
 ## 🚀 快速开始
 
-方式一(自用,推荐)—— 单二进制直装,不用打包:
+### 方式一:单二进制直装(自用,推荐)
 
 ```bash
-sudo panixy init '订阅链接'           # 裸机初始化:下载资产+部署+导订阅(九步带进度)
+# 拷贝 panixy 二进制到目标机器,然后:
+sudo panixy init '你的订阅链接'
 ```
 
-方式二(给朋友)—— 离线包(amd64/arm64,含内核+geo+UI+规则):
+九步自动完成:预检 → 取订阅 → 网络探测 → 下载内核 → 下载 geo/规则 → 下载面板 → 资产就位 → 部署服务 → 导入订阅。
+每步带进度条,断网环境自动经订阅节点建立代理下载。
+
+### 方式二:离线包(给朋友)
+
+从 [Releases](../../releases) 下载离线包(34MB,含内核+geo+UI+规则):
 
 ```bash
 tar xzf Panixy-V0.1.0-amd64.tar.gz && cd Panixy-V0.1.0-amd64
-sudo ./panixy deploy                 # 全新部署(资产/配置/CLI/手册/服务/防火墙)
-sudo panixy set-sub                  # 回车进入粘贴模式,粘订阅链接,无需引号
-panixy status                        # 节点/服务/防火墙/出口 一览
+sudo ./panixy deploy                 # 全自动安装
+sudo panixy set-sub                  # 粘贴订阅链接(免引号)
+panixy status                        # 验证健康
 ```
 
-已有个人配置?融合而非接管:`sudo panixy merge-conf ~/我的.yaml`(分组/规则/节点/端口密钥按你的,模式参数/暗号留基底;`--dry-run` 预览)。无外网导订阅:`sudo panixy set-sub --file 订阅.yaml`。
+### 方式三:预安装(免 root 试跑)
 
-## 架构
+```bash
+panixy try '订阅链接'                 # 沙箱实测完整安装,不触碰真实系统
+panixy init --dry-run                # 只读预演(环境/下载策略/配置渲染)
+```
+
+### 已有个人配置?
+
+```bash
+sudo panixy merge-conf ~/我的.yaml    # 叠加融合:同名组合并,基底组保留
+sudo panixy merge-conf --dry-run ~/我的.yaml   # 先看融合决策
+```
+
+## 📐 架构
 
 ```
                  DNS(53/853)                        数据流量(非53)
-┌──────────┐  nft redirect → :1053  ┌─┐  路由表 → TUN 设备 → mihomo(system 栈)
+┌──────────┐  nft redirect → :1053  ┌─┐  路由表 → TUN 设备 → mihomo
 │ TUN 模式 │ ─────────────────────► │同│
-├──────────┤                        │一│  nft mark 1 + 策略路由(table 100)
-│TPROXY模式│  nft redirect → :1053  │套│  + tproxy → :7893(保留客户端源 IP)
+├──────────┤                        │一│  nft mark 1 + 策略路由
+│TPROXY模式│  nft redirect → :1053  │套│  + tproxy → :7893(保留源 IP)
 └──────────┘ ─────────────────────► └─┘
 ```
 
-- 排除项共用:保留网段/回环不劫持;mihomo 自身出站(`routing-mark: 6666`)放行 —— 防 DNS 回环死锁
-- 模式切换:**数据面(节点/组)在 Web 面板;传输面(tun/tproxy)必须走 `panixy mode`**(防火墙与配置需同事务变更,面板做不到)
-- systemd 单元零 resolvectl;`fw apply` 自清洁实现 restart 自愈
+- 数据面(节点/组选择)在 **Web 面板**;传输面(tun/tproxy)在 **CLI**
+- mihomo 自身出站 `routing-mark: 6666` 放行 → 防 DNS 回环死锁
+- systemd 单元零 resolvectl;`fw apply` 自清洁 → restart 自愈
 
-## 目录布局
+## 📂 仓库布局
 
 ```
-/opt/panixy/            # 数据家目录:bin/mihomo、ui/official、proxies/(订阅缓存)、
-                        # rule_provider/、geo、panixy.yaml(状态:proxy-mode)、.last-upgrade
-/etc/clash.yaml         # mihomo 配置(管理员可手编;唯一事实源)
-/usr/local/bin/panixy   # CLI         /usr/local/share/man/man1/panixy*.1.gz  # 手册
+Panixy/
+├── src/               Go 源码(cmd/internal/tests)
+├── dist/              发布产物(二进制+离线包,gitignored)
+├── scripts/           编译/打包脚本
+├── docs/              扩展文档
+│   ├── TPROXY.md      TPROXY 模式完整指南
+│   ├── MIGRATION.md   bash 版迁移步骤
+│   ├── KNOWN-LIMITATIONS.md
+│   └── TROUBLESHOOTING.md
+├── legacy/            旧 bash 版归档
+├── Makefile           一键入口
+└── README.md
 ```
 
-自定义安装目录:全局参数 `--root /srv/panixy`(init/deploy/install/uninstall/
-upgrade/status 等全部命令通用;默认 /opt/panixy)。服务单元自动注入
-`Environment=PANIXY_ROOT`,fw apply/升级定时任务在自定义目录下正常工作;
-`/etc/clash.yaml` 仍为系统级配置(如需一并重定位可用 PANIXY_CONF 环境变量)。
+## 🛠️ 编译
 
-## 命令
+### 前提
+
+- Go 1.23+([安装](https://go.dev/dl/))
+- 无需 CGO 依赖(纯静态编译)
+
+### 用 Makefile(推荐)
+
+```bash
+make build                    # 编译双架构 → dist/
+make build VERSION=V0.1.0    # 指定版本号
+```
+
+### 用脚本
+
+```bash
+./scripts/build.sh V0.1.0     # 与 make build 等效
+./scripts/build.sh -h         # 查看帮助
+```
+
+### 手工编译
+
+```bash
+cd src
+
+# 本机架构(amd64)
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 \
+  go build -trimpath -ldflags "-s -w -X main.version=V0.1.0" \
+  -o ../dist/panixy-linux-amd64 \
+  ./cmd/panixy
+
+# 交叉编译 ARM64(无需 ARM 机器)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+  go build -trimpath -ldflags "-s -w -X main.version=V0.1.0" \
+  -o ../dist/panixy-linux-arm64 \
+  ./cmd/panixy
+
+# 生成校验和
+cd ../dist && sha256sum panixy-linux-* > sha256sums.txt
+```
+
+<details>
+<summary>📖 编译参数说明</summary>
+
+| 参数 | 作用 |
+|---|---|
+| `CGO_ENABLED=0` | 纯静态编译,无 libc 依赖,任意 Linux 可跑 |
+| `-trimpath` | 去掉编译机路径信息(安全+体积) |
+| `-ldflags "-s -w"` | 去掉符号表和调试信息(体积减 30%) |
+| `-X main.version=X` | 注入版本号(`panixy --version` 显示) |
+| `GOAMD64=v1` | 兼容所有 x86_64 CPU(不用 v3 指令集) |
+
+</details>
+
+### 验证编译产物
+
+```bash
+file dist/panixy-linux-amd64
+# ELF 64-bit LSB executable, x86-64, statically linked ✓
+
+dist/panixy-linux-amd64 --version
+# panixy version V0.1.0
+```
+
+## 📦 打包
+
+### 用 Makefile(推荐)
+
+```bash
+make package VERSION=V0.1.0         # 打当前架构离线包 → dist/
+make package-all VERSION=V0.1.0     # 双架构 → dist/
+```
+
+### 用脚本
+
+```bash
+./scripts/package.sh --ver V0.1.0                     # 当前架构
+./scripts/package.sh --arch all --ver V0.1.0         # 双架构
+./scripts/package.sh -h                               # 查看帮助
+```
+
+### 脚本支持的参数/环境变量
+
+| 参数/变量 | 默认 | 说明 |
+|---|---|---|
+| `--arch amd64\|arm64\|all` | 当前平台 | 目标架构 |
+| `--ver V0.1.0` | git describe | 版本号 |
+| `--sub-url URL` | (空) | 断网时经订阅代理下载资产 |
+| `ASSETS_SRC` | `/opt/panixy` | 本地资产目录(存在则复制,不下载) |
+| `MIHOMO_VERSION` | `v1.19.30` | 内核版本 |
+| `PROXY_PORT` | `33999` | 订阅引导代理端口 |
+
+### 打包流程(内部步骤)
+
+```
+[1/5] 编译 ─── 调用 build.sh → dist/panixy-linux-{amd64,arm64}
+[2/5] 资产 ─── 本地优先(ASSETS_SRC)> 直连(15s 检测)> 订阅代理 > gh 镜像
+                下载: mihomo 内核 + geo×3 + Country.mmdb + AWAvenue 规则 + metacubexd UI
+[3/5] 扫描 ─── 订阅泄露检测(token= 等特征命中即中止,URL 永不进包)
+[4/5] 组装 ─── Panixy-V<ver>-<arch>/{panixy, README.md, assets/}
+[5/5] 打包 ─── tar.gz + sha256 → dist/
+```
+
+### 手工打包
+
+<details>
+<summary>📖 展开手工打包完整步骤</summary>
+
+```bash
+cd ~/Panixy
+mkdir -p dist
+
+# ===== 第 1 步:编译 =====
+cd src
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -trimpath -ldflags "-s -w -X main.version=V0.1.0" \
+  -o ../dist/panixy-linux-amd64 ./cmd/panixy
+cd ..
+
+# ===== 第 2 步:下载资产 =====
+TMP=$(mktemp -d)
+MIHOMO_VER="v1.19.30"
+
+# mihomo 内核(18MB)
+curl -fsSL -o $TMP/mihomo.gz \
+  "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
+
+# geo 三件(28MB)
+geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
+curl -fsSL -o $TMP/GeoIP.dat    "$geo/geoip.dat"
+curl -fsSL -o $TMP/GeoSite.dat  "$geo/geosite.dat"
+curl -fsSL -o $TMP/Country.mmdb "$geo/country.mmdb"
+
+# 广告规则
+curl -fsSL -o $TMP/AWAvenue-Ads.yaml \
+  "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml"
+
+# metacubexd 面板
+curl -fsSL -o $TMP/ui.tgz \
+  "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"
+
+# ===== 第 3 步:组装离线包 =====
+PKG="Panixy-V0.1.0-amd64"
+rm -rf "$PKG"
+mkdir -p "$PKG/assets/core" "$PKG/assets/geo" "$PKG/assets/ui/official" "$PKG/assets/rule"
+
+cp dist/panixy-linux-amd64 "$PKG/panixy"
+chmod +x "$PKG/panixy"
+cp $TMP/mihomo.gz "$PKG/assets/core/"
+cp $TMP/Geo*.dat $TMP/Country.mmdb "$PKG/assets/geo/"
+cp $TMP/AWAvenue-Ads.yaml "$PKG/assets/rule/"
+tar xzf $TMP/ui.tgz -C "$PKG/assets/ui/official"
+cp README.md "$PKG/"
+
+# ===== 第 4 步:打 tar 包 =====
+tar -czf "dist/$PKG.tar.gz" "$PKG"
+(cd dist && sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256")
+
+# ===== 第 5 步:清理 =====
+rm -rf "$PKG" $TMP
+echo "产物: dist/$PKG.tar.gz ($(du -h dist/$PKG.tar.gz | cut -f1))"
+```
+
+**本机已有资产时跳过下载:**
+
+```bash
+gzip -c /opt/panixy/bin/mihomo > "$PKG/assets/core/mihomo-linux-amd64-v1.19.30.gz"
+cp /opt/panixy/Geo*.dat /opt/panixy/Country.mmdb "$PKG/assets/geo/"
+cp /opt/panixy/rule_provider/AWAvenue-Ads.yaml "$PKG/assets/rule/"
+```
+
+</details>
+
+### 最终包内结构
+
+```
+Panixy-V0.1.0-amd64/
+├── panixy                                    ← Go 二进制(9MB)
+├── README.md
+└── assets/
+    ├── core/mihomo-linux-amd64-v1.19.30.gz  ← 内核(18MB)
+    ├── geo/GeoIP.dat GeoSite.dat Country.mmdb
+    ├── rule/AWAvenue-Ads.yaml                ← 广告规则
+    └── ui/official/                          ← metacubexd 面板(161 文件)
+```
+
+**总计约 34MB** · 用户拿到后 `tar xzf` → `sudo ./panixy deploy` 即完成安装。
+
+### CI 自动打包
+
+推 `V*` 标签触发 GitHub Actions,与本地 `scripts/package.sh` 同一脚本:
+
+```bash
+git tag V0.1.0 && git push origin V0.1.0
+# → CI 自动编译+打包+发布 Release
+```
+
+**订阅 URL 永不进包**:打包前自动扫描 `token=` 等特征,命中即中止。
+
+## 📋 命令参考
 
 | 命令 | 作用 |
 |---|---|
-| `panixy try [URL]` | **预安装(免 root)**:沙箱实测完整安装流程(真实下载/内核/订阅/健康验证,不触碰真实系统);通过=可放心 `sudo init` 真装;`--dir` 指定沙箱 |
-| `panixy init/deploy --dry-run` | **只读预演**(免 root):环境检查、下载策略探测、资产核对、配置渲染预览;`merge-conf --dry-run` 看融合决策;`upgrade --check` 看可升级项 |
-| `sudo panixy init [URL]` | **不打包直接初始化**:单二进制裸机下载资产+部署+导订阅(九步带进度;直连 15s→订阅引导代理→镜像三级下载;`--mirror`/`--boot-bin`) |
-| `sudo panixy merge-conf <个人.yaml>` | 个人配置定向融合(分组/规则/节点/端口密钥接管,模式/暗号留基底;订阅名原样;`--dry-run` 预览;进程规则自动开 strict) |
-| `sudo ./panixy deploy [URL]` | 全新部署(离线包内运行;`--proxy-mode tproxy`;失败全量回滚;检测 bash 旧版残留并中止) |
-| `sudo panixy install` | 仅部署服务/防火墙(文件已就位) |
-| `sudo panixy set-sub [URL]` | 导入/更换订阅(`--name/--file/--group`;粘贴模式免引号;节点数>0 才成功) |
-| `sudo panixy sub-rm --name N` | 删除订阅(对称反融合;删光唯一订阅会被 `-t` 拒绝并回滚) |
-| `panixy sub-list [--json]` | 各订阅状态/节点数(✅/⚠️获取失败/⚠️解析失败/⚠️节点0) |
-| `panixy status [-v\|-q\|--json]` | 健康一览;`-q` 退出码 0健康/1降级/2故障(监控用) |
-| `sudo panixy mode [tun\|tproxy]` | 查看/原子切换模式(tproxy 需内核 xt_TPROXY) |
-| `sudo panixy upgrade [--core\|--ui] [--check] [--core-version vX]` | 参数化升级(timer 每日 04:17 自动) |
-| `sudo panixy rollback [vX.Y.Z]` | 内核回滚(默认最近备份) |
-| `panixy check [yaml]` / `sudo panixy apply-conf <yaml>` | 校验 / 应用配置(热重载优先;**热重载不刷新 provider**) |
-| `sudo panixy uninstall` | 停服务+清防火墙+删单元(**保留 /opt 数据与配置**) |
-| `panixy units` / `panixy log [n]` / `panixy man [命令]` | 单元审查 / 日志 / 手册(根页或子命令页,如 `panixy man init`) |
-| `sudo panixy fw <apply\|teardown\|clean>` | 防火墙管理(服务自动调用;apply 先清后载,自愈残留) |
+| `panixy try [URL]` | 预安装(免 root 沙箱实测) |
+| `panixy init/deploy --dry-run` | 试运行模式(免 root) |
+| `sudo panixy init [URL]` | 裸机初始化(九步带进度) |
+| `sudo panixy deploy [URL]` | 从离线包部署 |
+| `sudo panixy merge-conf <yaml>` | 个人配置叠加融合(`--dry-run`/`--rollback`) |
+| `sudo panixy set-sub [URL]` | 导入订阅(粘贴模式免引号) |
+| `sudo panixy sub-rm --name N` | 删除订阅 |
+| `panixy sub-list [--json]` | 各订阅状态/节点数 |
+| `panixy status [-v\|-q\|--json]` | 健康一览(`-q` 退出码供监控) |
+| `sudo panixy mode [tun\|tproxy]` | 查看/切换模式 |
+| `sudo panixy upgrade [--core\|--ui] [--check]` | 参数化升级 |
+| `sudo panixy rollback [vX]` | 内核回滚 |
+| `panixy check [yaml]` | 校验配置 |
+| `sudo panixy apply-conf <yaml>` | 应用配置(热重载优先) |
+| `sudo panixy uninstall` | 卸载(保留数据) |
+| `panixy man [命令]` | 查看手册(根页或子命令页) |
+| `sudo panixy fw <apply\|teardown\|clean>` | 防火墙管理 |
 
-### TPROXY 模式
+**全局参数**:`--root <dir>` 自定义安装目录 · `--verbose` 分步明细 · `--debug` 全量透蔽
 
-详细指南(前置检测/切换/验证/网络拓扑/故障排查)见 [docs/TPROXY.md](docs/TPROXY.md)。
-
-## 构建与打包
+## 🧪 测试
 
 ```bash
-scripts/build.sh                 # 双架构静态二进制 → dist/
-scripts/package.sh --arch all    # 编译+下载内核/geo(含Country.mmdb)/UI/规则+泄露扫描 → 离线包
+make test          # 单元测试(YAML 编辑器/防火墙规则文本/模板 -t)
+make e2e           # 端到端测试(真实内核+假 systemd,约 60s)
+make test-all      # 全部
+make lint          # go vet
 ```
 
-CI(推 `V*` 标签)与本地同一脚本。**订阅 URL 永不进包**:占位符 + 打包前泄露扫描(`token=` 等特征命中即中止)。
+<details>
+<summary>📖 测试金字塔说明</summary>
 
-## 从 bash 版迁移
+| 层级 | 测什么 | panixy 中 | 数量 | 速度 |
+|---|---|---|---|---|
+| 单元 | 单个函数 | YAML 融合/防火墙规则生成/模板渲染 | ~15 | <1s |
+| 集成 | 组件配合 | 配置过 mihomo `-t` | ~5 | 1-2s |
+| E2E | 完整流程 | deploy→set-sub→status 全链路 | 3 | ~50s |
 
-详细步骤见 [docs/MIGRATION.md](docs/MIGRATION.md)。
+E2E 使用真实编译的二进制 + 真实 mihomo 内核 + 模拟订阅服务器 + 假 systemd,
+不 mock 业务逻辑,验证用户实际体验。
 
-## 已知限制(必读)
+</details>
 
-1. **热重载不刷新 proxy-providers**(mihomo 限制):set-sub/sub-rm/mode 一律重启进程生效
-2. kill -9/OOM 会残留防火墙规则:`systemctl restart panixy` 启动即自动清理,无需手工
-3. **DoH(443)无法在内核劫持**:浏览器内置加密 DNS 不走分流,status 已提示,建议关闭
-4. 订阅预取只是预校验;运行期 mihomo 会按 interval 自行远程拉取
-5. set-sub `--name` 依赖配置锚点 `&p`(基础模板自带;纯手写配置需自备)
-6. tun `stack: system` 家用默认;重度 BT/长时 UDP 流媒体/节点频繁掉线/老内核(5.4/5.15)建议改 `gvisor`(进程崩溃可被 systemd 自动拉起,优于静默僵死)
+## 📖 更多文档
 
-## 已知限制
+| 文档 | 内容 |
+|---|---|
+| [docs/TPROXY.md](docs/TPROXY.md) | TPROXY 模式完整指南(前置检测/切换/验证/网络拓扑/故障排查) |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | 从 bash 版迁移步骤 |
+| [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md) | 已知限制(mihomo 限制/DoH/内核要求等) |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 故障排查指南 |
+| `panixy man` | 手册(部署后 `man panixy` / `man panixy-<命令>`) |
 
-详细列表见 [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md)。
+## 📄 License
 
-## 开发
+MIT
 
-```bash
-go test ./internal/...    # 单测(模板过真实 mihomo -t、配置编辑器黄金样例、防火墙规则文本)
-go test ./tests/          # e2e(真实内核+假 systemd 沙箱:deploy/set-sub/mode 全事务链)
-MIHOMO_BIN=/path/to/mihomo GEO_SRC=/path/to/geo go test ./...   # 指定本机内核与 geo
-```
+---
 
-## 故障排查
-
-详细指南见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
+<div align="center">
+<sub>Built with Go · Powered by <a href="https://github.com/MetaCubeX/mihomo">mihomo</a></sub>
+</div>
