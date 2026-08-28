@@ -106,7 +106,7 @@ func installMan(manGz, self string) {
 	}
 	defer os.RemoveAll(dir)
 	hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册"}
-	if err := doc.GenManTree(newRootForMan(), hdr, dir); err != nil {
+	if err := genAllMan(newRootForMan(), hdr, dir); err != nil {
 		logx.Debug("man 生成失败(跳过): %v", err)
 		return
 	}

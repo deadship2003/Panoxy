@@ -404,7 +404,7 @@ func cmdMan() *cobra.Command {
 			}
 			defer os.RemoveAll(dir)
 			hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册", Source: "panixy " + version}
-			if err := doc.GenManTree(cmd.Root(), hdr, dir); err != nil {
+			if err := genAllMan(cmd.Root(), hdr, dir); err != nil {
 				return fmt.Errorf("生成手册失败: %w", err)
 			}
 			page := "panixy.1"
@@ -432,7 +432,7 @@ func cmdMan() *cobra.Command {
 			}
 			// 优先交给系统 man 渲染;无 man/groff 时退化为可读纯文本(去 roff 控制行)
 			if _, err := exec.LookPath("man"); err == nil {
-				c := exec.Command("man", "-l", dir+"/panixy.1")
+				c := exec.Command("man", "-l", dir+"/"+page)
 				c.Stdout, c.Stderr = os.Stdout, os.Stderr
 				if c.Run() == nil {
 					return nil
@@ -459,4 +459,21 @@ func roffToText(b []byte) string {
 		out = append(out, t)
 	}
 	return strings.Join(out, "\n") + "\n"
+}
+
+// genAllMan 生成根页 + 每个子命令页(cobra doc.GenManTree 只渲染传入命令自身,
+// 不含 flags 之外的子命令页 —— 需遍历)。
+func genAllMan(root *cobra.Command, hdr *doc.GenManHeader, dir string) error {
+	if err := doc.GenManTree(root, hdr, dir); err != nil {
+		return err
+	}
+	for _, sub := range root.Commands() {
+		if sub.Name() == "help" || sub.Name() == "completion" {
+			continue
+		}
+		if err := doc.GenManTree(sub, hdr, dir); err != nil {
+			return err
+		}
+	}
+	return nil
 }
