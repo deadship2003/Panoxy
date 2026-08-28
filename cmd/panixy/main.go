@@ -128,30 +128,33 @@ func cmdTry() *cobra.Command {
 func cmdMergeConf() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "merge-conf <个人配置.yaml>",
-		Short: "个人配置定向融合:分组/规则/节点/端口密钥接管,模式参数/暗号保留基底",
-		Long: `把个人 clash.yaml(文件名任意)按字段级决策表融合进当前部署配置 —— 不是整体接管。
+		Short: "个人配置叠加融合:同名组合并、新增追加、基底保留;备份可回滚",
+		Long: `把个人 clash.yaml(文件名任意)叠加融合进当前部署配置 —— 同名组合并而非替换。
 
-接管(个人):proxy-groups(进程/域名/地理分流分组)、rules、proxies(自建节点,
-全部带入并追加进各组末尾,面板中自行挑选)、mixed-port/port/socks-port/secret、
-external-controller、rule-providers(同名个人优先)
-保留(基底):tun/tproxy 模式段、routing-mark、dns.listen(暗号)、external-ui、
-geo、ntp、sniffer、锚点 &p;set-sub 之后继续正常工作
-合并:proxy-providers(同名基底优先 —— 已导入订阅含缓存,不失效)
-自动:个人 rules 含 PROCESS- 规则 → find-process-mode=strict(进程分流仅对本机
-流量生效,网关转发流量无进程信息);个人组未引用的基底订阅自动接线进组
+组融合:  同名 → 字段级合并(proxies/use 取并集,标量个人覆盖)
+          个人新增组 → 追加到末尾
+          基底组(地区组/应用组)→ 保留不删(引用不断链)
+规则融合: 个人规则前置(优先匹配)+ 基底规则兜底(MATCH 排最后,去重)
+订阅合并: 基底已导入订阅保留(含缓存),个人新增订阅追加
+接管(个人): 端口/密钥/external-controller/proxies
+保留(基底): tun 模式段/routing-mark/dns.listen(暗号)/geo/ntp/sniffer
+自动:     PROCESS- 规则 → find-process-mode=strict;占位订阅退场
 
-流程:决策报告 → -t 校验 → 备份 → 重启生效(热重载不刷新 provider)→
-健康验证 → 失败自动恢复。--dry-run 只看决策与结果预览,不落盘。
+备份与回滚:
+  融合前自动备份 → /etc/clash.yaml.panixy-premerge
+  任一步失败自动恢复;成功后可用 --rollback 手动回滚到融合前
 
 示例:
-  panixy merge-conf --dry-run ~/my-clash.yaml
-  sudo panixy merge-conf ~/my-clash.yaml
-  sudo panixy merge-conf --dns mine ~/my-clash.yaml    # DNS 解析策略也用个人的(listen 仍强制 1053)`,
+  panixy merge-conf --dry-run ~/my-clash.yaml      # 试运行(不落盘不备份)
+  sudo panixy merge-conf ~/my-clash.yaml           # 融合并生效
+  sudo panixy merge-conf --rollback                # 回滚到融合前
+  sudo panixy merge-conf --dns mine ~/my-clash.yaml`,
 		RunE: runMergeConf,
 	}
-	c.Flags().Bool("dry-run", false, "试运行模式:只输出决策报告与融合结果预览,不落盘")
+	c.Flags().Bool("dry-run", false, "试运行模式:只输出决策报告与融合结果预览,不落盘不备份")
 	c.Flags().String("dns", "keep", "DNS 段策略: keep(基底)| mine(个人,listen 强制 1053)")
-	c.Flags().Bool("no-wire", false, "不把基底订阅自动接线进个人组")
+	c.Flags().Bool("no-wire", false, "不把基底订阅自动接线进组")
+	c.Flags().Bool("rollback", false, "从 .panixy-premerge 备份恢复到融合前")
 	return c
 }
 

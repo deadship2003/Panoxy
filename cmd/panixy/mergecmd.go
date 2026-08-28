@@ -16,13 +16,18 @@ import (
 	"github.com/deadship2003/panixy/internal/systemdunit"
 )
 
-// runMergeConf 个人配置定向融合:基底(模式参数/暗号/基础设施)+ 个人(分组/规则/节点/端口密钥)。
+// runMergeConf 叠加式融合:同名组合并 + 新增追加 + 基底保留 + 备份回滚。
 func runMergeConf(cmd *cobra.Command, args []string) error {
+	// --rollback:从 premerge 备份恢复
+	if rb, _ := cmd.Flags().GetBool("rollback"); rb {
+		return doMergeRollback()
+	}
+
 	if err := needRoot(); err != nil {
 		return err
 	}
 	if len(args) != 1 {
-		return fmt.Errorf("用法: panixy merge-conf <个人配置.yaml>(字段级融合,非整体接管;整体接管用 apply-conf)")
+		return fmt.Errorf("用法: panixy merge-conf <个人配置.yaml>(叠加融合;--dry-run 试运行;--rollback 回滚)")
 	}
 	p := paths.Get()
 	lk, err := locker.Lock(p.Lock)
@@ -34,6 +39,7 @@ func runMergeConf(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	dnsMode, _ := cmd.Flags().GetString("dns")
 	noWire, _ := cmd.Flags().GetBool("no-wire")
+
 	base, err := config.Load(p.Conf)
 	if err != nil {
 		return fmt.Errorf("读取基底配置失败: %w(先 panixy init/deploy 生成)", err)
@@ -51,74 +57,122 @@ func runMergeConf(cmd *cobra.Command, args []string) error {
 	baseProviders := base.Providers()
 	base.WireAfterMerge(baseProviders, rep.PersonalProxies, opts)
 
-	// 决策报告(始终输出,dry-run 的主体)
 	printMergeReport(rep, baseProviders)
 
 	if dryRun {
-		fmt.Fprintln(os.Stderr, "--dry-run:不落盘。融合结果预览输出到 stdout。")
+		fmt.Fprintln(os.Stderr, "--dry-run:试运行模式,不落盘不备份。融合结果预览输出到 stdout。")
 		os.Stdout.WriteString(mustRender(base))
 		return nil
 	}
 
-	// 落盘前先在临时文件上过内核 -t
+	// 备份(premerge)→ 融合 → -t → 应用 → 健康 → 失败恢复
+	logx.Step("备份当前配置 → %s", p.Conf+".panixy-premerge")
+	bakPath, err := config.PremergeBackup(p.Conf)
+	if err != nil {
+		return fmt.Errorf("premerge 备份失败: %w", err)
+	}
+	rep.BackupPath = bakPath
+
 	tmpConf := filepath.Join(os.TempDir(), fmt.Sprintf("panixy-merge-%d.yaml", time.Now().UnixNano()))
 	defer os.Remove(tmpConf)
 	os.WriteFile(tmpConf, []byte(mustRender(base)), 0o644)
 	if out, err := mihomoTest(p, tmpConf); err != nil {
-		return fmt.Errorf("融合结果未通过内核校验(%s),系统未做任何改动", firstErrLine(out))
+		return fmt.Errorf("融合结果未通过内核校验(%s),系统未做任何改动;可用 --dry-run 检查", firstErrLine(out))
 	}
 
-	logx.Step("备份基底 → 应用融合配置")
-	if err := config.Backup(p.Conf); err != nil {
-		return err
-	}
+	logx.Step("应用融合配置 → 重启服务")
 	if err := os.WriteFile(p.Conf, []byte(mustRender(base)), 0o644); err != nil {
-		config.Restore(p.Conf)
+		config.PremergeRestore(p.Conf)
 		return err
 	}
-	if err := systemdunit.Restart(); err != nil { // provider/分组结构变化,直接重启(热重载不刷新 provider)
-		config.Restore(p.Conf)
+	if err := systemdunit.Restart(); err != nil {
+		config.PremergeRestore(p.Conf)
 		systemdunit.Restart()
-		return fmt.Errorf("重启失败,已恢复原配置")
+		return fmt.Errorf("重启失败,已从 premerge 恢复")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		config.Restore(p.Conf)
+		config.PremergeRestore(p.Conf)
 		systemdunit.Restart()
-		return fmt.Errorf("融合后健康检查超时,已恢复原配置:%w", err)
+		return fmt.Errorf("融合后健康检查超时,已从 premerge 恢复:%w", err)
 	}
-	config.ClearBackup(p.Conf)
 	logx.Info("融合完成:panixy sub-list 查看订阅;分组/节点选择在 Web 面板操作")
+	logx.Info("回滚: sudo panixy merge-conf --rollback(恢复到融合前)")
 	return nil
 }
 
-func printMergeReport(r *config.MergeReport, baseProviders []string) {
+func doMergeRollback() error {
+	if err := needRoot(); err != nil {
+		return err
+	}
+	p := paths.Get()
+	lk, err := locker.Lock(p.Lock)
+	if err != nil {
+		return err
+	}
+	defer lk.Unlock()
+	if !config.PremergeExists(p.Conf) {
+		return fmt.Errorf("无 premerge 备份(%s.panixy-premerge 不存在)", p.Conf)
+	}
+	if err := config.PremergeRestore(p.Conf); err != nil {
+		return fmt.Errorf("恢复失败: %w", err)
+	}
+	if err := systemdunit.Restart(); err != nil {
+		return fmt.Errorf("配置已恢复但重启失败: %w", err)
+	}
+	logx.Info("已从 premerge 备份恢复并重启")
+	return nil
+}
+
+func printMergeReport(r *config.MergeReport, _ []string) {
 	logx.Info("融合决策:")
+	if len(r.GroupsMerged) > 0 {
+		logx.Info("  组融合(同名): %v", r.GroupsMerged)
+	}
+	if len(r.GroupsAdded) > 0 {
+		logx.Info("  组新增(个人): %v", r.GroupsAdded)
+	}
+	if len(r.GroupsKept) > 0 {
+		logx.Info("  组保留(基底): %v(共 %d 组)", r.GroupsKept[:min(5, len(r.GroupsKept))], len(r.GroupsKept))
+		if len(r.GroupsKept) > 5 {
+			logx.Info("    ...等")
+		}
+	}
+	if r.RulesPersonal > 0 || r.RulesBase > 0 {
+		logx.Info("  规则: 个人 %d 条前置 + 基底 %d 条兜底(去重 %d)", r.RulesPersonal, r.RulesBase, r.RulesDeduped)
+	}
 	logx.Info("  接管(个人): %v", r.Taken)
 	logx.Info("  保留(基底): %v", r.Kept)
 	if len(r.Providers.BaseKept) > 0 {
-		logx.Info("  订阅合并: 基底保留 %v", r.Providers.BaseKept)
+		logx.Info("  订阅基底: %v", r.Providers.BaseKept)
 	}
 	if len(r.Providers.Personal) > 0 {
-		logx.Info("  订阅合并: 个人新增 %v", r.Providers.Personal)
+		logx.Info("  订阅新增: %v", r.Providers.Personal)
 	}
 	if len(r.Providers.Conflict) > 0 {
-		logx.Warn("  订阅同名冲突(基底优先,含已预置缓存): %v", r.Providers.Conflict)
+		logx.Warn("  订阅同名(基底优先): %v", r.Providers.Conflict)
 	}
 	if len(r.RuleProvidersAdded) > 0 {
 		logx.Info("  规则订阅并入: %v", r.RuleProvidersAdded)
 	}
 	if len(r.PersonalProxies) > 0 {
-		logx.Info("  个人节点全部带入(%d 个,已追加进各组 proxies 末尾;select 默认不变,面板中自行挑选)",
-			len(r.PersonalProxies))
+		logx.Info("  个人节点带入(%d 个,追加进组末尾)", len(r.PersonalProxies))
 	}
 	for _, a := range r.Adjustments {
 		logx.Info("  自动调整: %s", a)
 	}
-	_ = baseProviders
+	if r.BackupPath != "" {
+		logx.Info("  备份: %s(--rollback 可恢复)", r.BackupPath)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func mustRender(e *config.Editor) string {
-	// 复用 Save 的归一化但不落盘:写到临时再读回
 	tmp := filepath.Join(os.TempDir(), "panixy-render.yaml")
 	old := e.Path()
 	e.SetPath(tmp)

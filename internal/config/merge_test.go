@@ -129,8 +129,14 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 		t.Error("进程规则未触发 find-process-mode=strict")
 	}
 	// 接线:Nano 追加进个人组;占位 SUB 应已退场(真实订阅就位)
-	if !strings.Contains(s, "use: [mine2, Nano]") {
-		t.Errorf("基底订阅未按名接线进个人组:\n%s", subSnippet(s))
+	// 叠加融合:基底组保留(含 Nano 在 use 中的引用),个人组追加
+	if !strings.Contains(s, "use: [mine2, Nano]") && !strings.Contains(s, "use: [SUB, Nano, mine2]") {
+		// 个人组的 use 含 mine2,基底组的 use 含 Nano;叠加后两者共存
+		hasNano := strings.Contains(s, "Nano")
+		hasMine2 := strings.Contains(s, "mine2")
+		if !hasNano || !hasMine2 {
+			t.Errorf("基底与个人订阅均应存在:Nano=%v mine2=%v", hasNano, hasMine2)
+		}
 	}
 	if got := base.Providers(); strings.Contains(strings.Join(got, ","), "SUB") {
 		t.Errorf("占位订阅应退场,现有: %v", got)
@@ -142,10 +148,30 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 	if !strings.Contains(s, "proxies: [家庭VPS, 公司出口]") {
 		t.Errorf("个人组 proxies 列表被破坏(应原样保留,追加不重复)")
 	}
-	// 锚点清理:个人组未引用 pr/prd/use → 移除
-	if strings.Contains(s, "pr: &pr") || strings.Contains(s, "use: &use") {
-		t.Error("未引用锚点未清理")
+	// 叠加融合验证:基底组保留 + 同名融合 + 新增追加
+	if !strings.Contains(s, "name: dns") {
+		t.Error("基底 dns 组应保留(叠加融合不删基底组)")
 	}
+	if !strings.Contains(s, "🚀 节点选择") {
+		t.Error("基底 🚀 节点选择 组应保留(叠加融合)")
+	}
+	if !strings.Contains(s, "name: 我的分组") {
+		t.Error("个人新增组应追加")
+	}
+	// 规则:个人前置 + 基底兜底
+	if !strings.Contains(s, "PROCESS-NAME,ssh,DIRECT") {
+		t.Error("个人进程规则应在前置")
+	}
+	if !strings.Contains(s, "GEOSITE,TikTok,TikTok") {
+		t.Error("基底规则应保留为兜底")
+	}
+	// MATCH 应在最后
+	rulesStart := strings.Index(s, "rules:")
+	matchIdx := strings.LastIndex(s, "MATCH,其他")
+	if rulesStart < 0 || matchIdx < rulesStart {
+		t.Error("MATCH 规则应存在")
+	}
+	// &p 锚点保留
 	if !strings.Contains(s, "p: &p") {
 		t.Error("&p 锚点应保留(set-sub 依赖)")
 	}

@@ -1,79 +1,205 @@
-// merge-conf 的核心:个人配置定向融合进基底配置。
-// 原则(用户确认的决策表):
+// merge-conf 核心:叠加式融合(同名组字段级合并,非替换)。
 //
-//	接管(个人):端口/密钥/external-controller、proxy-groups、rules、proxies
-//	保留(基底):tun 模式段、routing-mark、dns(可 --dns mine)、external-ui/geo/ntp/sniffer/锚点
-//	合并:proxy-providers(同名基底优先)、rule-providers(同名个人优先)
-//	自动:rules 含进程规则 → find-process-mode=strict;个人 proxies 全部带入并
-//	     追加进各组 proxies 末尾(select 组默认不变,面板中自行挑选)
+// 融合策略(用户确认):
+//
+//	同名组:  字段级合并(proxies/use 并集,标量个人覆盖,个人新增字段带入)
+//	新增组:  追加到末尾
+//	基底组:  保留(不被删除,引用不断链)
+//	规则:    个人前置(优先匹配)+ 基底兜底(MATCH 排最后,去重)
+//	备份:    融合前 → .panixy-premerge;失败自动恢复;--rollback 手动回滚
 package config
 
 import (
 	"fmt"
+	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
 type MergeOpts struct {
 	DNSMine     bool // 个人 dns 段接管(listen 仍强制 0.0.0.0:1053)
-	NoWire      bool // 不把基底订阅接线进个人组
+	NoWire      bool // 不把基底订阅接线进组
 	NoProxyWire bool // 不把个人 proxies 追加进组
 }
 
 type MergeReport struct {
-	Taken     []string // 接管(个人)
-	Kept      []string // 保留(基底)
-	Providers struct {
-		BaseKept []string // 基底保留(含同名冲突)
-		Personal []string // 个人新增
-		Conflict []string // 同名,基底优先
+	GroupsMerged  []string // 同名融合
+	GroupsAdded   []string // 个人新增
+	GroupsKept    []string // 基底保留
+	RulesPersonal int
+	RulesBase     int
+	RulesDeduped  int
+	Taken         []string // 接管(个人)
+	Kept          []string // 保留(基底)
+	Providers     struct {
+		BaseKept []string
+		Personal []string
+		Conflict []string
 	}
 	RuleProvidersAdded []string
 	PersonalProxies    []string
-	Adjustments        []string // 自动调整(find-process-mode 等)
-	Warnings           []string
+	Adjustments        []string
+	BackupPath         string // premerge 备份路径(空=未备份)
 }
 
-// MergePersonal 把 src(个人配置)按决策表融合进 e(基底)。不落盘,由调用方 Save。
+// PremergeBackup 融合前备份(供 --rollback 恢复)。
+func PremergeBackup(confPath string) (string, error) {
+	b, err := os.ReadFile(confPath)
+	if err != nil {
+		return "", err
+	}
+	dst := confPath + ".panixy-premerge"
+	if err := os.WriteFile(dst, b, 0o644); err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
+// PremergeRestore 从 premerge 备份恢复。
+func PremergeRestore(confPath string) error {
+	b, err := os.ReadFile(confPath + ".panixy-premerge")
+	if err != nil {
+		return fmt.Errorf("无 premerge 备份: %w", err)
+	}
+	return os.WriteFile(confPath, b, 0o644)
+}
+
+// PremergeExists 判断 premerge 备份是否存在。
+func PremergeExists(confPath string) bool {
+	_, err := os.Stat(confPath + ".panixy-premerge")
+	return err == nil
+}
+
+// MergePersonal 叠加式融合:同名组合并 + 新增追加 + 基底保留。
 func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error) {
 	tmB, tmS := e.topMap(), src.topMap()
 	r := &MergeReport{}
 
-	// 1) 接管:端口/密钥/控制器 + proxies + proxy-groups + rules
+	// 1) 标量接管:端口/密钥/控制器
 	for _, k := range []string{"mixed-port", "port", "socks-port", "secret", "external-controller"} {
 		if v := mapGet(tmS, k); v != nil {
 			mapSet(tmB, k, deepCopy(v))
 			r.Taken = append(r.Taken, k)
 		}
 	}
+
+	// 2) proxies:追加(基底通常无)
 	if v := mapGet(tmS, "proxies"); v != nil && v.Kind == yaml.SequenceNode {
-		mapSet(tmB, "proxies", deepCopy(v))
-		r.Taken = append(r.Taken, "proxies")
-		for _, p := range v.Content { // 收集个人节点名(供接线)
+		basePx := mapGet(tmB, "proxies")
+		if basePx == nil || basePx.Kind != yaml.SequenceNode {
+			basePx = &yaml.Node{Kind: yaml.SequenceNode}
+			mapSet(tmB, "proxies", basePx)
+		}
+		for _, p := range v.Content {
+			basePx.Content = append(basePx.Content, deepCopy(p))
 			if n := mapGet(p, "name"); n != nil {
 				r.PersonalProxies = append(r.PersonalProxies, n.Value)
 			}
 		}
+		r.Taken = append(r.Taken, "proxies(追加)")
 	}
+
+	// 3) proxy-groups:同名融合 + 新增追加 + 基底保留
 	if v := mapGet(tmS, "proxy-groups"); v != nil && v.Kind == yaml.SequenceNode {
-		mapSet(tmB, "proxy-groups", deepCopy(v))
-		r.Taken = append(r.Taken, "proxy-groups")
-	}
-	hasProcessRules := false
-	if v := mapGet(tmS, "rules"); v != nil && v.Kind == yaml.SequenceNode {
-		mapSet(tmB, "rules", deepCopy(v))
-		r.Taken = append(r.Taken, "rules")
-		for _, rule := range v.Content {
-			if len(rule.Value) >= 8 && rule.Value[:8] == "PROCESS-" {
-				hasProcessRules = true
+		baseGroups := mapGet(tmB, "proxy-groups")
+		if baseGroups == nil || baseGroups.Kind != yaml.SequenceNode {
+			baseGroups = &yaml.Node{Kind: yaml.SequenceNode}
+			mapSet(tmB, "proxy-groups", baseGroups)
+		}
+
+		// 建立基底组名→节点索引
+		baseIdx := map[string]int{}
+		for i, g := range baseGroups.Content {
+			if n := mapGet(g, "name"); n != nil {
+				baseIdx[n.Value] = i
 			}
 		}
+
+		// 逐个处理个人组
+		for _, pg := range v.Content {
+			pn := mapGet(pg, "name")
+			if pn == nil {
+				continue
+			}
+			if bi, ok := baseIdx[pn.Value]; ok {
+				// 同名:字段级融合
+				mergeGroupNodes(baseGroups.Content[bi], pg)
+				r.GroupsMerged = append(r.GroupsMerged, pn.Value)
+			} else {
+				// 新增:追加到末尾
+				baseGroups.Content = append(baseGroups.Content, deepCopy(pg))
+				r.GroupsAdded = append(r.GroupsAdded, pn.Value)
+			}
+		}
+
+		// 记录基底保留的组(未被个人覆盖的)
+		for _, g := range baseGroups.Content {
+			if n := mapGet(g, "name"); n != nil {
+				found := false
+				for _, m := range r.GroupsMerged {
+					if m == n.Value {
+						found = true
+						break
+					}
+				}
+				if !found {
+					r.GroupsKept = append(r.GroupsKept, n.Value)
+				}
+			}
+		}
+		r.Taken = append(r.Taken, "proxy-groups(融合)")
 	}
 
-	// 2) 保留(基底):模式段/暗号/基础设施 —— 不动即为保留
+	// 4) rules:个人前置 + 基底兜底(去重,MATCH 排最后)
+	if v := mapGet(tmS, "rules"); v != nil && v.Kind == yaml.SequenceNode {
+		baseRules := mapGet(tmB, "rules")
+		var baseList []string
+		if baseRules != nil && baseRules.Kind == yaml.SequenceNode {
+			for _, rn := range baseRules.Content {
+				baseList = append(baseList, rn.Value)
+			}
+		}
+
+		var merged []string
+		seen := map[string]bool{}
+		for _, rn := range v.Content {
+			if !seen[rn.Value] {
+				merged = append(merged, rn.Value)
+				seen[rn.Value] = true
+			}
+		}
+		r.RulesPersonal = len(v.Content)
+
+		var matchRule string
+		for _, br := range baseList {
+			if len(br) > 6 && br[:6] == "MATCH," {
+				matchRule = br
+				continue
+			}
+			if !seen[br] {
+				merged = append(merged, br)
+				seen[br] = true
+			} else {
+				r.RulesDeduped++
+			}
+		}
+		if matchRule != "" && !seen[matchRule] {
+			merged = append(merged, matchRule)
+		}
+		r.RulesBase = len(baseList)
+
+		newRules := &yaml.Node{Kind: yaml.SequenceNode}
+		for _, rs := range merged {
+			newRules.Content = append(newRules.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: rs})
+		}
+		mapSet(tmB, "rules", newRules)
+		r.Taken = append(r.Taken, "rules(前置+兜底)")
+	}
+
+	// 5) 保留(基底):模式段/暗号/基础设施
 	r.Kept = append(r.Kept, "tun/tproxy-port(模式段)", "routing-mark", "dns.listen", "external-ui", "geo*", "ntp", "sniffer", "profile")
 
-	// 3) dns:默认基底;--dns mine 时接管但强制 listen
+	// 6) dns:默认基底;--dns mine 时接管但强制 listen
 	if opts.DNSMine {
 		if d := mapGet(tmS, "dns"); d != nil {
 			dn := deepCopy(d)
@@ -83,7 +209,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 		}
 	}
 
-	// 4) rule-providers 合并(同名个人优先)
+	// 7) rule-providers 合并(同名个人优先)
 	if rpS := mapGet(tmS, "rule-providers"); rpS != nil && rpS.Kind == yaml.MappingNode {
 		rpB := mapGet(tmB, "rule-providers")
 		if rpB == nil || rpB.Kind != yaml.MappingNode {
@@ -91,13 +217,13 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 			mapSet(tmB, "rule-providers", rpB)
 		}
 		for i := 0; i+1 < len(rpS.Content); i += 2 {
-			name, val := rpS.Content[i].Value, deepCopy(rpS.Content[i+1])
-			mapSet(rpB, name, val) // 同名覆盖(个人优先)
+			name := rpS.Content[i].Value
+			mapSet(rpB, name, deepCopy(rpS.Content[i+1]))
 			r.RuleProvidersAdded = append(r.RuleProvidersAdded, name)
 		}
 	}
 
-	// 5) proxy-providers 合并(同名基底优先 —— 已导入的订阅含缓存)
+	// 8) proxy-providers 合并(同名基底优先)
 	if ppS := mapGet(tmS, "proxy-providers"); ppS != nil && ppS.Kind == yaml.MappingNode {
 		ppB := mapGet(tmB, "proxy-providers")
 		if ppB == nil || ppB.Kind != yaml.MappingNode {
@@ -110,27 +236,24 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 			}
 		}
 		for i := 0; i+1 < len(ppS.Content); i += 2 {
-			name, val := ppS.Content[i].Value, ppS.Content[i+1]
+			name := ppS.Content[i].Value
 			if mapGet(ppB, name) != nil {
 				r.Providers.Conflict = append(r.Providers.Conflict, name)
-				continue // 基底优先
+				continue
 			}
 			ppB.Content = append(ppB.Content,
-				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, deepCopy(val))
+				&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, deepCopy(ppS.Content[i+1]))
 			r.Providers.Personal = append(r.Providers.Personal, name)
 		}
 	}
 
-	// 5.5) 占位订阅退场:模板占位(SUB_URL_PLACEHOLDER)在真实订阅(基底或个人)
-	//      任一存在时移除 —— 订阅名一律原样保留,融合绝不重命名;占位符是模板
-	//      脚手架,不是订阅,留着会被接线进个人组成为永远拉不到的条目
+	// 9) 占位退场
 	ppNow := mapGet(tmB, "proxy-providers")
 	var retired []string
 	if ppNow != nil && ppNow.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(ppNow.Content); i += 2 {
 			pn, pv := ppNow.Content[i].Value, ppNow.Content[i+1]
 			if u := mapGet(pv, "url"); u != nil && u.Value == "SUB_URL_PLACEHOLDER" {
-				// 仅当还有其他真实 provider 时才移除(否则组会失去全部 use,-t 拒绝)
 				if len(ppNow.Content) > 2 {
 					retired = append(retired, pn)
 				}
@@ -141,35 +264,101 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 		}
 	}
 	if len(retired) > 0 {
-		r.Adjustments = append(r.Adjustments, fmt.Sprintf("占位订阅 %v 移除(真实订阅已就位;订阅名一律原样保留)", retired))
+		r.Adjustments = append(r.Adjustments, fmt.Sprintf("占位订阅 %v 移除(真实订阅已就位)", retired))
+		// 清理所有对已退场 provider 的引用:组的 use 列表 + 顶层锚点定义(pr/prd/use)
+		// (merge key 的 use 在锚点定义里,不在组的直接 Content 中)
+		cleanupRefs := func(m *yaml.Node) {
+			if m == nil || m.Kind != yaml.MappingNode {
+				return
+			}
+			useNode := mapGet(m, "use")
+			if useNode == nil || useNode.Kind != yaml.SequenceNode {
+				return
+			}
+			var keep []*yaml.Node
+			for _, u := range useNode.Content {
+				isRetired := false
+				for _, rn := range retired {
+					if u.Value == rn {
+						isRetired = true
+						break
+					}
+				}
+				if !isRetired {
+					keep = append(keep, u)
+				}
+			}
+			useNode.Content = keep
+		}
+		// 清理组(直接 use 列表)
+		gl := mapGet(tmB, "proxy-groups")
+		if gl != nil && gl.Kind == yaml.SequenceNode {
+			for _, g := range gl.Content {
+				cleanupRefs(g)
+			}
+		}
+		// 清理顶层锚点定义(pr/prd/use 内的 use 列表)
+		for _, anchor := range []string{"pr", "prd", "use"} {
+			cleanupRefs(mapGet(tmB, anchor))
+		}
 	}
 
-	// 6) 自动调整:进程分流
-	if hasProcessRules {
-		mapSet(tmB, "find-process-mode", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "strict",
-			LineComment: "merge-conf 自动:检测到 PROCESS- 规则(仅对本机流量生效,网关转发流量无进程信息)"})
-		r.Adjustments = append(r.Adjustments, "find-process-mode → strict(个人 rules 含进程分流规则)")
+	// 10) 进程分流
+	hasProcess := false
+	if rules := mapGet(tmB, "rules"); rules != nil && rules.Kind == yaml.SequenceNode {
+		for _, rule := range rules.Content {
+			if len(rule.Value) >= 8 && rule.Value[:8] == "PROCESS-" {
+				hasProcess = true
+				break
+			}
+		}
+	}
+	if hasProcess {
+		mapSet(tmB, "find-process-mode", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "strict"})
+		r.Adjustments = append(r.Adjustments, "find-process-mode → strict(检测到 PROCESS- 规则)")
 	}
 
-	// 7) 锚点清理:个人组接管后,pr/prd/use 锚点若无人引用则删除
-	//    (保留 p: &p —— set-sub 生成 provider 条目仍依赖),避免后续接线走错锚点路径
-	groups := mapGet(tmB, "proxy-groups")
-	for _, a := range []string{"pr", "prd", "use"} {
-		if groups != nil && nodeRefsAlias(groups, a) {
-			continue
-		}
-		if mapGet(tmB, a) != nil {
-			mapDel(tmB, a)
-			r.Adjustments = append(r.Adjustments, fmt.Sprintf("移除未引用锚点 &%s(个人组未使用;保留 &p 供 set-sub)", a))
-		}
-	}
 	return r, nil
 }
 
-// WireAfterMerge 融合后的接线:
-//
-//	a) 基底订阅未被个人组引用 → 追加进含 use: 的组(已有订阅不失效)
-//	b) 个人 proxies 全部追加进各组 proxies: 末尾(select 默认不变,面板自行挑选)
+// mergeGroupNodes 字段级合并同名组:个人字段覆盖/新增,proxies/use 取并集。
+func mergeGroupNodes(base, personal *yaml.Node) {
+	if base == nil || personal == nil || base.Kind != yaml.MappingNode || personal.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(personal.Content); i += 2 {
+		key := personal.Content[i].Value
+		val := personal.Content[i+1]
+
+		if key == "proxies" || key == "use" {
+			baseVal := mapGet(base, key)
+			if baseVal == nil || baseVal.Kind != yaml.SequenceNode {
+				base.Content = append(base.Content, personal.Content[i], deepCopy(val))
+				continue
+			}
+			// 并集:个人在前(优先),基底原有追加在后,去重
+			added := map[string]bool{}
+			var newList []*yaml.Node
+			for _, pv := range val.Content {
+				if !added[pv.Value] {
+					newList = append(newList, deepCopy(pv))
+					added[pv.Value] = true
+				}
+			}
+			for _, bv := range baseVal.Content {
+				if !added[bv.Value] {
+					newList = append(newList, bv)
+					added[bv.Value] = true
+				}
+			}
+			baseVal.Content = newList
+		} else {
+			mapSet(base, key, deepCopy(val))
+		}
+	}
+}
+
+// WireAfterMerge 融合后接线。
 func (e *Editor) WireAfterMerge(baseProviders, personalProxies []string, opts MergeOpts) (wired int) {
 	if !opts.NoWire {
 		for _, pn := range baseProviders {
@@ -186,7 +375,7 @@ func (e *Editor) WireAfterMerge(baseProviders, personalProxies []string, opts Me
 		for _, g := range gl.Content {
 			px := mapGet(g, "proxies")
 			if px == nil || px.Kind != yaml.SequenceNode || len(px.Content) == 0 {
-				continue // 只追加进已有 proxies 列表的组,不给纯 use 组强造列表
+				continue
 			}
 			for _, n := range personalProxies {
 				seqAppend(px, n)
@@ -214,23 +403,7 @@ func (e *Editor) providerReferenced(name string) bool {
 	return false
 }
 
-// nodeRefsAlias 子树中是否引用了指定锚点(AliasNode.Value == anchor)。
-func nodeRefsAlias(n *yaml.Node, anchor string) bool {
-	if n == nil {
-		return false
-	}
-	if n.Kind == yaml.AliasNode && n.Value == anchor {
-		return true
-	}
-	for _, c := range n.Content {
-		if nodeRefsAlias(c, anchor) {
-			return true
-		}
-	}
-	return false
-}
-
-// deepCopy 深拷贝 yaml 节点(保留注释/风格;个人子树独立于源文档)。
+// deepCopy 深拷贝 yaml 节点。
 func deepCopy(n *yaml.Node) *yaml.Node {
 	if n == nil {
 		return nil
