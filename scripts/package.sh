@@ -101,7 +101,7 @@ leak_scan() {
 }
 
 echo "== [1/5] 编译(scripts/build.sh) =="
-./scripts/build.sh "${VER#V}"
+"$(dirname "$0")/build.sh" "${VER#V}"
 
 echo "== [2/5] 资产获取(本地优先: $SRC;缺失才下载) =="
 TMP=$(mktemp -d)

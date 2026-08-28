@@ -1,13 +1,16 @@
-# 包根手工配置(含真实订阅URL,install.sh 会优先采用)—— 绝不能提交
+# 源码(src/)与发布(dist/)分离;dist 是编译产物不入库
+dist/
+
+# 离线包产物
+Panixy-V*/
+*.tar.gz
+*.sha256
+
+# Go 编译缓存
+*.test
+
+# 包根手工配置(含真实订阅URL)—— 绝不能提交
 clash.yaml
 
 # 本地打包产物
 *.tar.gz
-
-# Go 构建产物
-dist/
-*.test
-/tmp-panixy*
-Panixy-V*/
-dist/
-*.sha256

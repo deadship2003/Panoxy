@@ -5,7 +5,7 @@
 #   -h | -? | --help 显示本帮助
 #   环境变量 GOOS/GOARCH 可覆盖(默认双架构 linux/amd64+arm64,GOAMD64=v1 兼容老 CPU)
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../src"
 case "${1:-}" in
   -h|-\?|--help) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
@@ -13,7 +13,7 @@ esac
 VER="${1:-$(git describe --tags 2>/dev/null || echo "")}"
 [ -n "$VER" ] || VER="0.1.0-dev"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-OUT=dist
+OUT=../dist
 mkdir -p "$OUT"
 
 LDFLAGS="-s -w -X main.version=$VER -buildid="

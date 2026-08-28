@@ -20,7 +20,7 @@ jobs:
           go-version: '1.23'
 
       - name: Test
-        run: go test ./internal/... -timeout 120s
+        run: cd src && go test ./internal/... -timeout 120s
 
       - name: Package (dual-arch offline bundles)
         run: ./scripts/package.sh --arch all --ver "${GITHUB_REF_NAME}"
