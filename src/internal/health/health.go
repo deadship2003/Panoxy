@@ -15,6 +15,7 @@ import (
 	"github.com/deadship2003/panixy/internal/execx"
 	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
+	"github.com/deadship2003/panixy/internal/statemode"
 	"github.com/deadship2003/panixy/internal/systemdunit"
 )
 
@@ -69,11 +70,7 @@ func Collect(confPath, bin, uiStamp, lastUp, statePath string) Report {
 }
 
 func modeOf(statePath string) string {
-	b, err := os.ReadFile(statePath)
-	if err != nil {
-		return "tun"
-	}
-	return strings.TrimSpace(strings.TrimPrefix(string(b), "proxy-mode:"))
+	return statemode.Read(statePath)
 }
 
 func probe204(viaProxy bool, port int) string {

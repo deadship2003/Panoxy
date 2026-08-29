@@ -18,7 +18,7 @@ import (
 // UA 返回拉取订阅的 User-Agent。
 // 实测同一机场对不同 UA 返回不同节点数:ClashMetaForAndroid/clash-verge 拿到
 // 最多(44 个),clash.meta 只有 41 个。取最大值的 UA,固定返回。
-func UA(_ string) string {
+func UA() string {
 	return "ClashMetaForAndroid/2.11.5"
 }
 

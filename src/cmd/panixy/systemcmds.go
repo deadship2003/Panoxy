@@ -20,10 +20,6 @@ import (
 	"github.com/deadship2003/panixy/internal/systemdunit"
 )
 
-func healthReadMode(statePath string) string {
-	return statemode.Read(statePath)
-}
-
 // runInstall 仅部署服务与系统设置(文件已就位;deploy 的内部步骤)。
 func runInstall(cmd *cobra.Command, args []string) error {
 	if err := needRoot(); err != nil {
@@ -122,7 +118,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	snap := snapshot(p)
 	defer func() { /* 失败路径各自显式回滚 */ _ = snap }()
 
-	logx.Step("[1/6] 内核:解包 assets 内 %s 版本", goArch())
+	logx.Step("[1/6] 内核:解包 assets 内 %s 版本", runtimeArch())
 	if err := placeCore(p, assets); err != nil {
 		return err
 	}
@@ -348,11 +344,6 @@ func setIPForward(v string) {
 	runCmd("sysctl", "-w", "net.ipv4.ip_forward="+v)
 }
 
-func goArch() string {
-	a := map[string]string{"amd64": "amd64", "arm64": "arm64"}[runtimeArch()]
-	return a
-}
-
 func placeCore(p paths.Paths, assets string) error {
 	if exists(p.Bin) {
 		logx.Info("内核已存在,保留")
@@ -445,12 +436,6 @@ func placeUIForce(p paths.Paths, assets string) error {
 	os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
 	logx.Info("刷新: Web UI(metacubexd)")
 	return nil
-}
-
-func randHex(n int) string {
-	b := make([]byte, n)
-	randRead(b)
-	return fmt.Sprintf("%x", b)
 }
 
 func firstLineOf(s string) string {

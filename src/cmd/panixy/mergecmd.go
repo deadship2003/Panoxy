@@ -167,13 +167,6 @@ func printMergeReport(r *config.MergeReport, _ []string) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func mustRender(e *config.Editor) string {
 	tmp := filepath.Join(os.TempDir(), "panixy-render.yaml")
 	old := e.Path()

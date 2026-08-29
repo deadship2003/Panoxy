@@ -140,28 +140,6 @@ func (c *Client) Provider(name string) (ProviderStat, error) {
 	return st, nil
 }
 
-// Providers 查询全部 provider。
-func (c *Client) Providers() ([]ProviderStat, error) {
-	b, err := c.do("GET", "/providers/proxies", nil)
-	if err != nil {
-		return nil, err
-	}
-	var top struct {
-		Providers map[string]providerResp `json:"providers"`
-	}
-	if err := json.Unmarshal(b, &top); err != nil {
-		return nil, err
-	}
-	var out []ProviderStat
-	for name, pr := range top.Providers {
-		if pr.VehicleType == "Compatible" {
-			continue // 兼容组不是订阅
-		}
-		out = append(out, ProviderStat{Name: name, Nodes: len(pr.Proxies), Type: pr.VehicleType})
-	}
-	return out, nil
-}
-
 // ReloadConf 热重载配置(仅适用于非 provider 改动!)。
 func (c *Client) ReloadConf(path string) error {
 	_, err := c.do("PUT", "/configs?force=0", map[string]string{"path": path})

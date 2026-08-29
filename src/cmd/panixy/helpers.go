@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
@@ -113,8 +112,6 @@ func copyDir(src, dst string) error {
 		return copyFile(path, target)
 	})
 }
-
-func randRead(b []byte) { _, _ = rand.Read(b) }
 
 // installMan 生成并安装全部 man 手册(根页 + 每个子命令页,与 --help 同源):
 // man panixy / man panixy-init / man panixy-set-sub ...

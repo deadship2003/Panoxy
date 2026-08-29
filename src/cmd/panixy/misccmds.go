@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -11,11 +12,11 @@ import (
 	"github.com/deadship2003/panixy/internal/config"
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/health"
+	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
 	"github.com/deadship2003/panixy/internal/paths"
 	"github.com/deadship2003/panixy/internal/systemdunit"
-	"time"
 )
 
 // runCheck 用内核 -t 校验配置(只读,免 root)。
@@ -42,6 +43,11 @@ func runApplyConf(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("用法: panixy apply-conf <yaml>")
 	}
 	p := paths.Get()
+	lk, err := locker.Lock(p.Lock)
+	if err != nil {
+		return err
+	}
+	defer lk.Unlock()
 	src := args[0]
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("文件不存在: %s", src)

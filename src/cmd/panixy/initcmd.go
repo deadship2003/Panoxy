@@ -435,7 +435,7 @@ func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 		proxy = fmt.Sprintf("http://127.0.0.1:%d", api.Mixed)
 	}
 	var buf bytes.Buffer
-	if err := subscribe.Fetch(u, proxy, subscribe.UA(""), &buf); err != nil {
+	if err := subscribe.Fetch(u, proxy, subscribe.UA(), &buf); err != nil {
 		return nil, err
 	}
 	if err := subscribe.Validate(buf.Bytes()); err != nil {

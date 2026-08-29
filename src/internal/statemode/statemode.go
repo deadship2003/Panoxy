@@ -14,15 +14,11 @@ type State struct {
 
 // Read 读取状态;文件缺失/损坏一律返回默认值(缺省 tun),不报错(读路径不挡道)。
 func Read(path string) string {
-	s := ReadState(path)
-	if s.ProxyMode == "tproxy" {
-		return "tproxy"
-	}
-	return "tun"
+	return normalize(readState(path).ProxyMode)
 }
 
-// ReadState 返回完整状态结构。
-func ReadState(path string) State {
+// readState 返回完整状态结构。
+func readState(path string) State {
 	var st State
 	b, err := os.ReadFile(path)
 	if err != nil {

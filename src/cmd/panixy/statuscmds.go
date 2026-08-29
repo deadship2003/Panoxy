@@ -11,6 +11,7 @@ import (
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/health"
 	"github.com/deadship2003/panixy/internal/paths"
+	"github.com/deadship2003/panixy/internal/statemode"
 )
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -86,7 +87,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 func runMode(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		p := paths.Get()
-		fmt.Println(healthReadMode(p.State))
+		fmt.Println(statemode.Read(p.State))
 		return nil
 	}
 	return modeSwitch(args[0])
