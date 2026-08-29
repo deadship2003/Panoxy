@@ -230,6 +230,9 @@ func noTunConf(t *testing.T, api, mix, dns int, tproxy bool) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 随机化模板写死的 http/socks 监听端口(本机若已装 panixy,固定 6666/6699 会撞真实网关)
+	out = strings.Replace(out, "port: 6666", fmt.Sprintf("port: %d", freePort(t)), 1)
+	out = strings.Replace(out, "socks-port: 6699", fmt.Sprintf("socks-port: %d", freePort(t)), 1)
 	// 去 tun 段(tun: 到下一个顶层键)
 	var b strings.Builder
 	skip := false
