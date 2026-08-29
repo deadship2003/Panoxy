@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/deadship2003/panixy/internal/asset"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -433,14 +435,7 @@ func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
 	}
 	mapDel(tm, "tproxy-port")
 	tun := &yaml.Node{Kind: yaml.MappingNode}
-	for _, kv := range [][2]string{
-		{"enable", "true"},
-		{"stack", "system"},
-		{"auto-route", "true"},
-		{"auto-detect-interface", "true"},
-		{"strict-route", "true"},
-		{"mtu", "1500"},
-	} {
+	for _, kv := range asset.TunParams {
 		tag := "!!str"
 		if kv[1] == "true" || kv[1] == "1500" {
 			tag = "!!bool"
@@ -453,7 +448,7 @@ func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
 			&yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: kv[1]})
 	}
 	exc := &yaml.Node{Kind: yaml.SequenceNode}
-	for _, cidr := range []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+	for _, cidr := range asset.TunRouteExclude {
 		exc.Content = append(exc.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: cidr})
 	}
 	tun.Content = append(tun.Content,

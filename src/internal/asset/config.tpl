@@ -72,6 +72,7 @@ secret: {{.Secret}}
 tproxy-port: {{.TproxyPort}}
 {{- else}}
 # ============ TUN 透明代理(DNS 劫持已移交防火墙,故无 dns-hijack)============
+# 参数与 internal/asset.TunParams / TunRouteExclude 保持一致(改此块务必同步 Go 常量)
 tun:
   enable: true
   stack: system             # 家用默认;易触发 TUN 静默卡死的场景建议改 gvisor

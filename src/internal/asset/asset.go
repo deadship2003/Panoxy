@@ -71,3 +71,17 @@ func DefaultConfigData() ConfigData {
 
 // RenderConfig 渲染完整 mihomo 配置(含全部默认分组/规则,承接 bash 版 v0.1.4 资产)。
 func RenderConfig(d ConfigData) (string, error) { return render("config.tpl", d) }
+
+// TunParams 与 TunRouteExclude 是 TUN 模式配置块的唯一事实源:config.tpl 模板渲染、
+// config.SetMode 增量重建都从这里取数,避免两处硬编码漂移(改动务必在此,模板随之同步)。
+var (
+	TunParams = [][2]string{
+		{"enable", "true"},
+		{"stack", "system"},
+		{"auto-route", "true"},
+		{"auto-detect-interface", "true"},
+		{"strict-route", "true"},
+		{"mtu", "1500"},
+	}
+	TunRouteExclude = []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+)
