@@ -12,7 +12,6 @@ import (
 	"github.com/deadship2003/panixy/internal/config"
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
 	"github.com/deadship2003/panixy/internal/paths"
@@ -36,18 +35,13 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 // runApplyConf 应用自定义配置:优先热重载(仅非 provider 改动!),失败退重启,再失败恢复。
 func runApplyConf(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
+	return withRootLock(func(p paths.Paths) error { return runApplyConfBody(p, cmd, args) })
+}
+
+func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("用法: panixy apply-conf <yaml>")
 	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
 	src := args[0]
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("文件不存在: %s", src)

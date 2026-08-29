@@ -18,7 +18,6 @@ import (
 
 	"github.com/deadship2003/panixy/internal/asset"
 	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
 	"github.com/deadship2003/panixy/internal/paths"
@@ -34,15 +33,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return initDryRun(cmd, args)
 	}
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runInitBody(p, cmd, args) })
+}
+
+func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	total := 9
 	stepf := func(i int, f string, a ...any) { logx.Step("[%d/%d] %s", i, total, fmt.Sprintf(f, a...)) }
 
@@ -55,6 +49,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	var url string
+	var err error
 	if len(args) > 0 {
 		url = args[0]
 	}
@@ -124,7 +119,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	kernel := ""
 	for _, base := range upgrade.CoreAssetCandidates(coreVer) {
 		kurl := fmt.Sprintf("https://github.com/MetaCubeX/mihomo/releases/download/%s/%s.gz", coreVer, base)
-		if dlAny(kurl, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "core.gz"), "内核 "+shortAsset(base)) {
+		if downloadAny(kurl, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "core.gz"), "内核 "+shortAsset(base)) {
 			core := filepath.Join(tmp, "core")
 			if err := upgrade.GunzipFile(filepath.Join(tmp, "core.gz"), core); err != nil {
 				continue
@@ -151,18 +146,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	geoOK := 0
 	for f, u := range geos {
-		if dlAny(u, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, f), "geo "+f) {
+		if downloadAny(u, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, f), "geo "+f) {
 			geoOK++
 		}
 	}
 	ruleURL := "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml"
-	haveRule := dlAny(ruleURL, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "AWAvenue-Ads.yaml"), "广告规则")
+	haveRule := downloadAny(ruleURL, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "AWAvenue-Ads.yaml"), "广告规则")
 	if geoOK < 3 {
 		return fmt.Errorf("geo 数据下载不完整(%d/3)", geoOK)
 	}
 
 	stepf(6, "下载 metacubexd 面板")
-	uiOK := dlAny("https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz",
+	uiOK := downloadAny("https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz",
 		allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "ui.tgz"), "面板")
 
 	// ---- 至此资产齐备,以下与 deploy 同构 ----
@@ -295,8 +290,8 @@ func directAssetReachable(u string, timeout time.Duration) bool {
 	return resp.StatusCode < 400
 }
 
-// dlAny 依次尝试:直连(仅当探测通过,免重复烧 15s)→ 订阅代理(惰性启动)→ 镜像前缀。
-func dlAny(url string, allowDirect bool, proxyFn func() string, mirrors []string, dst, label string) bool {
+// downloadAny 依次尝试:直连(仅当探测通过,免重复烧 15s)→ 订阅代理(惰性启动)→ 镜像前缀。
+func downloadAny(url string, allowDirect bool, proxyFn func() string, mirrors []string, dst, label string) bool {
 	if allowDirect {
 		if err := upgrade.DownloadProgress(url, "", dst, label); err == nil {
 			return true

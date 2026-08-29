@@ -13,7 +13,6 @@ import (
 
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
 	"github.com/deadship2003/panixy/internal/paths"
@@ -24,16 +23,10 @@ import (
 // runUpgrade 参数化升级:默认 core+ui;--core/--ui 二选一;--check dry-run;
 // --core-version/--ui-version 指定版本。全成功才更新 .last-upgrade。
 func runUpgrade(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runUpgradeBody(p, cmd, args) })
+}
 
+func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	coreOnly, _ := cmd.Flags().GetBool("core")
 	uiOnly, _ := cmd.Flags().GetBool("ui")
 	cliOnly, _ := cmd.Flags().GetBool("cli")
@@ -46,6 +39,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	doUI := !anyOnly || uiOnly
 	doCLI := cliOnly
 
+	var err error
 	api := mihomoapi.NewFromConf(p.Conf)
 	proxy := api.Proxy()
 
@@ -250,15 +244,10 @@ func uiUpgrade(p paths.Paths, proxy, want string) error {
 
 // runRollback 回滚内核二进制(默认最近备份)。
 func runRollback(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runRollbackBody(p, cmd, args) })
+}
+
+func runRollbackBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	matches, _ := filepath.Glob(p.Bin + ".bak-*")
 	if len(matches) == 0 {
 		return fmt.Errorf("没有可用备份")

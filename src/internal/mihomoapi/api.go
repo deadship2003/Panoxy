@@ -74,7 +74,8 @@ func (c *Client) Proxy() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", c.Mixed)
 }
 
-func (c *Client) do(method, path string, body any) ([]byte, error) {
+// call 发送带密钥的 API 请求并返回响应体;状态码 ≥300 视为错误。
+func (c *Client) call(method, path string, body any) ([]byte, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -102,7 +103,7 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 
 // Version 返回内核版本号(如 v1.19.30);不可达返回错误。
 func (c *Client) Version() (string, error) {
-	b, err := c.do("GET", "/version", nil)
+	b, err := c.call("GET", "/version", nil)
 	if err != nil {
 		return "", err
 	}
@@ -133,7 +134,7 @@ type providerResp struct {
 
 // Provider 查询单个 provider 节点数(正确解码 JSON,而非 bash 时代的 grep 计数)。
 func (c *Client) Provider(name string) (ProviderStat, error) {
-	b, err := c.do("GET", "/providers/proxies/"+name, nil)
+	b, err := c.call("GET", "/providers/proxies/"+name, nil)
 	var st ProviderStat
 	st.Name = name
 	if err != nil {
@@ -152,7 +153,7 @@ func (c *Client) Provider(name string) (ProviderStat, error) {
 
 // ReloadConf 热重载配置(仅适用于非 provider 改动!)。
 func (c *Client) ReloadConf(path string) error {
-	_, err := c.do("PUT", "/configs?force=0", map[string]string{"path": path})
+	_, err := c.call("PUT", "/configs?force=0", map[string]string{"path": path})
 	return err
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/paths"
 	"github.com/deadship2003/panixy/internal/statemode"
@@ -24,16 +23,10 @@ import (
 
 // runInstall 仅部署服务与系统设置(文件已就位;deploy 的内部步骤)。
 func runInstall(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runInstallBody(p, cmd, args) })
+}
 
+func runInstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	mode := statemode.Read(p.State)
 	logx.Step("[1/4] 预检:内核可执行 + 配置过 -t")
 	if err := checkBinary(p); err != nil {
@@ -85,16 +78,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return deployDryRun(cmd, args)
 	}
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runDeployBody(p, cmd, args) })
+}
 
+func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	pkgDir, err := os.Getwd() // deploy 须在解压的离线包根目录运行
 	if err != nil {
 		return err
@@ -185,15 +172,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 // runUninstall 停服务、清防火墙与单元;保留 /opt 数据与配置。
 func runUninstall(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runUninstallBody(p, cmd, args) })
+}
+
+func runUninstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	systemdunit.Stop()
 	if fw, err := firewall.New(); err == nil {
 		if err := fw.Teardown(); err != nil {
@@ -209,18 +191,13 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 // runModeSwitch 原子切换:旧防火墙卸载 → 配置变体 → -t → 重启 → 新防火墙 → 验证。
 func modeSwitch(want string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
 	if want != "tun" && want != "tproxy" {
 		return fmt.Errorf("模式只能是 tun 或 tproxy")
 	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return modeSwitchBody(p, want) })
+}
+
+func modeSwitchBody(p paths.Paths, want string) error {
 	old := statemode.Read(p.State)
 	if old == want {
 		logx.Info("当前已是 %s 模式", want)

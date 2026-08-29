@@ -10,7 +10,6 @@ import (
 
 	"github.com/deadship2003/panixy/internal/config"
 	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/paths"
 	"github.com/deadship2003/panixy/internal/systemdunit"
@@ -20,21 +19,15 @@ import (
 func runMergeConf(cmd *cobra.Command, args []string) error {
 	// --rollback:从 premerge 备份恢复
 	if rb, _ := cmd.Flags().GetBool("rollback"); rb {
-		return doMergeRollback()
+		return mergeRollback()
 	}
+	return withRootLock(func(p paths.Paths) error { return runMergeConfBody(p, cmd, args) })
+}
 
-	if err := needRoot(); err != nil {
-		return err
-	}
+func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("用法: panixy merge-conf <个人配置.yaml>(叠加融合;--dry-run 试运行;--rollback 回滚)")
 	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	dnsMode, _ := cmd.Flags().GetString("dns")
@@ -102,27 +95,20 @@ func runMergeConf(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func doMergeRollback() error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
-	if !config.PremergeExists(p.Conf) {
-		return fmt.Errorf("无 premerge 备份(%s.panixy-premerge 不存在)", p.Conf)
-	}
-	if err := config.PremergeRestore(p.Conf); err != nil {
-		return fmt.Errorf("恢复失败: %w", err)
-	}
-	if err := systemdunit.Restart(); err != nil {
-		return fmt.Errorf("配置已恢复但重启失败: %w", err)
-	}
-	logx.Info("已从 premerge 备份恢复并重启")
-	return nil
+func mergeRollback() error {
+	return withRootLock(func(p paths.Paths) error {
+		if !config.PremergeExists(p.Conf) {
+			return fmt.Errorf("无 premerge 备份(%s.panixy-premerge 不存在)", p.Conf)
+		}
+		if err := config.PremergeRestore(p.Conf); err != nil {
+			return fmt.Errorf("恢复失败: %w", err)
+		}
+		if err := systemdunit.Restart(); err != nil {
+			return fmt.Errorf("配置已恢复但重启失败: %w", err)
+		}
+		logx.Info("已从 premerge 备份恢复并重启")
+		return nil
+	})
 }
 
 func printMergeReport(r *config.MergeReport, _ []string) {

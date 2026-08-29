@@ -34,14 +34,9 @@ func needRoot() error {
 	return nil
 }
 
-// mihomoTest 用内核 -t 校验配置(CombinedOutput:内核日志走 stdout,必须合并捕获)。
-func mihomoTest(p paths.Paths, conf string) (string, error) {
-	return execx.Run(p.Bin, "-t", "-f", conf, "-d", p.Root)
-}
-
-// runSetSub 实现 set-sub:预取→校验→增量编辑→-t→预置缓存→重启→验证节点数。
-// 任何一步失败恢复备份(带缓存),绝不假成功。
-func runSetSub(cmd *cobra.Command, args []string) error {
+// withRootLock 统一「root 校验 + 进程锁」样板:校验通过后把路径交给 fn,返回时自动解锁。
+// 进程内重入由 locker 支持,deploy→install、init→set-sub 等嵌套调用天然安全。
+func withRootLock(fn func(p paths.Paths) error) error {
 	if err := needRoot(); err != nil {
 		return err
 	}
@@ -51,7 +46,21 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer lk.Unlock()
+	return fn(p)
+}
 
+// mihomoTest 用内核 -t 校验配置(CombinedOutput:内核日志走 stdout,必须合并捕获)。
+func mihomoTest(p paths.Paths, conf string) (string, error) {
+	return execx.Run(p.Bin, "-t", "-f", conf, "-d", p.Root)
+}
+
+// runSetSub 实现 set-sub:预取→校验→增量编辑→-t→预置缓存→重启→验证节点数。
+// 任何一步失败恢复备份(带缓存),绝不假成功。
+func runSetSub(cmd *cobra.Command, args []string) error {
+	return withRootLock(func(p paths.Paths) error { return runSetSubBody(p, cmd, args) })
+}
+
+func runSetSubBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	file, _ := cmd.Flags().GetString("file")
 	groups, _ := cmd.Flags().GetStringSlice("group")
@@ -60,6 +69,7 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 	}
 
 	var url string
+	var err error
 	if len(args) > 0 {
 		url = args[0]
 	} else {
@@ -201,15 +211,10 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 }
 
 func runSubRm(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runSubRmBody(p, cmd, args) })
+}
+
+func runSubRmBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	if err := subscribe.CheckName(name); err != nil {
 		return err

@@ -11,7 +11,6 @@ import (
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
 	"github.com/deadship2003/panixy/internal/paths"
@@ -60,16 +59,10 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return redeployDryRun(cmd)
 	}
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
+	return withRootLock(func(p paths.Paths) error { return runRedeployBody(p, cmd, args) })
+}
 
+func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// 预检:必须已安装(全新装用 deploy);离线包资产齐全;无 bash 旧版残留
 	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
 		return fmt.Errorf("未检测到已安装的 panixy(内核/配置/CLI 缺失)—— 全新安装请用 sudo ./panixy deploy")
