@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -89,18 +88,12 @@ func runSetSubBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 		logx.Info("使用本地订阅文件: %s(跳过联网拉取)", file)
 	} else {
-		api := mihomoapi.NewFromConf(p.Conf)
-		var buf bytes.Buffer
-		if err := subscribe.Fetch(url, api.Proxy(), subscribe.UA(), &buf); err != nil {
-			return fmt.Errorf(`订阅拉取失败(直连与经本机代理均不通): %v
+		if body, err = fetchSubBody(url, mihomoapi.NewFromConf(p.Conf)); err != nil {
+			return fmt.Errorf(`订阅拉取或校验失败: %v
   提示:命令行传 URL 须整体加单引号(含 & ? 等字符会被 shell 拆掉),或直接
   sudo panixy set-sub 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
   sudo panixy set-sub --file <订阅文件>),或指定可用代理 PANIXY_PROXY`, err)
 		}
-		if err := subscribe.Validate(buf.Bytes()); err != nil {
-			return err
-		}
-		body = buf.Bytes()
 	}
 
 	// 归一化:sing-box/Surge/base64-Clash 等非 Clash YAML 格式统一转成 Clash YAML;
@@ -242,13 +235,11 @@ func runSubRmBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	os.Remove(filepath.Join(p.Proxies, name+".yaml"))
 	if err := systemdunit.Restart(); err != nil {
-		config.Restore(p.Conf)
-		systemdunit.Restart()
+		rollbackRestart(p)
 		return fmt.Errorf("重启失败,已恢复")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		config.Restore(p.Conf)
-		systemdunit.Restart()
+		rollbackRestart(p)
 		return fmt.Errorf("重启后健康检查超时,已恢复:%w", err)
 	}
 	config.ClearBackup(p.Conf)
@@ -352,4 +343,10 @@ func firstErrLine(out string) string {
 		return out[len(out)-160:]
 	}
 	return out
+}
+
+// rollbackRestart 事务失败兜底:恢复配置备份并重启服务,使内核回到事务前状态。
+func rollbackRestart(p paths.Paths) {
+	config.Restore(p.Conf)
+	systemdunit.Restart()
 }

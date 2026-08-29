@@ -70,13 +70,11 @@ func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	logx.Step("热重载未生效,改用重启方式")
 	if err := systemdunit.Restart(); err != nil {
-		config.Restore(p.Conf)
-		systemdunit.Restart()
+		rollbackRestart(p)
 		return fmt.Errorf("重启失败,已恢复原配置")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		config.Restore(p.Conf)
-		systemdunit.Restart()
+		rollbackRestart(p)
 		return fmt.Errorf("重启后健康检查未过,已恢复原配置:%w", err)
 	}
 	config.ClearBackup(p.Conf)

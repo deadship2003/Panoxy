@@ -199,6 +199,12 @@ func modeSwitch(want string) error {
 
 func modeSwitchBody(p paths.Paths, want string) error {
 	old := statemode.Read(p.State)
+	// 回滚:恢复配置 + 状态文件 + 重启(仅用于已写状态后的重启/健康失败路径)。
+	rollbackTo := func() {
+		config.Restore(p.Conf)
+		statemode.Write(p.State, statemode.State{ProxyMode: old})
+		systemdunit.Restart()
+	}
 	if old == want {
 		logx.Info("当前已是 %s 模式", want)
 		return nil
@@ -232,15 +238,11 @@ func modeSwitchBody(p paths.Paths, want string) error {
 	}
 	statemode.Write(p.State, statemode.State{ProxyMode: want})
 	if err := systemdunit.Restart(); err != nil {
-		config.Restore(p.Conf)
-		statemode.Write(p.State, statemode.State{ProxyMode: old})
-		systemdunit.Restart()
+		rollbackTo()
 		return fmt.Errorf("重启失败,已回滚到 %s", old)
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		config.Restore(p.Conf)
-		statemode.Write(p.State, statemode.State{ProxyMode: old})
-		systemdunit.Restart()
+		rollbackTo()
 		return fmt.Errorf("切换后健康检查超时,已回滚到 %s:%w", old, err)
 	}
 	config.ClearBackup(p.Conf)

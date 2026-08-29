@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/deadship2003/panixy/internal/httpx"
 	"github.com/deadship2003/panixy/internal/logx"
 )
 
@@ -26,11 +26,9 @@ func UA() string {
 // proxy 形如 http://127.0.0.1:33833,空则只试直连。
 func Fetch(url, proxy, ua string, w io.Writer) error {
 	try := func(p string) error {
-		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} // 订阅常见自签/IP 直连
+		tr := httpx.Transport(p)
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // 订阅常见自签/IP 直连
 		hc := &http.Client{Timeout: 20 * time.Second, Transport: tr}
-		if p != "" {
-			tr.Proxy = http.ProxyURL(mustURL(p))
-		}
 		req, _ := http.NewRequest("GET", url, nil)
 		req.Header.Set("User-Agent", ua)
 		resp, err := hc.Do(req)
@@ -102,7 +100,6 @@ func CheckURL(u string) error {
 	return nil
 }
 
-func mustURL(s string) *url.URL { u, _ := url.Parse(s); return u }
 func orDefault(s, d string) string {
 	if s != "" {
 		return s

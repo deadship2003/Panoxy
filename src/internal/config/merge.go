@@ -44,12 +44,8 @@ type MergeReport struct {
 
 // PremergeBackup 融合前备份(供 --rollback 恢复)。
 func PremergeBackup(confPath string) (string, error) {
-	b, err := os.ReadFile(confPath)
-	if err != nil {
-		return "", err
-	}
 	dst := confPath + ".panixy-premerge"
-	if err := os.WriteFile(dst, b, 0o644); err != nil {
+	if err := backupFile(confPath, ".panixy-premerge"); err != nil {
 		return "", err
 	}
 	return dst, nil
@@ -57,11 +53,10 @@ func PremergeBackup(confPath string) (string, error) {
 
 // PremergeRestore 从 premerge 备份恢复。
 func PremergeRestore(confPath string) error {
-	b, err := os.ReadFile(confPath + ".panixy-premerge")
-	if err != nil {
+	if err := restoreFile(confPath, ".panixy-premerge"); err != nil {
 		return fmt.Errorf("无 premerge 备份: %w", err)
 	}
-	return os.WriteFile(confPath, b, 0o644)
+	return nil
 }
 
 // PremergeExists 判断 premerge 备份是否存在。

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deadship2003/panixy/internal/httpx"
 	"github.com/deadship2003/panixy/internal/logx"
 )
 
@@ -24,11 +24,7 @@ import (
 func Latest(repo, proxy string) (string, error) {
 	api := "https://api.github.com/repos/" + repo + "/releases/latest"
 	fetch := func(p string) (string, error) {
-		hc := &http.Client{Timeout: 15 * time.Second}
-		if p != "" {
-			u, _ := url.Parse(p)
-			hc.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
-		}
+		hc := httpx.Client(p, 15*time.Second)
 		resp, err := hc.Get(api)
 		if err != nil {
 			return "", err
@@ -51,11 +47,7 @@ func Latest(repo, proxy string) (string, error) {
 // Download 下载 url 到 dst(经代理优先,失败直连;>=300 视为失败)。
 func Download(urlStr, proxy, dst string) error {
 	try := func(p string) error {
-		hc := &http.Client{Timeout: 300 * time.Second}
-		if p != "" {
-			u, _ := url.Parse(p)
-			hc.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
-		}
+		hc := httpx.Client(p, 300*time.Second)
 		resp, err := hc.Get(urlStr)
 		if err != nil {
 			return err
@@ -142,11 +134,7 @@ func DownloadProgress(urlStr, proxy, dst, label string) error {
 }
 
 func downloadOnce(urlStr, proxy, dst, label string, timeout time.Duration) error {
-	hc := &http.Client{Timeout: timeout}
-	if proxy != "" {
-		u, _ := url.Parse(proxy)
-		hc.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
-	}
+	hc := httpx.Client(proxy, timeout)
 	req, _ := http.NewRequest("GET", urlStr, nil)
 	resp, err := hc.Do(req)
 	if err != nil {

@@ -403,24 +403,28 @@ func (e *Editor) PruneDerived(nodeNames []string) int {
 	return len(prune)
 }
 
-// Backup / Restore 事务配套:修改前备份,失败恢复。
-func Backup(path string) error {
+// Backup / Restore / ClearBackup 事务配套:修改前备份,失败恢复。
+// .panixy-bak 与 merge 的 .panixy-premerge 共用 backupFile/restoreFile 实现。
+func Backup(path string) error  { return backupFile(path, ".panixy-bak") }
+func Restore(path string) error { return restoreFile(path, ".panixy-bak") }
+func ClearBackup(path string)   { os.Remove(path + ".panixy-bak") }
+
+// backupFile / restoreFile 是 .panixy-bak 与 .panixy-premerge 的共享实现(仅后缀不同)。
+func backupFile(path, suffix string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path+".panixy-bak", b, 0o644)
+	return os.WriteFile(path+suffix, b, 0o644)
 }
 
-func Restore(path string) error {
-	b, err := os.ReadFile(path + ".panixy-bak")
+func restoreFile(path, suffix string) error {
+	b, err := os.ReadFile(path + suffix)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, b, 0o644)
 }
-
-func ClearBackup(path string) { os.Remove(path + ".panixy-bak") }
 
 // SetMode 切换 tun/tproxy 配置变体(mode 命令用;tun 块与模板常量保持一致)。
 func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
