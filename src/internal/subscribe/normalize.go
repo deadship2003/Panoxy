@@ -193,7 +193,8 @@ func singboxNodeNames(b []byte) ([]string, error) {
 	return out, nil
 }
 
-func surgeNodeNames(b []byte) ([]string, error) {
+// surgeProxyLines 返回 Surge 配置 [Proxy] 段内的非注释行(节点名提取与节点转换共用)。
+func surgeProxyLines(b []byte) []string {
 	var out []string
 	inProxy := false
 	for _, line := range strings.Split(string(b), "\n") {
@@ -205,8 +206,16 @@ func surgeNodeNames(b []byte) ([]string, error) {
 		if !inProxy || t == "" || strings.HasPrefix(t, ";") || strings.HasPrefix(t, "#") {
 			continue
 		}
-		if i := strings.Index(t, "="); i > 0 {
-			out = append(out, strings.TrimSpace(t[:i]))
+		out = append(out, t)
+	}
+	return out
+}
+
+func surgeNodeNames(b []byte) ([]string, error) {
+	var out []string
+	for _, line := range surgeProxyLines(b) {
+		if i := strings.Index(line, "="); i > 0 {
+			out = append(out, strings.TrimSpace(line[:i]))
 		}
 	}
 	return out, nil
@@ -397,17 +406,8 @@ func applySingboxTransport(p map[string]any, tr map[string]any) {
 
 func surgeToClash(b []byte) ([]byte, error) {
 	var proxies []map[string]any
-	inProxy := false
-	for _, line := range strings.Split(string(b), "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
-			inProxy = strings.EqualFold(strings.Trim(t, "[]"), "Proxy")
-			continue
-		}
-		if !inProxy || t == "" || strings.HasPrefix(t, ";") || strings.HasPrefix(t, "#") {
-			continue
-		}
-		if p, ok := surgeProxy(t); ok {
+	for _, line := range surgeProxyLines(b) {
+		if p, ok := surgeProxy(line); ok {
 			proxies = append(proxies, p)
 		}
 	}
@@ -561,14 +561,8 @@ func nodeCount(b []byte) int {
 		}
 	case FormatSurge:
 		n := 0
-		inProxy := false
-		for _, line := range strings.Split(string(b), "\n") {
-			t := strings.TrimSpace(line)
-			if strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") {
-				inProxy = strings.EqualFold(strings.Trim(t, "[]"), "Proxy")
-				continue
-			}
-			if inProxy && !strings.HasPrefix(t, ";") && !strings.HasPrefix(t, "#") && strings.Contains(t, "=") {
+		for _, line := range surgeProxyLines(b) {
+			if strings.Contains(line, "=") {
 				n++
 			}
 		}

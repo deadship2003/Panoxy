@@ -69,11 +69,8 @@ func Remove(p paths.Paths) {
 	_, _ = execx.Run("systemctl", "daemon-reload")
 }
 
-// IsActive 以退出码判断(--quiet 无输出)。
-func IsActive() bool {
-	_, err := execx.Run("systemctl", "is-active", "--quiet", "panixy.service")
-	return err == nil
-}
+// IsActive 服务是否处于 active 状态(由 Active 派生,单一事实源)。
+func IsActive() bool { return Active() == "active" }
 
 // Active 返回服务状态字符串(active/inactive/failed...)。
 func Active() string {

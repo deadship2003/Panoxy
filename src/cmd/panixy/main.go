@@ -117,7 +117,7 @@ func cmdTry() *cobra.Command {
 	c.Flags().String("name", "SUB", "订阅 provider 名称")
 	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
 	c.Flags().String("proxy-mode", "tun", "tun | tproxy(沙箱仅影响配置渲染)")
-	c.Flags().String("secret", "deadship", "面板/API 密钥")
+	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
 	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认 /opt/panixy/bin/mihomo)")
 	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
 	c.Flags().String("dir", "", "沙箱目录(默认 /tmp/panixy-try-<时间戳>)")
@@ -183,7 +183,7 @@ func cmdInit() *cobra.Command {
 	c.Flags().String("name", "SUB", "订阅 provider 名称")
 	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
 	c.Flags().String("proxy-mode", "tun", "tun | tproxy")
-	c.Flags().String("secret", "deadship", "面板/API 密钥")
+	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
 	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认取安装目录下 bin/mihomo)")
 	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
 	c.Flags().Bool("dry-run", false, "试运行模式:环境/下载策略/落位/配置渲染预览,不执行不需要 root")
@@ -208,7 +208,7 @@ func cmdDeploy() *cobra.Command {
 	c.Flags().String("name", "SUB", "订阅 provider 名称(仅 [a-zA-Z0-9_-])")
 	c.Flags().String("file", "", "本地订阅 YAML 文件(无外网时离线导入)")
 	c.Flags().String("proxy-mode", "tun", "透明代理模式: tun | tproxy")
-	c.Flags().String("secret", "deadship", "面板/API 密钥")
+	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
 	c.Flags().Bool("dry-run", false, "试运行模式:环境/资产/下载策略/配置渲染预览,不执行不需要 root")
 	return c
 }

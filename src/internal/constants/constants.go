@@ -26,6 +26,7 @@ const (
 	DnsListenPort = 1053 // mihomo DNS 监听端口(防火墙 redirect 目标)
 	MixedPortDef  = 33833
 	ApiPortDef    = 9999
+	DefSecret     = "deadship" // 面板/API 默认密钥(init/deploy --secret 默认值,与 API 客户端回退同源)
 
 	CoreKeep = 3 // 内核备份保留份数
 )

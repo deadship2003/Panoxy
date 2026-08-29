@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deadship2003/panixy/internal/constants"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,7 +39,7 @@ func NewFromConf(confPath string) *Client {
 	}
 	c.Secret = raw.Secret
 	if c.Secret == "" {
-		c.Secret = "deadship"
+		c.Secret = constants.DefSecret
 	}
 	c.Mixed = raw.MixedPort
 	api := "http://127.0.0.1:" + portOf(raw.ExternalController, 9999)
