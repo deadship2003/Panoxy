@@ -63,14 +63,8 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		url = args[0]
 	} else {
-		// 粘贴模式:读整行,不经 shell 解析(URL 含 & ? 无需引号)
-		if isTTY() {
-			fmt.Fprint(os.Stderr, "请粘贴订阅链接(整行粘贴后回车,无需加引号): ")
-		}
-		line, _ := readLine()
-		url = line
-		if url == "" {
-			return fmt.Errorf("用法: panixy set-sub [订阅URL] [--file 本地文件](或无参数进入粘贴模式)")
+		if url, err = promptSubURL("panixy set-sub [订阅URL] [--file 本地文件](或无参数进入粘贴模式)"); err != nil {
+			return err
 		}
 	}
 	if err := subscribe.CheckURL(url); err != nil {
@@ -299,6 +293,18 @@ func readLine() (string, error) {
 	r := bufio.NewReader(os.Stdin)
 	s, err := r.ReadString('\n')
 	return strings.TrimSpace(s), err
+}
+
+// promptSubURL 无 URL 参数时的粘贴模式:读整行(URL 含 & ? 无需加引号),空输入返回用法错误。
+func promptSubURL(usage string) (string, error) {
+	if isTTY() {
+		fmt.Fprint(os.Stderr, "请粘贴订阅链接(整行粘贴后回车,无需加引号): ")
+	}
+	line, _ := readLine()
+	if line == "" {
+		return "", fmt.Errorf("用法: %s", usage)
+	}
+	return line, nil
 }
 
 // collectNodeNames 汇总全部 provider 的节点名(含本次导入 body),供派生组剪枝用。

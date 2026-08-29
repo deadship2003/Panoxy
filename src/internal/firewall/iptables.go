@@ -17,16 +17,8 @@ type iptBackend struct{}
 
 func (i *iptBackend) Name() string { return "iptables" }
 
-func ipt(line string) error {
-	out, err := exec.Command("sh", "-c", line).CombinedOutput()
-	logx.DebugCmd("sh", []string{"-c", line}, string(out), err)
-	if err != nil && !iptTolerant(out) {
-		return fmt.Errorf("%s 失败: %s", line, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func ipt6(line string) error {
+// runIptCmd 执行一条 iptables/ip6tables 命令(命令由常量生成,无注入面)。
+func runIptCmd(line string) error {
 	out, err := exec.Command("sh", "-c", line).CombinedOutput()
 	logx.DebugCmd("sh", []string{"-c", line}, string(out), err)
 	if err != nil && !iptTolerant(out) {
@@ -44,7 +36,7 @@ func iptTolerant(out []byte) bool {
 
 func (i *iptBackend) CleanAll() error {
 	for _, cmd := range BuildIptCleanCmds() {
-		if err := runIptLine(cmd); err != nil {
+		if err := runIptCmd(cmd); err != nil {
 			return err
 		}
 	}
@@ -60,7 +52,7 @@ func (i *iptBackend) ApplyDnsHijack() error {
 		return err
 	}
 	for _, cmd := range BuildIptDnsCmds(constants.DnsListenPort, constants.MarkSelf) {
-		if err := runIptLine(cmd); err != nil {
+		if err := runIptCmd(cmd); err != nil {
 			return err
 		}
 	}
@@ -73,7 +65,7 @@ func (i *iptBackend) ApplyTproxy() error {
 		return err
 	}
 	for _, cmd := range BuildIptTproxyCmds(constants.MarkSelf, constants.MarkTproxy, constants.TproxyPort) {
-		if err := runIptLine(cmd); err != nil {
+		if err := runIptCmd(cmd); err != nil {
 			return err
 		}
 	}
@@ -93,12 +85,4 @@ func (i *iptBackend) HasStaleRules() (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-// runIptLine 按前缀分发到 iptables/ip6tables(命令为常量生成,无注入面)。
-func runIptLine(cmd string) error {
-	if strings.HasPrefix(cmd, "ip6tables ") {
-		return ipt6(cmd)
-	}
-	return ipt(cmd)
 }

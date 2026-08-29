@@ -78,13 +78,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		if url == "" {
-			if isTTY() {
-				fmt.Fprint(os.Stderr, "请粘贴订阅链接(整行粘贴后回车,无需加引号): ")
-			}
-			line, _ := readLine()
-			url = line
-			if url == "" {
-				return fmt.Errorf("用法: panixy init [订阅URL] [--file 本地订阅文件]")
+			if url, err = promptSubURL("panixy init [订阅URL] [--file 本地订阅文件]"); err != nil {
+				return err
 			}
 		}
 		if err := subscribe.CheckURL(url); err != nil {
