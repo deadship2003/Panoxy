@@ -1,5 +1,5 @@
-// Package locker 提供 flock 文件互斥:写命令(deploy/install/set-sub/sub-rm/upgrade/
-// rollback/uninstall/mode)加锁,读命令(status/log/check/sub-list)不加。
+// Package locker 提供 flock 文件互斥:写命令(deploy/install/sub import/del/upgrade/
+// rollback/uninstall/mode)加锁,读命令(status/log/check/sub list)不加。
 package locker
 
 import (

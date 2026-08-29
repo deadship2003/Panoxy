@@ -72,9 +72,9 @@ exit 0
 	} {
 		os.Setenv(k, v)
 	}
-	// 复用环境:之后可在同 shell 对沙箱跑 status/sub-list 等
+	// 复用环境:之后可在同 shell 对沙箱跑 status/sub list 等
 	envFile := filepath.Join(dir, "env.sh")
-	os.WriteFile(envFile, []byte(fmt.Sprintf(`# source 后即可对本沙箱执行 panixy status / sub-list / set-sub 等
+	os.WriteFile(envFile, []byte(fmt.Sprintf(`# source 后即可对本沙箱执行 panixy status / sub list / sub import 等
 export PANIXY_ROOT=%[1]q
 export PANIXY_CONF=%[2]q
 export PANIXY_UNIT_DIR=%[3]q

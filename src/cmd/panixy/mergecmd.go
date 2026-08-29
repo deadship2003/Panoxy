@@ -90,7 +90,7 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		systemdunit.Restart()
 		return fmt.Errorf("融合后健康检查超时,已从 premerge 恢复:%w", err)
 	}
-	logx.Info("融合完成:panixy sub-list 查看订阅;分组/节点选择在 Web 面板操作")
+	logx.Info("融合完成:panixy sub list 查看订阅;分组/节点选择在 Web 面板操作")
 	logx.Info("回滚: sudo panixy merge-conf --rollback(恢复到融合前)")
 	return nil
 }

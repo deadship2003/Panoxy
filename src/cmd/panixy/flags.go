@@ -6,7 +6,7 @@ import (
 	"github.com/deadship2003/panixy/internal/constants"
 )
 
-// 订阅与部署参数的统一注册:init/deploy/try/set-sub 共享同一套 flag,
+// 订阅与部署参数的统一注册:init/deploy/try/sub import 共享同一套 flag,
 // 保证默认值与描述一致,避免日后只改一处造成漂移(单一事实源)。
 
 // addSubSourceFlags 订阅来源:--name/--file。

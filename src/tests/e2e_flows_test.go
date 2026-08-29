@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// e2e 主线:deploy(预置无tun配置)→ set-sub 成功/失败/离线 → sub-rm → mode 配置级切换。
+// e2e 主线:deploy(预置无tun配置)→ sub import 成功/失败/离线 → sub del → mode 配置级切换。
 
 func TestE2EDeployWithPresetConf(t *testing.T) {
 	e := newEnv(t)
@@ -42,11 +42,11 @@ func TestE2EDeployWithPresetConf(t *testing.T) {
 func TestE2ESetSubFlows(t *testing.T) {
 	e := newEnv(t)
 	os.WriteFile(e.conf, []byte(noTunConf(t, e.apiPort, e.mixPort, e.dnsPort, false)), 0o644)
-	bootSandbox(t, e) // 直接启动内核(set-sub 自带重启,先有实例以验证节点数)
+	bootSandbox(t, e) // 直接启动内核(sub import 自带重启,先有实例以验证节点数)
 	srv := fakeSubServer(t, 4)
 
 	// 1) 可达订阅:成功 + 节点数验证
-	out := e.run(t, "set-sub", "--name", "main", srv.URL+"/sub?token=ok&sid=x")
+	out := e.run(t, "sub", "import", "--name", "main", srv.URL+"/sub?token=ok&sid=x")
 	if !strings.Contains(out, "加载成功:4 个节点") {
 		t.Fatalf("未见节点数报告:\n%s", out)
 	}
@@ -62,8 +62,8 @@ func TestE2ESetSubFlows(t *testing.T) {
 
 	// 2) 不可达订阅:诚实失败 + 配置零改动
 	before, _ := os.ReadFile(e.conf)
-	out = e.runFail(t, "set-sub", "http://192.0.2.1:9/dead")
-	if !strings.Contains(out, "订阅拉取失败") {
+	out = e.runFail(t, "sub", "import", "http://192.0.2.1:9/dead")
+	if !strings.Contains(out, "订阅拉取或校验失败") {
 		t.Fatalf("报错不符:\n%s", out)
 	}
 	after, _ := os.ReadFile(e.conf)
@@ -74,21 +74,21 @@ func TestE2ESetSubFlows(t *testing.T) {
 	// 3) 离线导入(--file,不联网)
 	seed := filepath.Join(e.dir, "seed.yaml")
 	os.WriteFile(seed, []byte("proxies:\n  - name: offline-x\n    type: socks5\n    server: 127.0.0.1\n    port: 1080\n"), 0o644)
-	out = e.run(t, "set-sub", "--name", "backup", "--file", seed, "https://blocked.example.com/x?token=w")
+	out = e.run(t, "sub", "import", "--name", "backup", "--file", seed, "https://blocked.example.com/x?token=w")
 	if !strings.Contains(out, "本地订阅文件") {
 		t.Fatalf("未见离线导入日志:\n%s", out)
 	}
 
-	// 4) sub-list:两个订阅都在,单订阅状态可见
-	out = e.run(t, "sub-list")
+	// 4) sub list:两个订阅都在,单订阅状态可见
+	out = e.run(t, "sub", "list")
 	for _, want := range []string{"main", "backup"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("sub-list 缺 %s:\n%s", want, out)
+			t.Fatalf("sub list 缺 %s:\n%s", want, out)
 		}
 	}
 
 	// 5) 删除最后一个订阅被 -t 拒绝(组失去 use),先删 backup 成功
-	e.run(t, "sub-rm", "--name", "backup")
+	e.run(t, "sub", "del", "--name", "backup")
 	if b, _ := os.ReadFile(e.conf); strings.Contains(string(b), "backup:") {
 		t.Fatal("backup 未删除")
 	}

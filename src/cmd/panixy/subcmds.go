@@ -34,7 +34,7 @@ func needRoot() error {
 }
 
 // withRootLock 统一「root 校验 + 进程锁」样板:校验通过后把路径交给 fn,返回时自动解锁。
-// 进程内重入由 locker 支持,deploy→install、init→set-sub 等嵌套调用天然安全。
+// 进程内重入由 locker 支持,deploy→install、init→sub import 等嵌套调用天然安全。
 func withRootLock(fn func(p paths.Paths) error) error {
 	if err := needRoot(); err != nil {
 		return err
@@ -53,13 +53,13 @@ func mihomoTest(p paths.Paths, conf string) (string, error) {
 	return execx.Run(p.Bin, "-t", "-f", conf, "-d", p.Root)
 }
 
-// runSetSub 实现 set-sub:预取→校验→增量编辑→-t→预置缓存→重启→验证节点数。
+// runSubImport 实现 sub import:预取→校验→增量编辑→-t→预置缓存→重启→验证节点数。
 // 任何一步失败恢复备份(带缓存),绝不假成功。
-func runSetSub(cmd *cobra.Command, args []string) error {
-	return withRootLock(func(p paths.Paths) error { return runSetSubBody(p, cmd, args) })
+func runSubImport(cmd *cobra.Command, args []string) error {
+	return withRootLock(func(p paths.Paths) error { return runSubImportBody(p, cmd, args) })
 }
 
-func runSetSubBody(p paths.Paths, cmd *cobra.Command, args []string) error {
+func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	file, _ := cmd.Flags().GetString("file")
 	groups, _ := cmd.Flags().GetStringSlice("group")
@@ -72,7 +72,7 @@ func runSetSubBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		url = args[0]
 	} else {
-		if url, err = promptSubURL("panixy set-sub [订阅URL] [--file 本地文件](或无参数进入粘贴模式)"); err != nil {
+		if url, err = promptSubURL("panixy sub import [订阅URL] [--file 本地文件](或无参数进入粘贴模式)"); err != nil {
 			return err
 		}
 	}
@@ -91,8 +91,8 @@ func runSetSubBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if body, err = fetchSubBody(url, mihomoapi.NewFromConf(p.Conf)); err != nil {
 			return fmt.Errorf(`订阅拉取或校验失败: %v
   提示:命令行传 URL 须整体加单引号(含 & ? 等字符会被 shell 拆掉),或直接
-  sudo panixy set-sub 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
-  sudo panixy set-sub --file <订阅文件>),或指定可用代理 PANIXY_PROXY`, err)
+  sudo panixy sub import 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
+  sudo panixy sub import --file <订阅文件>),或指定可用代理 PANIXY_PROXY`, err)
 		}
 	}
 
@@ -203,11 +203,11 @@ func runSetSubBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runSubRm(cmd *cobra.Command, args []string) error {
-	return withRootLock(func(p paths.Paths) error { return runSubRmBody(p, cmd, args) })
+func runSubDel(cmd *cobra.Command, args []string) error {
+	return withRootLock(func(p paths.Paths) error { return runSubDelBody(p, cmd, args) })
 }
 
-func runSubRmBody(p paths.Paths, cmd *cobra.Command, args []string) error {
+func runSubDelBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	if err := subscribe.CheckName(name); err != nil {
 		return err

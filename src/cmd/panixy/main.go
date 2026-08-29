@@ -60,7 +60,7 @@ func NewRootCmd() *cobra.Command {
   sudo ./panixy deploy '订阅链接'         # 从离线包部署
 
 日常管理:
-  sudo panixy set-sub '订阅链接'           # 回车粘贴模式,URL 无需加引号
+  sudo panixy sub import '订阅链接'        # 回车粘贴模式,URL 无需加引号
   sudo panixy merge-conf ~/my.yaml        # 融合个人配置(--dry-run 预览)
   panixy status                          # 健康一览(服务/防火墙/订阅/出网)
   sudo panixy mode tproxy               # 切换 TPROXY 模式(需内核 xt_TPROXY)
@@ -87,7 +87,7 @@ func NewRootCmd() *cobra.Command {
 		}
 	}
 	root.AddCommand(
-		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
+		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdInstall(), cmdSub(),
 		cmdTry(), cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
 		cmdFw(), cmdMan(),
@@ -214,9 +214,22 @@ func cmdInstall() *cobra.Command {
 	}
 }
 
-func cmdSetSub() *cobra.Command {
+func cmdSub() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "set-sub [订阅URL]",
+		Use:   "sub",
+		Short: "订阅管理:导入/删除/列出 proxy-providers",
+		Long: `管理 mihomo 订阅(proxy-providers):导入或更换、删除、查看状态与节点数。
+
+订阅导入经 yaml 增量编辑写入 proxy-providers[NAME](复用锚点 <<: *p),并预置缓存、
+重启内核、验证节点数>0,任一步失败自动回滚。`,
+	}
+	c.AddCommand(cmdSubImport(), cmdSubDel(), cmdSubList())
+	return c
+}
+
+func cmdSubImport() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "import [订阅URL]",
 		Short: "导入/更换订阅:预取→预置缓存→重启→验证节点数>0",
 		Long: `导入或更换订阅。无参数时进入粘贴模式(读整行,URL 含 & ? 等字符无需引号)。
 
@@ -226,19 +239,19 @@ func cmdSetSub() *cobra.Command {
 (热重载不刷新 provider,mihomo 限制)→ 查询该 provider 节点数,=0 自动回滚。
 
 前置要求:配置中存在锚点 &p(基础模板自带)。`,
-		Example: "  sudo panixy set-sub --name airport2 'https://example.com/sub2'\n  sudo panixy set-sub   # 粘贴模式",
-		RunE:    runSetSub,
+		Example: "  sudo panixy sub import --name airport2 'https://example.com/sub2'\n  sudo panixy sub import   # 粘贴模式",
+		RunE:    runSubImport,
 	}
 	addSubSourceFlags(c)
 	c.Flags().StringSlice("group", nil, "限定融合的组(默认:全部 use 非空的组/锚点持有者)")
 	return c
 }
 
-func cmdSubRm() *cobra.Command {
+func cmdSubDel() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "sub-rm --name NAME",
+		Use:   "del --name NAME",
 		Short: "删除指定订阅 provider(备份、校验、重启;失败回滚)",
-		RunE:  runSubRm,
+		RunE:  runSubDel,
 	}
 	c.Flags().String("name", "", "要删除的 provider 名称(必填)")
 	_ = c.MarkFlagRequired("name")
@@ -247,7 +260,7 @@ func cmdSubRm() *cobra.Command {
 
 func cmdSubList() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "sub-list",
+		Use:   "list",
 		Short: "列出全部订阅:状态/节点数/错误(单订阅故障不影响其他展示)",
 		Long: `读取配置全部 proxy-providers,逐个调用 mihomo API 查询状态。
 
@@ -494,19 +507,23 @@ func roffToText(b []byte) string {
 	return strings.Join(out, "\n") + "\n"
 }
 
-// genAllMan 生成根页 + 每个子命令页(cobra doc.GenManTree 只渲染传入命令自身,
-// 不含 flags 之外的子命令页 —— 需遍历)。
+// genAllMan 生成根页 + 全部子命令页(cobra doc.GenManTree 只渲染传入命令自身,
+// 不含子命令页 —— 需递归遍历;sub 等父命令下还挂 import/del/list)。
 func genAllMan(root *cobra.Command, hdr *doc.GenManHeader, dir string) error {
-	if err := doc.GenManTree(root, hdr, dir); err != nil {
-		return err
-	}
-	for _, sub := range root.Commands() {
-		if sub.Name() == "help" || sub.Name() == "completion" {
-			continue
-		}
-		if err := doc.GenManTree(sub, hdr, dir); err != nil {
+	var walk func(c *cobra.Command) error
+	walk = func(c *cobra.Command) error {
+		if err := doc.GenManTree(c, hdr, dir); err != nil {
 			return err
 		}
+		for _, sub := range c.Commands() {
+			if sub.Name() == "help" || sub.Name() == "completion" {
+				continue
+			}
+			if err := walk(sub); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	return nil
+	return walk(root)
 }

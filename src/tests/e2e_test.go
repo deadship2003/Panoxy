@@ -1,5 +1,5 @@
 // Package tests 是 Go 版 e2e:以环境变量覆盖 + 假 systemctl + 真实 mihomo 内核
-// 驱动编译出的 panixy 二进制,覆盖 deploy/set-sub/sub-rm/mode 的全事务链路。
+// 驱动编译出的 panixy 二进制,覆盖 deploy/sub import/del/mode 的全事务链路。
 //
 // 安全约束:本机(开发机)不引导 tun 实例(auto-route 会改宿主路由表)——
 // e2e 配置一律去除 tun 段;tun/tproxy 的真机引导验证在网关阶段进行。

@@ -45,7 +45,7 @@ sudo panixy init '你的订阅链接'
 ```bash
 tar xzf Panixy-V0.1.0-amd64.tar.gz && cd Panixy-V0.1.0-amd64
 sudo ./panixy deploy                 # 全自动安装
-sudo panixy set-sub                  # 粘贴订阅链接(免引号)
+sudo panixy sub import              # 粘贴订阅链接(免引号)
 panixy status                        # 验证健康
 ```
 
@@ -342,9 +342,9 @@ git tag V0.1.0 && git push origin V0.1.0
 | `sudo panixy deploy [URL]` | 从离线包部署 |
 | `sudo panixy redeploy` | 就地重装:强制刷新全部程序文件(保留配置),重挂防火墙并重启 |
 | `sudo panixy merge-conf <yaml>` | 个人配置叠加融合(`--dry-run`/`--rollback`) |
-| `sudo panixy set-sub [URL]` | 导入订阅(粘贴模式免引号) |
-| `sudo panixy sub-rm --name N` | 删除订阅 |
-| `panixy sub-list [--json]` | 各订阅状态/节点数 |
+| `sudo panixy sub import [URL]` | 导入订阅(粘贴模式免引号) |
+| `sudo panixy sub del --name N` | 删除订阅 |
+| `panixy sub list [--json]` | 各订阅状态/节点数 |
 | `panixy status [-v\|-q\|--json]` | 健康一览(`-q` 退出码供监控) |
 | `sudo panixy mode [tun\|tproxy]` | 查看/切换模式 |
 | `sudo panixy upgrade [--core\|--ui] [--check]` | 参数化升级 |
@@ -373,7 +373,7 @@ make lint          # go vet
 |---|---|---|---|---|
 | 单元 | 单个函数 | YAML 融合/防火墙规则生成/模板渲染 | ~15 | <1s |
 | 集成 | 组件配合 | 配置过 mihomo `-t` | ~5 | 1-2s |
-| E2E | 完整流程 | deploy→set-sub→status 全链路 | 3 | ~50s |
+| E2E | 完整流程 | deploy→sub import→status 全链路 | 3 | ~50s |
 
 E2E 使用真实编译的二进制 + 真实 mihomo 内核 + 模拟订阅服务器 + 假 systemd,
 不 mock 业务逻辑,验证用户实际体验。

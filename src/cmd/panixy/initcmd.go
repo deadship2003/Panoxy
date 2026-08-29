@@ -231,8 +231,8 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	setCmd.Flags().String("name", name, "")
 	setCmd.Flags().String("file", subFile, "")
 	setCmd.Flags().StringSlice("group", nil, "")
-	if err := runSetSub(setCmd, []string{url}); err != nil {
-		return fmt.Errorf("订阅导入失败:%v(资产与服务已就绪,可稍后 sudo panixy set-sub 重试)", err)
+	if err := runSubImport(setCmd, []string{url}); err != nil {
+		return fmt.Errorf("订阅导入失败:%v(资产与服务已就绪,可稍后 sudo panixy sub import 重试)", err)
 	}
 	if bp := bootProxyAddr(); bp != "" {
 		bootProxyStop()

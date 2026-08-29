@@ -95,7 +95,7 @@ func CheckName(name string) error {
 // CheckURL 校验订阅 URL。
 func CheckURL(u string) error {
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		return fmt.Errorf("URL 需以 http(s):// 开头(命令行传参记得整体加单引号,或直接 panixy set-sub 回车粘贴)")
+		return fmt.Errorf("URL 需以 http(s):// 开头(命令行传参记得整体加单引号,或直接 panixy sub import 回车粘贴)")
 	}
 	return nil
 }

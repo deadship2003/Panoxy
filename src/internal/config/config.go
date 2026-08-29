@@ -1,6 +1,6 @@
 // Package config 以 yaml.v3 Node 模式增量编辑 /etc/clash.yaml:
 // 只触碰 proxy-providers[NAME] 与各组 use 列表,保留注释/锚点/其他 provider,
-// 绝不整块覆盖 —— 这是 set-sub "只做节点管理与融合" 语义的落点。
+// 绝不整块覆盖 —— 这是 sub import "只做节点管理与融合" 语义的落点。
 package config
 
 import (
@@ -186,7 +186,7 @@ func (e *Editor) Providers() []string {
 	return out
 }
 
-// HasAnchorP 检查配置中是否存在锚点 &p(set-sub 的前置要求)。
+// HasAnchorP 检查配置中是否存在锚点 &p(sub import 的前置要求)。
 func (e *Editor) HasAnchorP() bool {
 	v := mapGet(e.topMap(), "p")
 	return v != nil && v.Anchor == "p"
@@ -212,7 +212,7 @@ func (e *Editor) ProviderURL(name string) (string, bool) {
 // 已有条目仅改 url/path 两键,其余键与注释保持原样。
 func (e *Editor) SetProvider(name, url, cacheRelPath string) error {
 	if !e.HasAnchorP() {
-		return fmt.Errorf("配置缺少锚点 &p(set-sub 依赖它生成 provider 条目;基础模板自带)")
+		return fmt.Errorf("配置缺少锚点 &p(sub import 依赖它生成 provider 条目;基础模板自带)")
 	}
 	tm := e.topMap()
 	pm := mapGet(tm, "proxy-providers")
@@ -240,7 +240,7 @@ func (e *Editor) SetProvider(name, url, cacheRelPath string) error {
 // SetProviderType 切换 provider 读取方式(file=true 时 type: file 读本地缓存、不刷新远程;
 // false 时删除显式 type,回落到锚点 <<: *p 的 type: http 自动刷新)。
 //
-// 用于 mihomo 无法原生解析的订阅格式(sing-box/Surge/base64-Clash):set-sub 已把内容
+// 用于 mihomo 无法原生解析的订阅格式(sing-box/Surge/base64-Clash):sub import 已把内容
 // 归一化成 Clash YAML 写入缓存,必须切 file,否则 mihomo 重启时会重新拉原始 URL 再解析失败。
 func (e *Editor) SetProviderType(name string, file bool) error {
 	pm := mapGet(e.topMap(), "proxy-providers")

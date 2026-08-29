@@ -164,9 +164,9 @@ func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 
 	if len(args) > 0 {
-		return runSetSub(cmd, args)
+		return runSubImport(cmd, args)
 	}
-	logx.Info("deploy 完成。提示: sudo panixy set-sub 设置订阅(回车进入粘贴模式);panixy status 查看健康")
+	logx.Info("deploy 完成。提示: sudo panixy sub import 设置订阅(回车进入粘贴模式);panixy status 查看健康")
 	return nil
 }
 

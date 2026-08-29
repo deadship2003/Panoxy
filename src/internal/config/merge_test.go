@@ -65,7 +65,7 @@ rules:
 
 func mergeSetup(t *testing.T) (*Editor, *Editor, string) {
 	t.Helper()
-	// 基底:模板 + 已导入订阅 Nano(set-sub 后的形态)
+	// 基底:模板 + 已导入订阅 Nano(sub import 后的形态)
 	out, err := asset.RenderConfig(asset.DefaultConfigData())
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 	}
 	// &p 锚点保留
 	if !strings.Contains(s, "p: &p") {
-		t.Error("&p 锚点应保留(set-sub 依赖)")
+		t.Error("&p 锚点应保留(sub import 依赖)")
 	}
 }
 

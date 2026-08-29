@@ -87,7 +87,7 @@ func copyDir(src, dst string) error {
 }
 
 // installMan 生成并安装全部 man 手册(根页 + 每个子命令页,与 --help 同源):
-// man panixy / man panixy-init / man panixy-set-sub ...
+// man panixy / man panixy-init / man panixy-sub-import ...
 func installMan(manGz, self string) {
 	dir, err := os.MkdirTemp("", "panixy-man-")
 	if err != nil {
