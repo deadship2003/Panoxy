@@ -59,12 +59,19 @@ func NewRootCmd() *cobra.Command {
   sudo panixy init '订阅链接'             # 直接初始化部署
   sudo ./panixy deploy '订阅链接'         # 从离线包部署
 
-日常管理:
-  sudo panixy sub import '订阅链接'        # 回车粘贴模式,URL 无需加引号
+订阅/配置:
+  sudo panixy sub import '订阅链接'        # 导入订阅(回车粘贴,免引号)
   sudo panixy merge-conf ~/my.yaml        # 融合个人配置(--dry-run 预览)
+
+日常:
   panixy status                          # 健康一览(服务/防火墙/订阅/出网)
-  sudo panixy mode tproxy               # 切换 TPROXY 模式(需内核 xt_TPROXY)
+  sudo panixy mode tproxy                # 切换 TPROXY 模式(需内核 xt_TPROXY)
   sudo panixy upgrade --check            # 查看可升级项
+
+运维:
+  sudo panixy redeploy                   # 就地强制刷新全部程序文件(保留配置)
+  sudo panixy rollback                   # 内核回滚到最近备份
+  sudo panixy uninstall                  # 卸载(保留数据与配置)
 
 详细说明: panixy man 或 man panixy-<命令>(部署后可用)`,
 		Version: version,
@@ -106,12 +113,10 @@ func cmdTry() *cobra.Command {
 沙箱与真实部署仅两处差异(均为非 root 限制,真机 sudo 部署不存在):
   - 内核引导时剥离 tun 段(TUN 建设备需 CAP_NET_ADMIN)
   - 剥离 routing-mark(SO_MARK 需权限);防火墙规则不落地
-通过后,真实部署执行: sudo panixy init '订阅URL'
-
-示例:
-  panixy try 'https://example.com/sub?token=x'    # 全流程实测
-  panixy try --dir ~/panixy-sandbox               # 指定沙箱目录(默认临时目录)
-  panixy try                                      # 回车粘贴订阅`,
+通过后,真实部署执行: sudo panixy init '订阅URL'`,
+		Example: `  panixy try 'https://example.com/sub?token=x'   # 全流程实测
+  panixy try --dir ~/panixy-sandbox             # 指定沙箱目录(默认临时目录)
+  panixy try                                    # 回车粘贴订阅`,
 		RunE: runTry,
 	}
 	addSubSourceFlags(c)
@@ -139,12 +144,10 @@ func cmdMergeConf() *cobra.Command {
 
 备份与回滚:
   融合前自动备份 → /etc/clash.yaml.panixy-premerge
-  任一步失败自动恢复;成功后可用 --rollback 手动回滚到融合前
-
-示例:
-  panixy merge-conf --dry-run ~/my-clash.yaml      # 试运行(不落盘不备份)
-  sudo panixy merge-conf ~/my-clash.yaml           # 融合并生效
-  sudo panixy merge-conf --rollback                # 回滚到融合前
+  任一步失败自动恢复;成功后可用 --rollback 手动回滚到融合前`,
+		Example: `  panixy merge-conf --dry-run ~/my-clash.yaml    # 试运行(不落盘不备份)
+  sudo panixy merge-conf ~/my-clash.yaml         # 融合并生效
+  sudo panixy merge-conf --rollback              # 回滚到融合前
   sudo panixy merge-conf --dns mine ~/my-clash.yaml`,
 		RunE: runMergeConf,
 	}
@@ -167,14 +170,12 @@ func cmdInit() *cobra.Command {
   (--mirror,第三方源,内核会做试运行校验;给朋友用建议离线包 deploy)
 
 九步:预检 → 取订阅 → 网络探测 → 下载内核(按架构/AVX2 降级)→ geo/规则
-→ 面板 → 资产就位+渲染配置 → 部署服务(防火墙/健康)→ 导入订阅(节点数>0)。
-
-示例:
-  sudo panixy init 'https://example.com/sub?token=x&sid=y'
-  sudo panixy init --name Nano          # 回车粘贴订阅
-  sudo panixy init --file sub.yaml URL  # 订阅离线导入
-  sudo panixy init --mirror https://ghfast.top/ URL   # 直连不通时
-  panixy init --dry-run                              # 试运行模式(不需要 root)`,
+→ 面板 → 资产就位+渲染配置 → 部署服务(防火墙/健康)→ 导入订阅(节点数>0)。`,
+		Example: `  sudo panixy init 'https://example.com/sub?token=x&sid=y'
+  sudo panixy init --name Nano                            # 回车粘贴订阅
+  sudo panixy init --file sub.yaml URL                    # 订阅离线导入
+  sudo panixy init --mirror https://ghfast.top/ URL       # 直连不通时
+  panixy init --dry-run                                   # 试运行模式(不需要 root)`,
 		RunE: runInit,
 	}
 	addSubSourceFlags(c)
@@ -192,11 +193,9 @@ func cmdDeploy() *cobra.Command {
 
 流程:放置内核/geo/面板/广告规则 → 渲染配置(现有 > 包内手工 > 模板)→
 安装 CLI 与 man 手册 → 写入 systemd 单元 → 开启 ip_forward → 拉起服务(含防火墙)。
-任一步失败全量回滚。检测到 bash 旧版部署残留(unit 含 resolvectl/配置含 dns-hijack)时中止并给出手动清理指引。
-
-示例:
-  sudo ./panixy deploy 'https://example.com/sub?token=x&sid=y'   # 部署并导入订阅
-  sudo ./panixy deploy --proxy-mode tproxy                        # 以 TPROXY 模式部署`,
+任一步失败全量回滚。检测到 bash 旧版部署残留(unit 含 resolvectl/配置含 dns-hijack)时中止并给出手动清理指引。`,
+		Example: `  sudo ./panixy deploy 'https://example.com/sub?token=x&sid=y'   # 部署并导入订阅
+  sudo ./panixy deploy --proxy-mode tproxy                      # 以 TPROXY 模式部署`,
 		RunE: runDeploy,
 	}
 	addSubSourceFlags(c)
@@ -213,6 +212,10 @@ func cmdSub() *cobra.Command {
 
 订阅导入经 yaml 增量编辑写入 proxy-providers[NAME](复用锚点 <<: *p),并预置缓存、
 重启内核、验证节点数>0,任一步失败自动回滚。`,
+		Example: `  sudo panixy sub import 'https://example.com/sub?token=x'   # 导入(粘贴模式免引号)
+  sudo panixy sub import --name airport2 'https://example.com/sub2'
+  sudo panixy sub del --name airport2
+  panixy sub list`,
 	}
 	c.AddCommand(cmdSubImport(), cmdSubDel(), cmdSubList())
 	return c
@@ -242,7 +245,14 @@ func cmdSubDel() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "del --name NAME",
 		Short: "删除指定订阅 provider(备份、校验、重启;失败回滚)",
-		RunE:  runSubDel,
+		Long: `从 proxy-providers 中删除指定订阅,并把它从各组 use 列表移除。
+
+事务流程:备份配置 → 删除 provider + 取消接线 → mihomo -t 校验 → 重启 → 健康检查,
+任一步失败自动回滚。注意:删光唯一订阅会使组失去 use,-t 会拒绝(此时先导入新订阅)。
+
+provider 名称即 sub import 时的 --name(默认 SUB);现有名称用 sub list 查看。`,
+		Example: "  sudo panixy sub del --name airport2",
+		RunE:    runSubDel,
 	}
 	c.Flags().String("name", "", "要删除的 provider 名称(必填)")
 	_ = c.MarkFlagRequired("name")
@@ -256,7 +266,8 @@ func cmdSubList() *cobra.Command {
 		Long: `读取配置全部 proxy-providers,逐个调用 mihomo API 查询状态。
 
 状态:✅正常 / ⚠️获取失败 / ⚠️解析失败 / ⚠️节点为0。--json 输出机器可读格式。`,
-		RunE: runSubList,
+		Example: "  panixy sub list            # 表格\n  panixy sub list --json     # 机器可读",
+		RunE:    runSubList,
 	}
 	c.Flags().Bool("json", false, "以 JSON 输出")
 	return c
@@ -272,6 +283,10 @@ func cmdStatus() *cobra.Command {
   --detail  追加明细:当前代理模式(tun/tproxy)、TUN 栈风险提示、路由/缓存细节
   -q  静默,仅退出码:0健康 1降级(节点0或代理出网不通) 2故障(服务/API 不可用)
   --json 机器可读单行`,
+		Example: `  panixy status              # 一览
+  panixy status --detail      # 追加明细
+  panixy status -q            # 仅退出码(监控脚本)
+  panixy status --json        # 机器可读`,
 		RunE: runStatus,
 	}
 	c.Flags().Bool("detail", false, "追加明细")
@@ -321,6 +336,9 @@ TPROXY 前置检测:
 
 注意:模式无法在 Web 面板切换 —— 防火墙规则与配置必须同事务变更,面板只管数据面(节点/组)。
 不带参数则显示当前模式。`,
+		Example: `  panixy mode              # 查看当前模式
+  sudo panixy mode tproxy  # 切换到 TPROXY(需内核 xt_TPROXY)
+  sudo panixy mode tun     # 切回 TUN(默认)`,
 		RunE: func(cmd *cobra.Command, args []string) error { return runMode(cmd, args) },
 	}
 }
@@ -350,8 +368,16 @@ compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", 
 func cmdRollback() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rollback [版本]",
-		Short: "回滚内核二进制(默认最近备份;UI 靠升级事务内自动回滚)",
-		RunE:  runRollback,
+		Short: "回滚内核二进制到某备份版本(默认最近一份;失败可反复回滚)",
+		Long: `把 mihomo 内核二进制回滚到升级时留下的备份(保留最近 ` + fmt.Sprintf("%d", constants.CoreKeep) + ` 份)。
+
+不带参数回滚到最近备份;带版本号(如 v1.19.30)回滚到指定备份。回滚前把当前内核另存为
+备份,因此可反复回滚;回滚后自动重启并做健康检查(失败仅告警,不阻断)。
+
+面板(UI)回滚由升级事务内自动处理,此处只管内核。`,
+		Example: `  sudo panixy rollback              # 回滚到最近备份
+  sudo panixy rollback v1.19.30    # 回滚到指定版本`,
+		RunE: runRollback,
 	}
 }
 
@@ -359,7 +385,12 @@ func cmdUninstall() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
 		Short: "停止服务、清理防火墙与 systemd 单元(保留 /opt 数据与配置)",
-		RunE:  runUninstall,
+		Long: `停止并移除 panixy 服务与定时升级任务,清理自有防火墙规则、sysctl 与手册。
+
+保留:/opt/panixy 数据目录(内核/geo/面板/订阅缓存)与 /etc/clash.yaml 配置,
+以及 CLI 二进制本身 —— 卸载后重新 init/deploy 即可复用数据。`,
+		Example: "  sudo panixy uninstall",
+		RunE:    runUninstall,
 	}
 }
 
@@ -367,7 +398,10 @@ func cmdUnits() *cobra.Command {
 	return &cobra.Command{
 		Use:   "units",
 		Short: "输出渲染后的 systemd 单元文本(离线审查,不动系统)",
-		RunE:  runUnits,
+		Long: `打印 panixy.service / panixy-upgrade.service / panixy-upgrade.timer 的完整单元文本,
+按当前安装目录(--root)渲染。只读,不写任何文件,便于安装前审查或 diff。`,
+		Example: "  panixy units > units.txt    # 导出审查",
+		RunE:    runUnits,
 	}
 }
 
@@ -375,15 +409,22 @@ func cmdLog() *cobra.Command {
 	return &cobra.Command{
 		Use:   "log [行数]",
 		Short: "查看 panixy/mihomo 服务日志(journalctl)",
-		RunE:  runLog,
+		Long: `透传 journalctl 查看 panixy.service 与 panixy-upgrade.service 的最近日志。
+不带参数显示最近 80 行;带数字参数指定行数。`,
+		Example: "  panixy log        # 最近 80 行\n  panixy log 200    # 最近 200 行",
+		RunE:    runLog,
 	}
 }
 
 func cmdCheck() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check [yaml]",
-		Short: "用 mihomo -t 校验配置(默认当前配置;只读免 root)",
-		RunE:  runCheck,
+		Short: "用 mihomo -t 校验配置语法(默认当前配置;只读免 root)",
+		Long: `用 mihomo -t 校验配置,透传内核报错的首条 error。只读,不改任何文件、免 root。
+
+不带参数校验当前 /etc/clash.yaml;带路径校验指定文件(如 apply-conf 前先验)。`,
+		Example: "  panixy check                 # 校验当前配置\n  panixy check ~/my-clash.yaml  # 校验指定文件",
+		RunE:    runCheck,
 	}
 }
 
@@ -391,7 +432,12 @@ func cmdApplyConf() *cobra.Command {
 	return &cobra.Command{
 		Use:   "apply-conf <yaml>",
 		Short: "应用自定义配置(优先热重载;注意热重载不刷新 proxy-providers)",
-		RunE:  runApplyConf,
+		Long: `校验通过后把指定 YAML 应用到 /etc/clash.yaml:优先热重载(仅非 provider 改动有效),
+热重载未生效则退重启,再失败恢复原配置。应用前自动备份,成功清除备份。
+
+注意:mihomo 热重载不刷新 proxy-providers,改动订阅相关字段需重启才生效。`,
+		Example: "  sudo panixy apply-conf ~/my-clash.yaml",
+		RunE:    runApplyConf,
 	}
 }
 
@@ -406,6 +452,7 @@ func cmdFw() *cobra.Command {
   clean     仅清理不加载`,
 		Args:      cobra.ExactValidArgs(1),
 		ValidArgs: []string{"apply", "teardown", "clean"},
+		Example:   "  sudo panixy fw apply     # 幂等重挂当前模式规则\n  sudo panixy fw teardown  # 拆除规则\n  sudo panixy fw clean     # 仅清理不加载",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fw, err := firewall.New()
 			if err != nil {
@@ -433,7 +480,12 @@ func cmdFw() *cobra.Command {
 func cmdMan() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "man [命令] [--raw]",
-		Short: "显示手册(根页或子命令页;部署后也可 man panixy / man panixy-<命令>)",
+		Short: "显示手册(根页或子命令页)",
+		Long: `在终端显示手册页。不带参数显示根页;带命令名显示对应子命令页(如 man init、
+man sub)。优先交给系统 man 渲染,无 man 环境时降级为纯文本。
+
+部署后同样可用系统 man:man panixy / man panixy-<命令>。--raw 输出原始 roff 供部署安装手册用。`,
+		Example: "  panixy man          # 根页\n  panixy man init     # init 命令页\n  panixy man sub       # sub 命令页",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := os.MkdirTemp("", "panixy-man-")
 			if err != nil {

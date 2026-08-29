@@ -22,7 +22,7 @@
 - 🔄 **自愈** — kill -9/OOM 残留随 `systemctl restart panixy` 自动清除,无需手工干预
 - 📡 **订阅可验证** — 预取 → 校验 → 增量写入 → 重启 → **节点数 > 0 才算成功**,绝不假成功
 - 🧩 **配置融合** — `merge-conf` 同名组字段级合并(proxies/use 并集),基底组保留不删
-- ⬆️ **参数化升级** — `--core/--ui/--check/--core-version`,试运行校验、失败自动回滚
+- ⬆️ **参数化升级** — `--core/--ui/--cli/--check/--core-version`,试运行校验、失败自动回滚
 - 📖 **全量文档** — `-h/-?/--help` 每命令含示例;`man panixy` 与 `--help` 同源生成
 - 🔍 **调试友好** — `--verbose` 分步明细;`--debug` 外部命令/API I/O 零遮蔽
 
@@ -347,7 +347,7 @@ git tag V0.1.0 && git push origin V0.1.0
 | `panixy sub list [--json]` | 各订阅状态/节点数 |
 | `panixy status [-q\|--json\|--detail]` | 健康一览(`-q` 退出码供监控) |
 | `sudo panixy mode [tun\|tproxy]` | 查看/切换模式 |
-| `sudo panixy upgrade [--core\|--ui] [--check]` | 参数化升级 |
+| `sudo panixy upgrade [--core\|--ui\|--cli] [--check]` | 参数化升级 |
 | `sudo panixy rollback [vX]` | 内核回滚 |
 | `panixy check [yaml]` | 校验配置 |
 | `sudo panixy apply-conf <yaml>` | 应用配置(热重载优先) |

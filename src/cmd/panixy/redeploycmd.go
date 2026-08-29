@@ -44,11 +44,9 @@ func cmdRedeploy() *cobra.Command {
 流程:停服务+清防火墙 → 备份内核/UI(供回滚)→ 强制替换内核/geo/规则/UI →
 刷新 CLI/手册/systemd 单元 → 校验+重启 → 显式重挂防火墙 → 健康验证。
 任一步失败回滚内核/UI(CLI 属管理工具不回滚;config.yaml 始终保留不动)。
-切换透明代理模式请用 panixy mode(模式属数据,redeploy 不碰)。
-
-示例:
-  sudo ./panixy redeploy                # 在解压的新版离线包根目录运行
-  sudo ./panixy redeploy --dry-run      # 试运行:预览将替换的文件与决策`,
+切换透明代理模式请用 panixy mode(模式属数据,redeploy 不碰)。`,
+		Example: `  sudo ./panixy redeploy              # 在解压的新版离线包根目录运行
+  sudo ./panixy redeploy --dry-run    # 试运行:预览将替换的文件与决策`,
 		RunE: runRedeploy,
 	}
 	addDryRunFlag(c, "试运行模式:预览落位与决策,不执行")
