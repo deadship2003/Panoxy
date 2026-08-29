@@ -47,10 +47,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	doCLI := cliOnly
 
 	api := mihomoapi.NewFromConf(p.Conf)
-	proxy := ""
-	if api.Mixed > 0 {
-		proxy = fmt.Sprintf("http://127.0.0.1:%d", api.Mixed)
-	}
+	proxy := api.Proxy()
 
 	curCore := ""
 	if out := runCmd(p.Bin, "-v"); out != "" {
@@ -296,29 +293,6 @@ func firstVer(s string) string {
 		return v
 	}
 	return s
-}
-
-// runUpdateUI 等价 upgrade --ui。
-func runUpdateUI(cmd *cobra.Command, args []string) error {
-	if err := needRoot(); err != nil {
-		return err
-	}
-	p := paths.Get()
-	lk, err := locker.Lock(p.Lock)
-	if err != nil {
-		return err
-	}
-	defer lk.Unlock()
-	api := mihomoapi.NewFromConf(p.Conf)
-	proxy := ""
-	if api.Mixed > 0 {
-		proxy = fmt.Sprintf("http://127.0.0.1:%d", api.Mixed)
-	}
-	want, err := upgrade.Latest("MetaCubeX/metacubexd", proxy)
-	if err != nil {
-		return fmt.Errorf("UI 版本查询失败: %v", err)
-	}
-	return uiUpgrade(p, proxy, want)
 }
 
 // cliUpgrade 升级 panixy CLI 自身:从 GitHub Release 下载新版本替换 /usr/local/bin/panixy。

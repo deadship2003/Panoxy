@@ -12,12 +12,14 @@ import (
 	"github.com/deadship2003/panixy/internal/asset"
 	"github.com/deadship2003/panixy/internal/config"
 	"github.com/deadship2003/panixy/internal/constants"
+	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/health"
 	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/paths"
 	"github.com/deadship2003/panixy/internal/statemode"
 	"github.com/deadship2003/panixy/internal/systemdunit"
+	"github.com/deadship2003/panixy/internal/upgrade"
 )
 
 // runInstall 仅部署服务与系统设置(文件已就位;deploy 的内部步骤)。
@@ -193,7 +195,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 	defer lk.Unlock()
 	systemdunit.Stop()
-	if fw, err := firewallNew(); err == nil {
+	if fw, err := firewall.New(); err == nil {
 		if err := fw.Teardown(); err != nil {
 			logx.Warn("防火墙清理失败:%v(restart 后重试 uninstall)", err)
 		}
@@ -230,7 +232,7 @@ func modeSwitch(want string) error {
 		}
 	} // PANIXY_SKIP_TPROXY_PROBE=1 仅测试沙箱用
 	logx.Step("切换 %s → %s:卸载旧防火墙", old, want)
-	if fw, err := firewallNew(); err == nil {
+	if fw, err := firewall.New(); err == nil {
 		fw.Teardown()
 	}
 	logx.Step("渲染配置变体并校验")
@@ -363,7 +365,7 @@ func placeCoreForce(p paths.Paths, assets string) error {
 		return fmt.Errorf("assets 缺 %s 内核", arch)
 	}
 	core := matches[len(matches)-1]
-	if err := gunzipTo(core, p.Bin); err != nil {
+	if err := upgrade.GunzipFile(core, p.Bin); err != nil {
 		return err
 	}
 	os.Chmod(p.Bin, 0o755)
@@ -374,8 +376,11 @@ func placeCoreForce(p paths.Paths, assets string) error {
 	return nil
 }
 
+// geoFiles 部署所需的 GeoIP/GeoSite/Country 数据文件名(init 下载与 deploy 落位同源)。
+var geoFiles = []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"}
+
 func placeGeoAndRules(p paths.Paths, assets string) {
-	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
+	for _, f := range geoFiles {
 		src := filepath.Join(assets, "geo", f)
 		dst := filepath.Join(p.Root, f)
 		if !exists(dst) && exists(src) {
@@ -396,7 +401,7 @@ func placeGeoAndRules(p paths.Paths, assets string) {
 
 // placeGeoAndRulesForce 无条件覆盖 geo 与广告规则(redeploy 用;静态数据无需回滚)。
 func placeGeoAndRulesForce(p paths.Paths, assets string) {
-	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
+	for _, f := range geoFiles {
 		src := filepath.Join(assets, "geo", f)
 		if exists(src) {
 			copyFile(src, filepath.Join(p.Root, f))
@@ -467,7 +472,7 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 		{"广告规则", filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")},
 		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
 	} {
-		if statOK(item.path) {
+		if exists(item.path) {
 			logx.Info("  ✓ %s", item.name)
 		} else {
 			logx.Warn("  ✗ %s 缺失", item.name)
@@ -478,9 +483,9 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 	}
 	logx.Step("[决策] 配置来源")
 	switch {
-	case statOK(p.Conf):
+	case exists(p.Conf):
 		logx.Info("  现有 %s 存在 → 原样继承", p.Conf)
-	case statOK(filepath.Join(pkgDir, "clash.yaml")):
+	case exists(filepath.Join(pkgDir, "clash.yaml")):
 		logx.Info("  包内手工 clash.yaml → 采用")
 	default:
 		logx.Info("  渲染默认模板(密钥 %s)", drySecret(cmd))

@@ -64,6 +64,14 @@ func portOf(ctrl string, def int) string {
 	return fmt.Sprint(def)
 }
 
+// Proxy 返回本机 mixed-port 代理地址(未配置时为空串)。
+func (c *Client) Proxy() string {
+	if c.Mixed <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", c.Mixed)
+}
+
 func (c *Client) do(method, path string, body any) ([]byte, error) {
 	var rdr io.Reader
 	if body != nil {

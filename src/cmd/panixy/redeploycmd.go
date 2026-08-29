@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/deadship2003/panixy/internal/constants"
+	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/health"
 	"github.com/deadship2003/panixy/internal/locker"
 	"github.com/deadship2003/panixy/internal/logx"
@@ -22,7 +23,7 @@ import (
 // redeploy 用它显式重挂 FW —— 新编译的 panixy 可能调整了规则,不能只靠服务重启的
 // ExecStartPost 兜底(那是隐式副作用,这里要求一等公民)。
 func applyFW(mode string) error {
-	fw, err := firewallNew()
+	fw, err := firewall.New()
 	if err != nil {
 		return err
 	}
@@ -93,7 +94,7 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 	// [1] 停服务并显式清防火墙(新二进制可能改了 FW 规则,不能只靠重启的 ExecStartPost)
 	logx.Step("[1/6] 停止服务并清除防火墙规则")
 	systemdunit.Stop()
-	if fw, err := firewallNew(); err == nil {
+	if fw, err := firewall.New(); err == nil {
 		if err := fw.Teardown(); err != nil {
 			logx.Warn("防火墙清理失败:%v(重启后 fw apply 会兜底)", err)
 		}
@@ -218,7 +219,7 @@ func redeployDryRun(cmd *cobra.Command) error {
 		{"广告规则", filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")},
 		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
 	} {
-		if statOK(item.path) {
+		if exists(item.path) {
 			logx.Info("  ✓ %s", item.name)
 		} else {
 			logx.Warn("  ✗ %s 缺失", item.name)

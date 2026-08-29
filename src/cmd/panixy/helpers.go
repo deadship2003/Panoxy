@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,13 +14,10 @@ import (
 
 	"github.com/deadship2003/panixy/internal/asset"
 	"github.com/deadship2003/panixy/internal/execx"
-	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
 	"github.com/deadship2003/panixy/internal/paths"
 )
-
-func firewallNew() (firewall.Firewall, error) { return firewall.New() }
 
 // runCmd 是 execx.Run 的简写。
 func runCmd(name string, args ...string) string {
@@ -66,30 +62,7 @@ func checkTproxySupport() error {
 	return nil
 }
 
-// gunzipTo 解压 .gz 到目标文件。
-func gunzipTo(src, dst string) error {
-	f, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	zr, err := gzip.NewReader(f)
-	if err != nil {
-		return fmt.Errorf("内核压缩包损坏: %w", err)
-	}
-	defer zr.Close()
-	os.MkdirAll(filepath.Dir(dst), 0o755)
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, zr); err != nil {
-		return fmt.Errorf("解压失败: %w", err)
-	}
-	return nil
-}
-
+// copyFile 复制文件(小文件,一次性读入)。
 func copyFile(src, dst string) error {
 	b, err := os.ReadFile(src)
 	if err != nil {

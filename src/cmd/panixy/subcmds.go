@@ -86,12 +86,8 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 		logx.Info("使用本地订阅文件: %s(跳过联网拉取)", file)
 	} else {
 		api := mihomoapi.NewFromConf(p.Conf)
-		proxy := ""
-		if api.Mixed > 0 {
-			proxy = fmt.Sprintf("http://127.0.0.1:%d", api.Mixed)
-		}
 		var buf bytes.Buffer
-		if err := subscribe.Fetch(url, proxy, subscribe.UA(), &buf); err != nil {
+		if err := subscribe.Fetch(url, api.Proxy(), subscribe.UA(), &buf); err != nil {
 			return fmt.Errorf(`订阅拉取失败(直连与经本机代理均不通): %v
   提示:命令行传 URL 须整体加单引号(含 & ? 等字符会被 shell 拆掉),或直接
   sudo panixy set-sub 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后

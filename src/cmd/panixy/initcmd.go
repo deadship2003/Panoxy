@@ -190,8 +190,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	if uiOK {
 		os.MkdirAll(p.UiDir, 0o755)
-		if out, err := runTarX(tmp, "ui.tgz", p.UiDir); err != nil {
-			logx.Warn("面板解包失败(%s),跳过面板", firstLineOf(out))
+		if err := runExtractTgz(filepath.Join(tmp, "ui.tgz"), p.UiDir); err != nil {
+			logx.Warn("面板解包失败(%s),跳过面板", firstLineOf(err.Error()))
 		} else {
 			os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
 		}
@@ -422,20 +422,10 @@ func freePortStr() string {
 	return fmt.Sprint(l.Addr().(*net.TCPAddr).Port)
 }
 
-func runTarX(dir, tgz, dst string) (string, error) {
-	os.MkdirAll(dst, 0o755)
-	out, err := exec.Command("tar", "xzf", filepath.Join(dir, tgz), "-C", dst).CombinedOutput()
-	return string(out), err
-}
-
 // fetchSubBody 订阅拉取:直连优先,失败经本机 mixed-port 代理(升级订阅场景)。
 func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
-	proxy := ""
-	if api.Mixed > 0 {
-		proxy = fmt.Sprintf("http://127.0.0.1:%d", api.Mixed)
-	}
 	var buf bytes.Buffer
-	if err := subscribe.Fetch(u, proxy, subscribe.UA(), &buf); err != nil {
+	if err := subscribe.Fetch(u, api.Proxy(), subscribe.UA(), &buf); err != nil {
 		return nil, err
 	}
 	if err := subscribe.Validate(buf.Bytes()); err != nil {
@@ -457,7 +447,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 	if arch == "" {
 		return fmt.Errorf("不支持的架构(仅 amd64/arm64)")
 	}
-	logx.Info("  架构 %s ✓  systemd:%s", arch, orOK(statOK("/usr/bin/systemctl") || statOK("/bin/systemctl")))
+	logx.Info("  架构 %s ✓  systemd:%s", arch, orOK(exists("/usr/bin/systemctl") || exists("/bin/systemctl")))
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
 		logx.Warn("  ⚠️ 检测到 bash 旧版残留:%s(真装会被中止,先清理)", legacy)
 	} else {
@@ -475,7 +465,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 		logx.Info("  直连可用 → 直接下载")
 	} else {
 		logx.Info("  直连不可用 → 订阅引导代理(需本机有内核:%s)%s",
-			orOK(statOK(bootDefaultBin(cmd))), " → 镜像(--mirror)")
+			orOK(exists(bootDefaultBin(cmd))), " → 镜像(--mirror)")
 	}
 
 	logx.Step("[计划] 下载清单")
@@ -517,4 +507,3 @@ func orOK(ok bool) string {
 	}
 	return "缺失"
 }
-func statOK(p string) bool { _, err := os.Stat(p); return err == nil }
