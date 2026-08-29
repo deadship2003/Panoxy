@@ -14,10 +14,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 
+	"github.com/deadship2003/panixy/internal/asset"
 	"github.com/deadship2003/panixy/internal/execx"
 	"github.com/deadship2003/panixy/internal/firewall"
 	"github.com/deadship2003/panixy/internal/logx"
 	"github.com/deadship2003/panixy/internal/mihomoapi"
+	"github.com/deadship2003/panixy/internal/paths"
 )
 
 func firewallNew() (firewall.Firewall, error) { return firewall.New() }
@@ -26,6 +28,23 @@ func firewallNew() (firewall.Firewall, error) { return firewall.New() }
 func runCmd(name string, args ...string) string {
 	out, _ := execx.Run(name, args...)
 	return out
+}
+
+// writeDefaultConf 渲染纯净默认模板副本到 p.DefaultConf(config.default.yaml):
+// 与 /etc/clash.yaml 初始渲染同源、保留 SUB_URL_PLACEHOLDER 且不含任何订阅,
+// 供 merge-conf 或手工从干净基线重建配置。mode 决定 tun/tproxy 变体,secret 对齐当前密钥。
+func writeDefaultConf(p paths.Paths, mode, secret string) error {
+	d := asset.DefaultConfigData()
+	d.TProxy = mode == "tproxy"
+	d.Secret = secret
+	out, err := asset.RenderConfig(d)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p.DefaultConf), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(p.DefaultConf, []byte(out), 0o644)
 }
 
 func runtimeArch() string {

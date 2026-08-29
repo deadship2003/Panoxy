@@ -36,7 +36,7 @@ sudo panixy init '你的订阅链接'
 ```
 
 九步自动完成:预检 → 取订阅 → 网络探测 → 下载内核 → 下载 geo/规则 → 下载面板 → 资产就位 → 部署服务 → 导入订阅。
-每步带进度条,断网环境自动经订阅节点建立代理下载。
+每步带进度条;直连不通时经订阅节点建立代理下载(需本机已有 mihomo 内核);无内核时提示用离线包 `deploy` 或手工复制内核到 `/opt/panixy/bin/mihomo`。
 
 ### 方式二:离线包(给朋友)
 
@@ -90,13 +90,13 @@ sudo panixy merge-conf --dry-run ~/我的.yaml   # 先看融合决策
 | DoQ(UDP 853) | **正常分流** | 同上 |
 | DoH(TCP 443) | **正常分流** | 与 HTTPS 同端口,无法也不应阻断 |
 
-### 基础服务直连(28 条规则,不走代理)
+### 基础服务直连(32 条规则,不走代理)
 
 | 类别 | 端口 | 服务 |
 |---|---|---|
 | **远程管理** | 22, 23 | SSH/SFTP, Telnet |
 | **远程桌面** | 3389, 5900 | RDP, VNC |
-| **VPN/组网** | 41641, 3478, 51820, 1194 | Tailscale, STUN/TURN, WireGuard, OpenVPN |
+| **VPN/组网** | 41641, 3478, 51820, 1194, 500, 4500, 1701, 1723 | Tailscale, STUN/TURN, WireGuard, OpenVPN, IPSec(IKE/NAT-T), L2TP, PPTP |
 | **VoIP** | 5060, 5061 | SIP, SIPS |
 | **域认证** | 88, 389, 636, 1812, 1813 | Kerberos, LDAP, LDAPS, RADIUS |
 | **发现/时间** | 5353, 123, 161, 1900 | mDNS, NTP, SNMP, SSDP/UPnP |
@@ -148,7 +148,7 @@ make build VERSION=V0.1.0    # 指定版本号
 cd src
 
 # 本机架构(amd64)
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 \
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v3 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.1.0" \
   -o ../dist/panixy-linux-amd64 \
   ./cmd/panixy
@@ -172,9 +172,11 @@ cd ../dist && sha256sum panixy-linux-* > sha256sums.txt
 | `-trimpath` | 去掉编译机路径信息(安全+体积) |
 | `-ldflags "-s -w"` | 去掉符号表和调试信息(体积减 30%) |
 | `-X main.version=X` | 注入版本号(`panixy --version` 显示) |
-| `GOAMD64=v1` | 兼容所有 x86_64 CPU(不用 v3 指令集) |
+| `GOAMD64=v3` | 默认 v3(需 AVX2:Intel 2013+/AMD 2017+);老 CPU 改 `GOAMD64=v1` 全兼容 |
 
 </details>
+
+> **CLI 与内核的 CPU 选型**：panixy CLI 默认 `GOAMD64=v3`（需 AVX2:Intel 2013+/AMD 2017+；老 CPU 用 `make build GOAMD64=v1` 全兼容）。mihomo 内核则由 `panixy init` / `panixy upgrade` / `scripts/package.sh` 在**运行时探测本机架构与 AVX2**，据此下载匹配的内核（有 AVX2 → `v3`，否则 → 标准档，再失败降 `compatible`）；内核下载/入包后即缓存，**不再重复探测**。
 
 ### 验证编译产物
 
@@ -211,7 +213,7 @@ make package-all VERSION=V0.1.0     # 双架构 → dist/
 | `--ver V0.1.0` | git describe | 版本号 |
 | `--sub-url URL` | (空) | 断网时经订阅代理下载资产 |
 | `ASSETS_SRC` | `/opt/panixy` | 本地资产目录(存在则复制,不下载) |
-| `MIHOMO_VERSION` | `v1.19.30` | 内核版本 |
+| `MIHOMO_VERSION` | 运行时探测上游最新 | 内核版本(显式指定可固定/复现) |
 | `PROXY_PORT` | `33999` | 订阅引导代理端口 |
 
 ### 打包流程(内部步骤)
@@ -243,11 +245,18 @@ cd ..
 
 # ===== 第 2 步:下载资产 =====
 TMP=$(mktemp -d)
-MIHOMO_VER="v1.19.30"
+# 运行时探测上游最新内核版本(不写死);断网时用本机 /opt/panixy/bin/mihomo -v 兜底
+MIHOMO_VER="$(curl -fsSL --connect-timeout 8 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
+  | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
 
-# mihomo 内核(18MB)
-curl -fsSL -o $TMP/mihomo.gz \
-  "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
+# mihomo 内核(18MB):探测本机 AVX2 决定 v3/标准档(与 package.sh 同源)
+if grep -qw avx2 /proc/cpuinfo; then
+  curl -fsSL -o "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" \
+    "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
+else
+  curl -fsSL -o "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" \
+    "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-$MIHOMO_VER.gz"
+fi
 
 # geo 三件(28MB)
 geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
@@ -270,7 +279,7 @@ mkdir -p "$PKG/assets/core" "$PKG/assets/geo" "$PKG/assets/ui/official" "$PKG/as
 
 cp dist/panixy-linux-amd64 "$PKG/panixy"
 chmod +x "$PKG/panixy"
-cp $TMP/mihomo.gz "$PKG/assets/core/"
+cp "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" "$PKG/assets/core/"
 cp $TMP/Geo*.dat $TMP/Country.mmdb "$PKG/assets/geo/"
 cp $TMP/AWAvenue-Ads.yaml "$PKG/assets/rule/"
 tar xzf $TMP/ui.tgz -C "$PKG/assets/ui/official"
@@ -288,7 +297,9 @@ echo "产物: dist/$PKG.tar.gz ($(du -h dist/$PKG.tar.gz | cut -f1))"
 **本机已有资产时跳过下载:**
 
 ```bash
-gzip -c /opt/panixy/bin/mihomo > "$PKG/assets/core/mihomo-linux-amd64-v1.19.30.gz"
+# 内核版本取自本机已装内核(断网打包;与 package.sh 的本地兜底同源)
+MIHOMO_VER="$(/opt/panixy/bin/mihomo -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+gzip -c /opt/panixy/bin/mihomo > "$PKG/assets/core/mihomo-linux-amd64-$MIHOMO_VER.gz"
 cp /opt/panixy/Geo*.dat /opt/panixy/Country.mmdb "$PKG/assets/geo/"
 cp /opt/panixy/rule_provider/AWAvenue-Ads.yaml "$PKG/assets/rule/"
 ```
@@ -302,7 +313,7 @@ Panixy-V0.1.0-amd64/
 ├── panixy                                    ← Go 二进制(9MB)
 ├── README.md
 └── assets/
-    ├── core/mihomo-linux-amd64-v1.19.30.gz  ← 内核(18MB)
+    ├── core/mihomo-linux-amd64-<版本>.gz  ← 内核(18MB)
     ├── geo/GeoIP.dat GeoSite.dat Country.mmdb
     ├── rule/AWAvenue-Ads.yaml                ← 广告规则
     └── ui/official/                          ← metacubexd 面板(161 文件)
@@ -329,6 +340,7 @@ git tag V0.1.0 && git push origin V0.1.0
 | `panixy init/deploy --dry-run` | 试运行模式(免 root) |
 | `sudo panixy init [URL]` | 裸机初始化(九步带进度) |
 | `sudo panixy deploy [URL]` | 从离线包部署 |
+| `sudo panixy redeploy` | 就地重装:强制刷新全部程序文件(保留配置),重挂防火墙并重启 |
 | `sudo panixy merge-conf <yaml>` | 个人配置叠加融合(`--dry-run`/`--rollback`) |
 | `sudo panixy set-sub [URL]` | 导入订阅(粘贴模式免引号) |
 | `sudo panixy sub-rm --name N` | 删除订阅 |

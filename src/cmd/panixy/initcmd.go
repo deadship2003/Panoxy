@@ -121,16 +121,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 	defer os.RemoveAll(tmp)
 
 	stepf(4, "下载 mihomo 内核(%s)", runtimeArch())
+	coreVer, err := detectCoreVer(proxyFn)
+	if err != nil {
+		return fmt.Errorf("无法探测 mihomo 最新内核版本:%v(请用离线包 sudo ./panixy deploy,或手工复制内核到 %s 并 chmod +x 后重试)", err, p.Bin)
+	}
+	logx.Info("运行时探测到上游最新内核 %s", coreVer)
 	kernel := ""
-	for _, base := range upgrade.CoreAssetCandidates("v1.19.30") {
-		kurl := fmt.Sprintf("https://github.com/MetaCubeX/mihomo/releases/download/v1.19.30/%s.gz", base)
+	for _, base := range upgrade.CoreAssetCandidates(coreVer) {
+		kurl := fmt.Sprintf("https://github.com/MetaCubeX/mihomo/releases/download/%s/%s.gz", coreVer, base)
 		if dlAny(kurl, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "core.gz"), "内核 "+shortAsset(base)) {
 			core := filepath.Join(tmp, "core")
 			if err := upgrade.GunzipFile(filepath.Join(tmp, "core.gz"), core); err != nil {
 				continue
 			}
 			os.Chmod(core, 0o755)
-			if err := upgrade.VerifyCore(core, ""); err != nil {
+			if err := upgrade.VerifyCore(core, coreVer); err != nil {
 				logx.Step("%v,降级下一档", err)
 				continue
 			}
@@ -139,7 +144,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if kernel == "" {
-		return fmt.Errorf("内核下载失败(直连/代理/镜像均不可得)")
+		return fmt.Errorf("内核下载失败(直连/代理/镜像均不可得);请用离线包 sudo ./panixy deploy,或手工复制 mihomo 内核到 %s 并 chmod +x 后重试", p.Bin)
 	}
 
 	stepf(5, "下载 geo 数据与广告规则")
@@ -202,6 +207,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		// 纯净默认模板副本(供 merge-conf 重建基线)与实际配置同时落盘
+		if err := os.WriteFile(p.DefaultConf, []byte(out), 0o644); err != nil {
+			return err
+		}
 		if err := os.WriteFile(p.Conf, []byte(out), 0o644); err != nil {
 			return err
 		}
@@ -260,6 +269,21 @@ func shortAsset(base string) string {
 		return base[:28] + "…"
 	}
 	return base
+}
+
+// detectCoreVer 运行时探测上游最新内核版本(绝不写死):直连 → 订阅引导代理。
+// 直连探测不依赖 allowDirect(api.github.com 与发布资产域是不同域,一个通一个可能不通),
+// 失败才借订阅节点起引导代理再试;两路都通不了则报错交给离线包/手工内核兜底。
+func detectCoreVer(proxyFn func() string) (string, error) {
+	if v, err := upgrade.Latest("MetaCubeX/mihomo", ""); err == nil {
+		return v, nil
+	}
+	if p := proxyFn(); p != "" {
+		if v, err := upgrade.Latest("MetaCubeX/mihomo", p); err == nil {
+			return v, nil
+		}
+	}
+	return "", fmt.Errorf("GitHub API 不可达(直连与订阅代理均失败)")
 }
 
 // directAssetReachable 用 Range 探测真实发布资产(只取 1 字节,15s 硬顶)。
@@ -335,7 +359,10 @@ func bootProxyFromSub(body []byte, cmd *cobra.Command) string {
 		bootBin = paths.Get().Bin // 跟随 --root/环境;无安装时退回默认 /opt
 	}
 	if _, err := os.Stat(bootBin); err != nil {
-		logx.Step("无引导内核(%s),跳过订阅代理路径", bootBin)
+		// 裸机无内核:无法经订阅节点起引导代理。打印清晰指引后跳过,交给镜像/离线包兜底。
+		logx.Step("无引导内核(%s),无法经订阅节点下载资产", bootBin)
+		logx.Step("  方案1(推荐):在能上网的机器 make package 打离线包 → 目标机 sudo ./panixy deploy")
+		logx.Step("  方案2:手工复制 mihomo 内核到 %s 并 chmod +x,再重跑 init", bootBin)
 		return ""
 	}
 	port := freePortStr()
@@ -354,7 +381,13 @@ rules:
   - MATCH,P
 `, port)
 	os.WriteFile(filepath.Join(dir, "boot.yaml"), []byte(conf), 0o644)
-	os.WriteFile(filepath.Join(dir, "boot.sub.yaml"), body, 0o644)
+	// 引导内核同样只认 Clash YAML:非 Clash 格式(sing-box/Surge/base64-Clash)先归一化,
+	// 否则引导代理起不来,后面的资产下载都会失败。
+	bootBody, _, err := subscribe.Normalize(body)
+	if err != nil {
+		bootBody = body // 归一化失败退回原文,让 mihomo 自己报错(与真实导入路径行为一致)
+	}
+	os.WriteFile(filepath.Join(dir, "boot.sub.yaml"), bootBody, 0o644)
 	c := exec.Command(bootBin, "-f", "boot.yaml", "-d", dir)
 	c.Dir = dir
 	if err := c.Start(); err != nil {
@@ -446,7 +479,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 	}
 
 	logx.Step("[计划] 下载清单")
-	logx.Info("  内核: mihomo-linux-%s-v1.19.30.gz(候选降级 v3→标准→compatible)", arch)
+	logx.Info("  内核: mihomo-linux-%s-<运行时自动探测上游最新>.gz(候选降级 v3→标准→compatible)", arch)
 	logx.Info("  geo:  GeoIP.dat / GeoSite.dat / Country.mmdb")
 	logx.Info("  规则: AWAvenue-Ads.yaml   面板: metacubexd compressed-dist.tgz")
 

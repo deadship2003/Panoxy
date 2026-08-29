@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -234,6 +235,28 @@ func (e *Editor) SetProvider(name, url, cacheRelPath string) error {
 	return nil
 }
 
+// SetProviderType 切换 provider 读取方式(file=true 时 type: file 读本地缓存、不刷新远程;
+// false 时删除显式 type,回落到锚点 <<: *p 的 type: http 自动刷新)。
+//
+// 用于 mihomo 无法原生解析的订阅格式(sing-box/Surge/base64-Clash):set-sub 已把内容
+// 归一化成 Clash YAML 写入缓存,必须切 file,否则 mihomo 重启时会重新拉原始 URL 再解析失败。
+func (e *Editor) SetProviderType(name string, file bool) error {
+	pm := mapGet(e.topMap(), "proxy-providers")
+	if pm == nil || pm.Kind != yaml.MappingNode {
+		return fmt.Errorf("配置缺少 proxy-providers 段")
+	}
+	entry := mapGet(pm, name)
+	if entry == nil {
+		return fmt.Errorf("provider %s 不存在", name)
+	}
+	if file {
+		mapSet(entry, "type", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "file"})
+	} else {
+		mapDel(entry, "type")
+	}
+	return nil
+}
+
 // RemoveProvider 删除 provider 条目。
 func (e *Editor) RemoveProvider(name string) bool {
 	pm := mapGet(e.topMap(), "proxy-providers")
@@ -315,6 +338,67 @@ func (e *Editor) WireProvider(name string, add bool, groups []string) int {
 		}
 	}
 	return changed
+}
+
+// PruneDerived 根据实际节点名剔除无匹配的派生组(带 filter 的地区/类型组),只保留有效分组。
+// 被剔除的组名同步从锚点持有者(pr/prd)与 dns 组的 proxies 列表中移除,避免悬空引用。
+// 返回剔除的组数。nodeNames 应覆盖全部 provider(含新导入订阅),避免误删仍被其他订阅命中的组。
+func (e *Editor) PruneDerived(nodeNames []string) int {
+	tm := e.topMap()
+	gl := mapGet(tm, "proxy-groups")
+	if gl == nil || gl.Kind != yaml.SequenceNode {
+		return 0
+	}
+	var prune []string
+	keep := make([]*yaml.Node, 0, len(gl.Content))
+	for _, g := range gl.Content {
+		f := mapGet(g, "filter")
+		if f == nil || f.Value == "" {
+			keep = append(keep, g) // 无 filter 的组(应用组/兜底组)不参与剪枝
+			continue
+		}
+		re, err := regexp.Compile(f.Value)
+		if err != nil {
+			keep = append(keep, g) // 无效 filter 保留,交由 mihomo -t 报错
+			continue
+		}
+		hit := false
+		for _, n := range nodeNames {
+			if re.MatchString(n) {
+				hit = true
+				break
+			}
+		}
+		if name := mapGet(g, "name"); name != nil && !hit {
+			prune = append(prune, name.Value)
+		} else {
+			keep = append(keep, g)
+		}
+	}
+	if len(prune) == 0 {
+		return 0
+	}
+	gl.Content = keep
+	// 从锚点持有者与 dns 组的 proxies 移除被剔除的组名
+	for _, holder := range []string{"pr", "prd"} {
+		if hm := mapGet(tm, holder); hm != nil {
+			if px := mapGet(hm, "proxies"); px != nil && px.Kind == yaml.SequenceNode {
+				for _, p := range prune {
+					seqRemove(px, p)
+				}
+			}
+		}
+	}
+	for _, g := range gl.Content {
+		if name := mapGet(g, "name"); name != nil && name.Value == "dns" {
+			if px := mapGet(g, "proxies"); px != nil && px.Kind == yaml.SequenceNode {
+				for _, p := range prune {
+					seqRemove(px, p)
+				}
+			}
+		}
+	}
+	return len(prune)
 }
 
 // Backup / Restore 事务配套:修改前备份,失败恢复。

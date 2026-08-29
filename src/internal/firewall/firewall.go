@@ -76,7 +76,11 @@ func (n *nftBackend) ApplyDnsHijack() error {
 	if err := n.CleanAll(); err != nil {
 		return err
 	}
-	return runNft(BuildNftScript(constants.DnsListenPort, constants.MarkSelf))
+	if err := runNft(BuildNftScript(constants.DnsListenPort, constants.MarkSelf)); err != nil {
+		return err
+	}
+	logx.Info("防火墙:nftables 后端已加载 DNS 劫持")
+	return nil
 }
 
 func (n *nftBackend) ApplyTproxy() error {
@@ -87,7 +91,11 @@ func (n *nftBackend) ApplyTproxy() error {
 		constants.MarkTproxy, constants.TproxyTable, constants.TproxyPort)); err != nil {
 		return err
 	}
-	return TproxyPolicyAdd()
+	if err := TproxyPolicyAdd(); err != nil {
+		return err
+	}
+	logx.Info("防火墙:nftables 后端已加载 TPROXY 完整规则")
+	return nil
 }
 
 func (n *nftBackend) Teardown() error { return n.CleanAll() }

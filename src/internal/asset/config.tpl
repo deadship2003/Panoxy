@@ -16,11 +16,11 @@
 # set-sub 会把订阅名追加进下列 use 列表:一处修改,全部消费组生效
 pr: &pr
   type: select
-  proxies: [🔃 自动选择, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 其他地区, 全部节点, DIRECT]
+  proxies: [🔃 自动选择, 🎬 流媒体, 🎮 游戏, 🇨🇳 回国, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 英国, 德国, 法国, 荷兰, 加拿大, 澳大利亚, 俄罗斯, 土耳其, 印度, 马来西亚, 泰国, 越南, 菲律宾, 印度尼西亚, 巴西, 阿根廷, 其他地区, 全部节点, DIRECT]
   use: [SUB]
 prd: &prd
   type: select
-  proxies: [DIRECT, 🔃 自动选择, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 其他地区, 全部节点]
+  proxies: [DIRECT, 🔃 自动选择, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 英国, 德国, 法国, 荷兰, 加拿大, 澳大利亚, 俄罗斯, 土耳其, 印度, 马来西亚, 泰国, 越南, 菲律宾, 印度尼西亚, 巴西, 阿根廷, 其他地区, 全部节点]
   use: [SUB]
 # 订阅 provider 公共模板:set-sub --name 生成的条目以 <<: *p 复用
 p: &p
@@ -30,7 +30,8 @@ p: &p
     enable: true
     url: https://www.gstatic.com/generate_204/
     interval: 300
-    timeout: 1000
+    timeout: 5000
+    lazy: true
     tolerance: 100
 use: &use
   type: select
@@ -182,14 +183,37 @@ proxy-groups:
   # 兜底组:所有规则没匹配到的流量
   - { name: 其他, <<: *pr }
 
-  # ===== 地区分组(通配常见机场命名,不中可改各组的 filter)=====
-  - { name: 香港, <<: *use, type: url-test, filter: '(?i)港|HK|Hong ?Kong' }
-  - { name: 台湾, <<: *use, type: url-test, filter: '(?i)台|新北|彰化|TW|Taiwan' }
-  - { name: 日本, <<: *use, type: url-test, filter: '(?i)日本|东京|東京|大阪|埼玉|JP|Japan|Tokyo|Osaka' }
-  - { name: 新加坡, <<: *use, type: url-test, filter: '(?i)新加坡|狮城|SG|Singapore' }
-  - { name: 韩国, <<: *use, type: url-test, filter: '(?i)韩|首尔|KR|Korea|Seoul' }
-  - { name: 美国, <<: *use, type: url-test, filter: '(?i)美国|美西|美东|States|America|洛杉矶|圣何塞|西雅图' }
-  - { name: 其他地区, <<: *use, type: url-test, filter: '(?i)马来|泰国|越南|菲律宾|印尼|印度|土耳其|德国|英国|法国|荷兰|俄罗斯|巴西|阿根廷|Malaysia|Thailand|Vietnam|Philippines|Indonesia|Turkey|Germany|Russia|Brazil|Argentina' }
+  # ===== 地区分组(全分组:覆盖绝大多数机场命名;set-sub 会按实际节点剔除无匹配项)=====
+  - { name: 香港, <<: *use, type: url-test, filter: '(?i)香港|港|HK|Hong ?Kong|HKG' }
+  - { name: 台湾, <<: *use, type: url-test, filter: '(?i)台湾|台北|新北|桃园|台中|台南|彰化|TW|Taiwan|TPE' }
+  - { name: 日本, <<: *use, type: url-test, filter: '(?i)日本|东京|東京|大阪|埼玉|冲绳|JP|Japan|Tokyo|Osaka|Narita' }
+  - { name: 新加坡, <<: *use, type: url-test, filter: '(?i)新加坡|狮城|SG|Singapore|SIN' }
+  - { name: 韩国, <<: *use, type: url-test, filter: '(?i)韩国|韩|首尔|釜山|KR|Korea|Seoul|Busan' }
+  - { name: 美国, <<: *use, type: url-test, filter: '(?i)美国|美西|美东|美中|洛杉矶|圣何塞|西雅图|纽约|波特兰|硅谷|US|United ?States|America|Los ?Angeles|San ?Jose|Seattle|New ?York' }
+  - { name: 英国, <<: *use, type: url-test, filter: '(?i)英国|英|伦敦|UK|United ?Kingdom|Britain|London' }
+  - { name: 德国, <<: *use, type: url-test, filter: '(?i)德国|德|法兰克福|DE|Germany|Frankfurt' }
+  - { name: 法国, <<: *use, type: url-test, filter: '(?i)法国|法|巴黎|FR|France|Paris' }
+  - { name: 荷兰, <<: *use, type: url-test, filter: '(?i)荷兰|荷|阿姆斯特丹|NL|Netherlands|Amsterdam' }
+  - { name: 加拿大, <<: *use, type: url-test, filter: '(?i)加拿大|加|多伦多|温哥华|CA|Canada|Toronto|Vancouver' }
+  - { name: 澳大利亚, <<: *use, type: url-test, filter: '(?i)澳大利亚|澳洲|悉尼|墨尔本|AU|Australia|Sydney|Melbourne' }
+  - { name: 俄罗斯, <<: *use, type: url-test, filter: '(?i)俄罗斯|俄|莫斯科|RU|Russia|Moscow' }
+  - { name: 土耳其, <<: *use, type: url-test, filter: '(?i)土耳其|土|伊斯坦布尔|TR|Turkey|Istanbul' }
+  - { name: 印度, <<: *use, type: url-test, filter: '(?i)印度|印|孟买|IN|India|Mumbai' }
+  - { name: 马来西亚, <<: *use, type: url-test, filter: '(?i)马来西亚|马来|吉隆坡|MY|Malaysia|Kuala ?Lumpur' }
+  - { name: 泰国, <<: *use, type: url-test, filter: '(?i)泰国|泰|曼谷|TH|Thailand|Bangkok' }
+  - { name: 越南, <<: *use, type: url-test, filter: '(?i)越南|越|胡志明|河内|VN|Vietnam|Ho ?Chi ?Minh|Hanoi' }
+  - { name: 菲律宾, <<: *use, type: url-test, filter: '(?i)菲律宾|菲|马尼拉|PH|Philippines|Manila' }
+  - { name: 印度尼西亚, <<: *use, type: url-test, filter: '(?i)印度尼西亚|印尼|雅加达|ID|Indonesia|Jakarta' }
+  - { name: 巴西, <<: *use, type: url-test, filter: '(?i)巴西|巴|圣保罗|BR|Brazil|Sao ?Paulo' }
+  - { name: 阿根廷, <<: *use, type: url-test, filter: '(?i)阿根廷|阿|布宜诺斯|AR|Argentina|Buenos ?Aires' }
+  - { name: 其他地区, <<: *use, type: url-test, filter: '(?i)阿联酋|迪拜|沙特|南非|墨西哥|智利|波兰|瑞典|瑞士|挪威|丹麦|芬兰|奥地利|比利时|西班牙|意大利|葡萄牙|爱尔兰|捷克|乌克兰|UAE|Dubai|Saudi|South ?Africa|Mexico|Chile|Poland|Sweden|Switzerland|Norway|Denmark|Finland|Austria|Belgium|Spain|Italy|Portugal|Ireland|Czech|Ukraine' }
+
+  # ===== 类型分组(按节点用途派生;set-sub 会按实际节点剔除无匹配项)=====
+  - { name: 🎬 流媒体, <<: *use, type: url-test, filter: '(?i)流媒体|解锁|原生IP|原生|奈飞|网飞|Netflix|Disney|迪士尼|媒体|Media|影视|4K|Streaming' }
+  - { name: 🎮 游戏, <<: *use, type: url-test, filter: '(?i)游戏|电竞|低延迟|Game|Gaming|IEPL|IPLC|专线|内网' }
+  - { name: 🇨🇳 回国, <<: *use, type: url-test, filter: '(?i)回国|大陆|中国|China|CN2|回国线路|国内中转' }
+
+  # 兜底组(无 filter,不参与剪枝)
   - { name: 全部节点, <<: *use }
   - { name: 🔃 自动选择, <<: *use, tolerance: 2, type: url-test }
 
@@ -227,6 +251,10 @@ rules:
   - DST-PORT,3478,DIRECT                            # STUN/TURN(NAT 穿透)
   - DST-PORT,51820,DIRECT                           # WireGuard
   - DST-PORT,1194,DIRECT                            # OpenVPN
+  - DST-PORT,500,DIRECT                             # IPSec IKE(UDP 500)
+  - DST-PORT,4500,DIRECT                            # IPSec NAT-T(UDP 4500)
+  - DST-PORT,1701,DIRECT                            # L2TP(UDP 1701)
+  - DST-PORT,1723,DIRECT                            # PPTP(TCP 1723)
   - DST-PORT,5353,DIRECT                            # mDNS(局域网发现)
   - DST-PORT,123,DIRECT                             # NTP(时间同步)
   - DST-PORT,161,DIRECT                             # SNMP(网管)

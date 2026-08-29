@@ -9,20 +9,21 @@ import (
 )
 
 type Paths struct {
-	Root     string // /opt/panixy
-	Bin      string // 内核
-	UiDir    string
-	UiStamp  string
-	State    string // /opt/panixy/panixy.yaml:panixy 自身状态(proxy-mode 等)
-	Conf     string // /etc/clash.yaml:mihomo 配置(唯一事实源)
-	UnitDir  string
-	Cli      string
-	ManGz    string
-	Sysctl   string
-	Lock     string
-	LastUp   string
-	Proxies  string // 订阅缓存目录
-	RuleProv string // 规则缓存目录
+	Root        string // /opt/panixy
+	Bin         string // 内核
+	UiDir       string
+	UiStamp     string
+	State       string // /opt/panixy/panixy.yaml:panixy 自身状态(proxy-mode 等)
+	Conf        string // /etc/clash.yaml:mihomo 配置(唯一事实源)
+	DefaultConf string // /opt/panixy/config.default.yaml:纯净默认模板副本(merge-conf 重建基线)
+	UnitDir     string
+	Cli         string
+	ManGz       string
+	Sysctl      string
+	Lock        string
+	LastUp      string
+	Proxies     string // 订阅缓存目录
+	RuleProv    string // 规则缓存目录
 }
 
 func env(key, def string) string {
@@ -36,19 +37,20 @@ func env(key, def string) string {
 func Get() Paths {
 	root := env("PANIXY_ROOT", constants.DefRootDir)
 	return Paths{
-		Root:     root,
-		Bin:      filepath.Join(root, "bin", "mihomo"),
-		UiDir:    filepath.Join(root, "ui", "official"),
-		UiStamp:  filepath.Join(root, "ui", ".official.version"),
-		State:    env("PANIXY_STATE", filepath.Join(root, "panixy.yaml")),
-		Conf:     env("PANIXY_CONF", constants.DefConfPath),
-		UnitDir:  env("PANIXY_UNIT_DIR", constants.DefUnitDir),
-		Cli:      env("PANIXY_CLI", constants.DefCliDest),
-		ManGz:    env("PANIXY_MAN", constants.DefManGz),
-		Sysctl:   env("PANIXY_SYSCTL", constants.DefSysctlFile),
-		Lock:     env("PANIXY_LOCK", constants.DefLockFile),
-		LastUp:   filepath.Join(root, ".last-upgrade"),
-		Proxies:  filepath.Join(root, "proxies"),
-		RuleProv: filepath.Join(root, "rule_provider"),
+		Root:        root,
+		Bin:         filepath.Join(root, "bin", "mihomo"),
+		UiDir:       filepath.Join(root, "ui", "official"),
+		UiStamp:     filepath.Join(root, "ui", ".official.version"),
+		State:       env("PANIXY_STATE", filepath.Join(root, "panixy.yaml")),
+		Conf:        env("PANIXY_CONF", constants.DefConfPath),
+		DefaultConf: filepath.Join(root, "config.default.yaml"),
+		UnitDir:     env("PANIXY_UNIT_DIR", constants.DefUnitDir),
+		Cli:         env("PANIXY_CLI", constants.DefCliDest),
+		ManGz:       env("PANIXY_MAN", constants.DefManGz),
+		Sysctl:      env("PANIXY_SYSCTL", constants.DefSysctlFile),
+		Lock:        env("PANIXY_LOCK", constants.DefLockFile),
+		LastUp:      filepath.Join(root, ".last-upgrade"),
+		Proxies:     filepath.Join(root, "proxies"),
+		RuleProv:    filepath.Join(root, "rule_provider"),
 	}
 }

@@ -358,6 +358,11 @@ func placeCore(p paths.Paths, assets string) error {
 		logx.Info("内核已存在,保留")
 		return nil
 	}
+	return placeCoreForce(p, assets)
+}
+
+// placeCoreForce 无条件解包覆盖内核(redeploy 用;与 placeCore 仅差 exists 跳过)。
+func placeCoreForce(p paths.Paths, assets string) error {
 	arch := runtimeArch()
 	if arch == "" {
 		return fmt.Errorf("不支持的架构(包内置 amd64/arm64)")
@@ -398,6 +403,25 @@ func placeGeoAndRules(p paths.Paths, assets string) {
 	}
 }
 
+// placeGeoAndRulesForce 无条件覆盖 geo 与广告规则(redeploy 用;静态数据无需回滚)。
+func placeGeoAndRulesForce(p paths.Paths, assets string) {
+	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
+		src := filepath.Join(assets, "geo", f)
+		if exists(src) {
+			copyFile(src, filepath.Join(p.Root, f))
+			logx.Info("刷新: %s", f)
+		}
+	}
+	os.MkdirAll(p.RuleProv, 0o755)
+	src := filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")
+	if exists(src) {
+		copyFile(src, filepath.Join(p.RuleProv, "AWAvenue-Ads.yaml"))
+		logx.Info("刷新: 广告规则 AWAvenue-Ads.yaml")
+	} else {
+		logx.Warn("包内未带广告规则文件,保留现有(首启由内核联网拉取)")
+	}
+}
+
 func placeUI(p paths.Paths, assets string) {
 	if exists(p.UiDir) {
 		return
@@ -407,6 +431,20 @@ func placeUI(p paths.Paths, assets string) {
 		copyDir(src, p.UiDir)
 		os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
 	}
+}
+
+// placeUIForce 无条件覆盖 UI(redeploy 用;旧目录已备份为 .old,此处只落新)。
+func placeUIForce(p paths.Paths, assets string) error {
+	src := filepath.Join(assets, "ui", "official")
+	if !exists(src) {
+		return fmt.Errorf("assets 缺 UI")
+	}
+	if err := copyDir(src, p.UiDir); err != nil {
+		return err
+	}
+	os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
+	logx.Info("刷新: Web UI(metacubexd)")
+	return nil
 }
 
 func randHex(n int) string {

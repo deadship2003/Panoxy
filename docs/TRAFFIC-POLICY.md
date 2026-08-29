@@ -24,7 +24,7 @@
 | CGNAT 子网 | 100.64.0.0/10 | keep4 集合 + 模板 IP-CIDR |
 | 接口 | tailscale0 | 防火墙 DNS 链 + tproxy 链 iifname 排除 |
 
-## 基础服务直连(28 条)
+## 基础服务直连(32 条)
 
 ### 远程管理
 | 端口 | 服务 | 原因 |
@@ -45,6 +45,10 @@
 | 3478 | STUN/TURN | NAT 穿透 |
 | 51820 | WireGuard | UDP 封装,走代理严重延迟 |
 | 1194 | OpenVPN | 同上 |
+| 500 | IPSec IKE | UDP 协商,走代理隧道建立失败 |
+| 4500 | IPSec NAT-T | NAT 穿透后的 IPSec |
+| 1701 | L2TP | UDP 封装,走代理严重延迟 |
+| 1723 | PPTP | TCP/GRE,走代理握手失败 |
 
 ### VoIP / 语音
 | 端口 | 服务 | 原因 |

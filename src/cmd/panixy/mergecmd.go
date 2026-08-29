@@ -40,9 +40,11 @@ func runMergeConf(cmd *cobra.Command, args []string) error {
 	dnsMode, _ := cmd.Flags().GetString("dns")
 	noWire, _ := cmd.Flags().GetBool("no-wire")
 
-	base, err := config.Load(p.Conf)
+	// 基底用纯净默认模板(config.default.yaml),而非运行中的 /etc/clash.yaml ——
+	// 保证融合结果可复现:个人配置叠加到干净基线上,占位订阅(SUB_URL_PLACEHOLDER)由 MergePersonal 自动退场。
+	base, err := config.Load(p.DefaultConf)
 	if err != nil {
-		return fmt.Errorf("读取基底配置失败: %w(先 panixy init/deploy 生成)", err)
+		return fmt.Errorf("读取默认基底配置失败: %w(%s 不存在,先 sudo panixy redeploy 生成)", err, p.DefaultConf)
 	}
 	personal, err := config.Load(args[0])
 	if err != nil {

@@ -158,6 +158,29 @@ rules:
 	}
 }
 
+// TestPruneDerivedKeepsOnlyMatchedGroups 校验派生组剪枝:按实际节点名剔除无命中的地区/类型组,
+// 并从 pr/prd/dns 的 proxies 同步移除,避免悬空引用。
+func TestPruneDerivedKeepsOnlyMatchedGroups(t *testing.T) {
+	e, p := renderTmp(t)
+	// 模拟一次真实订阅:仅 香港 + 美国 + 流媒体 节点
+	names := []string{"香港 01 | 原生IP", "香港 02", "美国 流媒体解锁"}
+	if n := e.PruneDerived(names); n == 0 {
+		t.Fatal("应剔除无匹配的派生组")
+	}
+	e.Save()
+	s := string(mustRead(t, p))
+	for _, keep := range []string{"香港", "美国", "🎬 流媒体", "全部节点", "🔃 自动选择"} {
+		if !strings.Contains(s, keep) {
+			t.Errorf("应保留 %q,却缺失", keep)
+		}
+	}
+	for _, gone := range []string{"阿根廷", "台湾", "🇨🇳 回国"} {
+		if strings.Contains(s, gone) {
+			t.Errorf("应剔除 %q,却仍残留", gone)
+		}
+	}
+}
+
 // TestEditedConfigPassesMihomoCheck 终极集成:模板 → 增删 provider → 真实内核 -t。
 func TestEditedConfigPassesMihomoCheck(t *testing.T) {
 	bin := os.Getenv("MIHOMO_BIN")

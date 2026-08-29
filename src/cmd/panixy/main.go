@@ -87,7 +87,7 @@ func NewRootCmd() *cobra.Command {
 		}
 	}
 	root.AddCommand(
-		cmdInit(), cmdDeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
+		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdInstall(), cmdSetSub(), cmdSubRm(), cmdSubList(),
 		cmdTry(), cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdUpdateUI(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
 		cmdFw(), cmdMan(),
@@ -128,13 +128,14 @@ func cmdMergeConf() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "merge-conf <个人配置.yaml>",
 		Short: "个人配置叠加融合:同名组合并、新增追加、基底保留;备份可回滚",
-		Long: `把个人 clash.yaml(文件名任意)叠加融合进当前部署配置 —— 同名组合并而非替换。
+		Long: `把个人 clash.yaml(文件名任意)叠加融合到默认模板(config.default.yaml)上 —— 同名组合并而非替换。
 
+基底:    /opt/panixy/config.default.yaml(init/deploy 生成的干净模板,含 SUB_URL_PLACEHOLDER)
 组融合:  同名 → 字段级合并(proxies/use 取并集,标量个人覆盖)
           个人新增组 → 追加到末尾
           基底组(地区组/应用组)→ 保留不删(引用不断链)
 规则融合: 个人规则前置(优先匹配)+ 基底规则兜底(MATCH 排最后,去重)
-订阅合并: 基底已导入订阅保留(含缓存),个人新增订阅追加
+订阅合并: 个人订阅追加;占位订阅(SUB_URL_PLACEHOLDER)自动退场
 接管(个人): 端口/密钥/external-controller/proxies
 保留(基底): tun 模式段/routing-mark/dns.listen(暗号)/geo/ntp/sniffer
 自动:     PROCESS- 规则 → find-process-mode=strict;占位订阅退场
@@ -296,8 +297,8 @@ func cmdMode() *cobra.Command {
 流量策略(两种模式统一):
   不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流)
   DNS 53 劫持(为大多数设备提供域名级分流)
-  28 条基础服务直连:SSH(22) RDP(3389) VNC(5900)
-    VPN(Tailscale/WG/OpenVPN) VoIP(SIP) 域认证(Kerberos/LDAP)
+  32 条基础服务直连:SSH(22) RDP(3389) VNC(5900)
+    VPN(Tailscale/WG/OpenVPN/IPSec/L2TP/PPTP) VoIP(SIP) 域认证(Kerberos/LDAP)
     IoT(MQTT/CoAP) 存储(iSCSI/MySQL/PG/Redis/Mongo) 等
 
 TUN(默认) vs TPROXY 选型:
@@ -332,13 +333,13 @@ func cmdUpgrade() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "upgrade [--core|--ui|--cli] [--core-version vX] [--ui-version vX] [--check]",
 		Short: "升级内核/面板/CLI 自身(timer 每日自动调用)",
-		Long: `升级 mihomo 内核、metacubexd 面板与 panixy CLI 自身。默认全部;全成功才更新 .last-upgrade。
-CLI 升级:查 GitHub Release 最新版 → 下载对应架构 → 备份旧版 → 替换 /usr/local/bin/panixy。
+		Long: `升级 mihomo 内核、metacubexd 面板(默认两者都升;--cli 显式升 CLI 自身)。全成功才更新 .last-upgrade。
+CLI 升级(--cli):查 GitHub Release 最新版 → 下载对应架构 → 备份旧版 → 替换 /usr/local/bin/panixy。
 
 内核流程:查最新 release(经本机代理,失败直连)→ 下载(amd64 按 avx2 优选 v3,失败降级
 compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", constants.CoreKeep) + ` 份)→ 原子替换 → 重启 →
 健康检查(API 版本+出口连通)→ 失败自动回滚旧二进制。`,
-		Example: "  panixy upgrade --check            # 只看可升级项\n  sudo panixy upgrade --core         # 只升内核\n  sudo panixy upgrade --core-version v1.19.31",
+		Example: "  panixy upgrade --check            # 只看可升级项\n  sudo panixy upgrade --core         # 只升内核\n  sudo panixy upgrade --cli          # 只升 CLI 自身\n  sudo panixy upgrade --core-version v1.19.31",
 		RunE:    runUpgrade,
 	}
 	c.Flags().Bool("core", false, "仅升级内核")

@@ -36,11 +36,15 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 
 	coreOnly, _ := cmd.Flags().GetBool("core")
 	uiOnly, _ := cmd.Flags().GetBool("ui")
+	cliOnly, _ := cmd.Flags().GetBool("cli")
 	check, _ := cmd.Flags().GetBool("check")
 	coreVer, _ := cmd.Flags().GetString("core-version")
 	uiVer, _ := cmd.Flags().GetString("ui-version")
-	doCore := !uiOnly || coreOnly
-	doUI := !coreOnly || uiOnly
+	// 默认升 core+ui;--cli 需显式指定(CLI 走 GitHub 自升级,不进默认全升/每日定时器)
+	anyOnly := coreOnly || uiOnly || cliOnly
+	doCore := !anyOnly || coreOnly
+	doUI := !anyOnly || uiOnly
+	doCLI := cliOnly
 
 	api := mihomoapi.NewFromConf(p.Conf)
 	proxy := ""
@@ -57,7 +61,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		curUI = strings.TrimSpace(string(b))
 	}
 
-	var latestCore, latestUI string
+	var latestCore, latestUI, latestCLI string
 	if doCore {
 		want := coreVer
 		if want == "" {
@@ -98,6 +102,26 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			logx.Info("UI 已是最新 %s", curUI)
+		}
+	}
+	if doCLI {
+		cur := version
+		want := ""
+		if latestCLI, err = upgrade.Latest("deadship2003/Panixy", proxy); err != nil {
+			if !check {
+				logx.Warn("CLI 版本查询失败,本次跳过:%v", err)
+			}
+		} else {
+			want = latestCLI
+		}
+		if check {
+			fmt.Printf("CLI:  当前 %s 最新 %s → %s\n", orQ(cur), orQ(want), action(cur, want))
+		} else if want != "" && want != cur {
+			if err := cliUpgrade(p, proxy, want); err != nil {
+				return err
+			}
+		} else {
+			logx.Info("CLI 已是最新 %s", cur)
 		}
 	}
 	if check {
@@ -186,6 +210,9 @@ func restoreCore(p paths.Paths, bak, cur string) {
 func pruneCoreBackups(p paths.Paths, keep int) {
 	matches, _ := filepath.Glob(p.Bin + ".bak-*")
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
+	if len(matches) <= keep {
+		return
+	}
 	for _, m := range matches[keep:] {
 		os.Remove(m)
 	}
@@ -295,24 +322,12 @@ func runUpdateUI(cmd *cobra.Command, args []string) error {
 }
 
 // cliUpgrade 升级 panixy CLI 自身:从 GitHub Release 下载新版本替换 /usr/local/bin/panixy。
-func cliUpgrade(p paths.Paths, proxy string) error {
-	logx.Info("CLI 升级检查...")
-	latest, err := upgrade.Latest("deadship2003/Panixy", proxy)
-	if err != nil {
-		logx.Warn("CLI 版本查询失败:%v", err)
-		return nil // 不阻塞核心/UI 升级
-	}
-	cur := "v" + version
-	if latest == cur {
-		logx.Info("CLI 已是最新 %s", cur)
-		return nil
-	}
-	logx.Info("CLI 升级: %s → %s", cur, latest)
-
+func cliUpgrade(p paths.Paths, proxy, want string) error {
+	logx.Info("CLI 升级: → %s", want)
 	tmp, _ := os.MkdirTemp("", "panixy-cli-up-")
 	defer os.RemoveAll(tmp)
 	arch := runtime.GOARCH
-	url := fmt.Sprintf("https://github.com/deadship2003/Panixy/releases/download/%s/panixy-linux-%s", latest, arch)
+	url := fmt.Sprintf("https://github.com/deadship2003/Panixy/releases/download/%s/panixy-linux-%s", want, arch)
 	dst := filepath.Join(tmp, "panixy.new")
 	if err := upgrade.DownloadProgress(url, proxy, dst, "CLI"); err != nil {
 		return fmt.Errorf("CLI 下载失败: %w", err)
@@ -320,13 +335,13 @@ func cliUpgrade(p paths.Paths, proxy string) error {
 	os.Chmod(dst, 0o755)
 
 	// 备份旧版 → 替换
-	bak := p.Cli + ".bak-" + strings.TrimPrefix(cur, "v")
+	bak := p.Cli + ".bak-" + strings.TrimPrefix(version, "v")
 	copyFile(p.Cli, bak)
 	if err := copyFile(dst, p.Cli); err != nil {
 		copyFile(bak, p.Cli) // 回滚
 		return fmt.Errorf("CLI 替换失败: %w", err)
 	}
 	os.Chmod(p.Cli, 0o755)
-	logx.Info("CLI 升级成功 → %s(备份 %s)", latest, bak)
+	logx.Info("CLI 升级成功 → %s(备份 %s)", want, bak)
 	return nil
 }

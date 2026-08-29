@@ -8,34 +8,17 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/deadship2003/panixy/internal/logx"
 )
 
 // UA 返回拉取订阅的 User-Agent。
 // 实测同一机场对不同 UA 返回不同节点数:ClashMetaForAndroid/clash-verge 拿到
-// 最多(44 个),clash.meta 只有 41 个。取最大值的 UA。
-func UA(coreBin string) string {
-	ver := ""
-	if coreBin != "" {
-		if out, err := exec.Command(coreBin, "-v").CombinedOutput(); err == nil {
-			for _, f := range strings.Fields(string(out)) {
-				if strings.HasPrefix(f, "v") && len(f) > 2 && f[1] >= '0' && f[1] <= '9' {
-					ver = f
-					break
-				}
-			}
-		}
-	}
-	if ver == "" {
-		ver = "v1.19.30"
-	}
+// 最多(44 个),clash.meta 只有 41 个。取最大值的 UA,固定返回。
+func UA(_ string) string {
 	return "ClashMetaForAndroid/2.11.5"
 }
 
@@ -73,20 +56,18 @@ func Fetch(url, proxy, ua string, w io.Writer) error {
 	return try(proxy)
 }
 
-// Validate 校验订阅内容:必须是含至少一个节点的 Clash YAML
-// (机场对无效 token 常返回网页/空,必须拦下,bash 时代实测教训)。
+// Validate 校验订阅内容:必须能识别出格式且至少含一个节点。
+// 覆盖所有标准订阅格式(Clash YAML / URI 列表 / sing-box / Surge),见 normalize.go;
+// 机场对无效 token 常返回网页/空,必须拦下(bash 时代实测教训)。
 func Validate(b []byte) error {
-	if len(b) == 0 {
+	if len(strings.TrimSpace(string(b))) == 0 {
 		return fmt.Errorf("订阅内容为空")
 	}
-	var doc struct {
-		Proxies []map[string]any `yaml:"proxies"`
+	if Detect(b) == FormatUnknown {
+		return fmt.Errorf("订阅不是可识别的格式(支持 Clash YAML / base64或明文 URI 列表 / sing-box JSON / Surge;机场对无效 token 常返回网页)")
 	}
-	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return fmt.Errorf("不是有效 YAML:%v", err)
-	}
-	if len(doc.Proxies) == 0 {
-		return fmt.Errorf("Clash YAML 中无 proxies 节点(检查链接/token;机场对无效请求可能返回网页)")
+	if nodeCount(b) == 0 {
+		return fmt.Errorf("订阅中未解析到任何节点(检查链接/token;机场对无效请求可能返回网页)")
 	}
 	return nil
 }

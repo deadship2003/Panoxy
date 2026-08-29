@@ -6,16 +6,25 @@
 #   --sub-url <订阅URL>        直连下载失败时,经订阅节点建立本地代理再下载
 #   -h | -? | --help           显示本帮助
 # 环境变量:ASSETS_SRC=本地资产目录(默认 /opt/panixy,存在即优先复制,断网可打包)
-#          MIHOMO_VERSION=内核版本(默认 v1.19.30)
+#          MIHOMO_VERSION=内核版本(默认运行时探测上游最新;显式指定可固定/复现)
 #          MIHOMO_BOOT_BIN=引导代理内核(默认 /opt/panixy/bin/mihomo)
 #          PROXY_PORT=引导代理端口(默认 33999)
 # 流程:编译 CLI → 资产获取(本地优先/直连 15s 检测/订阅代理兜底)→ 订阅泄露扫描
 #      → 组装 Panixy-V<ver>-<arch>.tar.gz + sha256(订阅 URL 永不进包)
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+cd "$(dirname "$SELF")/.."
 host_arch() { case "$(uname -m)" in x86_64) echo amd64 ;; aarch64) echo arm64 ;; *) echo "" ;; esac; }
+has_avx2() { grep -qw avx2 /proc/cpuinfo 2>/dev/null; }   # amd64 有 AVX2 才能用 v3 内核
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+# latest_gh_release 探测 GitHub 仓库最新 release 的 tag_name(运行时探测,不写死)。
+# 失败返回空串且退出码 0,由调用方决定兜底策略(本地内核/显式版本/报错)。
+latest_gh_release() {
+  curl -fsSL --connect-timeout 8 "https://api.github.com/repos/$1/releases/latest" \
+    2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true
+}
+
+usage() { sed -n '2,/^set -euo/p' "$SELF" | sed '$d; s/^# \{0,1\}//'; exit 0; }
 ARCH=""; VER=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -29,9 +38,14 @@ done
 [ -n "$ARCH" ] || ARCH="$(host_arch)"   # 默认:仅当前硬件平台
 [ -n "$ARCH" ] || { echo "无法识别当前架构,请 --arch amd64|arm64|all 指定"; exit 1; }
 [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "V0.1.0-dev")"
-MIHOMO_VER="${MIHOMO_VERSION:-v1.19.30}"   # 升级内核时同步改这里/环境变量
+MIHOMO_VER="${MIHOMO_VERSION:-$(latest_gh_release MetaCubeX/mihomo)}"   # 运行时探测上游最新
 # 本地资产源(断网打包):存在则优先复制,缺失才联网下载
 SRC="${ASSETS_SRC:-/opt/panixy}"
+# 联网探测失败时兜底:本地内核版本 > 明确报错(绝不静默写死)
+if [ -z "$MIHOMO_VER" ] && [ -x "$SRC/bin/mihomo" ]; then
+  MIHOMO_VER="$("$SRC/bin/mihomo" -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+fi
+[ -n "$MIHOMO_VER" ] || { echo "无法确定 mihomo 内核版本(联网探测失败且无本地内核);请用 MIHOMO_VERSION=vX.Y.Z 显式指定"; exit 1; }
 
 # ---- 订阅引导代理:直连下载不了 GitHub 时,用订阅节点建本地代理再下 ----
 # 用法:SUB_URL='订阅链接' scripts/package.sh ...(引导内核取 MIHOMO_BOOT_BIN,默认 /opt/panixy/bin/mihomo)
@@ -101,7 +115,7 @@ leak_scan() {
 }
 
 echo "== [1/5] 编译(scripts/build.sh) =="
-"$(dirname "$0")/build.sh" "${VER#V}"
+"$(dirname "$SELF")/build.sh" "$VER"
 
 echo "== [2/5] 资产获取(本地优先: $SRC;缺失才下载) =="
 TMP=$(mktemp -d)
@@ -127,7 +141,11 @@ for arch in $KERNEL_ARCHS; do
   if [ "$arch" = "$HA" ] && [ -x "$SRC/bin/mihomo" ]; then
     gzip -c "$SRC/bin/mihomo" > "$TMP/mihomo-linux-$arch.gz"; echo "      本地: mihomo 内核($arch)"
   elif [ "$arch" = amd64 ]; then
-    echo "      下载: mihomo 内核(amd64-v3)"; dl "$TMP/mihomo-linux-amd64.gz" "$base/mihomo-linux-amd64-v3-$MIHOMO_VER.gz" || true
+    if has_avx2; then
+      echo "      下载: mihomo 内核(amd64-v3,本机 AVX2)"; dl "$TMP/mihomo-linux-amd64.gz" "$base/mihomo-linux-amd64-v3-$MIHOMO_VER.gz" || true
+    else
+      echo "      下载: mihomo 内核(amd64 标准,本机无 AVX2)"; dl "$TMP/mihomo-linux-amd64.gz" "$base/mihomo-linux-amd64-$MIHOMO_VER.gz" || true
+    fi
   else
     echo "      下载: mihomo 内核(arm64)"; dl "$TMP/mihomo-linux-arm64.gz" "$base/mihomo-linux-arm64-$MIHOMO_VER.gz" || true
   fi
@@ -163,4 +181,4 @@ case "$ARCH" in
 esac
 
 echo "== [5/5] 完成 =="
-ls -la Panixy-*.tar.gz* 2>/dev/null | tail -4
+ls -la dist/Panixy-*.tar.gz* 2>/dev/null | tail -4

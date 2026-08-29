@@ -103,7 +103,20 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 		body = buf.Bytes()
 	}
 
+	// 归一化:sing-box/Surge/base64-Clash 等非 Clash YAML 格式统一转成 Clash YAML;
+	// Clash YAML / URI 列表 mihomo 原生解析,原样透传(converted 决定 provider 是否切 file)。
+	nb, conv, err := subscribe.Normalize(body)
+	if err != nil {
+		return err
+	}
+	body, converted := nb, conv
+	if converted {
+		logx.Step("订阅非 Clash YAML 格式,已归一化;provider 切换为本地缓存模式(type: file)")
+	}
+
 	// 2) 备份 → 增量编辑 → -t 校验 → 预置缓存
+	// 汇总全部 provider 的节点名(含本次导入),供派生组剪枝:只保留实际命中的地区/类型组
+	nodeNames := collectNodeNames(p, body, name)
 	e, err := config.Load(p.Conf)
 	if err != nil {
 		return err
@@ -139,7 +152,14 @@ func runSetSub(cmd *cobra.Command, args []string) error {
 		recoverAll(false)
 		return err
 	}
+	if err := e.SetProviderType(name, converted); err != nil {
+		recoverAll(false)
+		return err
+	}
 	e.WireProvider(name, true, groups)
+	if pruned := e.PruneDerived(nodeNames); pruned > 0 {
+		logx.Info("按实际节点剔除 %d 个无匹配的地区/类型组(只保留有效分组)", pruned)
+	}
 	if err := e.Save(); err != nil {
 		recoverAll(false)
 		return fmt.Errorf("配置写入失败: %w", err)
@@ -283,6 +303,35 @@ func readLine() (string, error) {
 	r := bufio.NewReader(os.Stdin)
 	s, err := r.ReadString('\n')
 	return strings.TrimSpace(s), err
+}
+
+// collectNodeNames 汇总全部 provider 的节点名(含本次导入 body),供派生组剪枝用。
+// 必须覆盖所有订阅:某地区/类型组只要被任意订阅命中就保留,避免误删。
+func collectNodeNames(p paths.Paths, newBody []byte, newName string) []string {
+	seen := map[string]bool{}
+	add := func(b []byte) {
+		if ns, err := subscribe.NodeNames(b); err == nil {
+			for _, n := range ns {
+				seen[n] = true
+			}
+		}
+	}
+	add(newBody)
+	if entries, err := os.ReadDir(p.Proxies); err == nil {
+		for _, ent := range entries {
+			if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".yaml") || ent.Name() == newName+".yaml" {
+				continue
+			}
+			if b, err := os.ReadFile(filepath.Join(p.Proxies, ent.Name())); err == nil {
+				add(b)
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
+	}
+	return names
 }
 
 var errLineRe = regexp.MustCompile(`level=(error|fatal) msg="([^"]*)"`)

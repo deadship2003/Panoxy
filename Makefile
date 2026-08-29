@@ -4,13 +4,14 @@
 # 用法: make <target>   (make 或 make help 查看全部)
 
 PANIXY_VERSION ?= $(shell git describe --tags 2>/dev/null || echo "0.1.0-dev")
+GOAMD64 ?= v3
 
 help: ## 显示所有目标
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-build: ## 编译双架构二进制 → dist/
-	@./scripts/build.sh $(PANIXY_VERSION)
+build: ## 编译双架构二进制 → dist/(GOAMD64 可覆盖,默认 v3)
+	@GOAMD64=$(GOAMD64) ./scripts/build.sh $(PANIXY_VERSION)
 
 test: ## 运行单元测试(需 mihomo 内核)
 	@cd src && MIHOMO_BIN=$${MIHOMO_BIN:-/opt/panixy/bin/mihomo} go test ./internal/... -count=1 -timeout 120s
