@@ -114,12 +114,9 @@ func cmdTry() *cobra.Command {
   panixy try                                      # 回车粘贴订阅`,
 		RunE: runTry,
 	}
-	c.Flags().String("name", "SUB", "订阅 provider 名称")
-	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
-	c.Flags().String("proxy-mode", "tun", "tun | tproxy(沙箱仅影响配置渲染)")
-	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
-	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认 /opt/panixy/bin/mihomo)")
-	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
+	addSubSourceFlags(c)
+	addDeployFlags(c)
+	addDownloadFlags(c)
 	c.Flags().String("dir", "", "沙箱目录(默认 /tmp/panixy-try-<时间戳>)")
 	return c
 }
@@ -151,7 +148,7 @@ func cmdMergeConf() *cobra.Command {
   sudo panixy merge-conf --dns mine ~/my-clash.yaml`,
 		RunE: runMergeConf,
 	}
-	c.Flags().Bool("dry-run", false, "试运行模式:只输出决策报告与融合结果预览,不落盘不备份")
+	addDryRunFlag(c, "试运行模式:只输出决策报告与融合结果预览,不落盘不备份")
 	c.Flags().String("dns", "keep", "DNS 段策略: keep(基底)| mine(个人,listen 强制 1053)")
 	c.Flags().Bool("no-wire", false, "不把基底订阅自动接线进组")
 	c.Flags().Bool("rollback", false, "从 .panixy-premerge 备份恢复到融合前")
@@ -180,13 +177,10 @@ func cmdInit() *cobra.Command {
   panixy init --dry-run                              # 试运行模式(不需要 root)`,
 		RunE: runInit,
 	}
-	c.Flags().String("name", "SUB", "订阅 provider 名称")
-	c.Flags().String("file", "", "本地订阅 YAML(跳过联网拉取)")
-	c.Flags().String("proxy-mode", "tun", "tun | tproxy")
-	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
-	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认取安装目录下 bin/mihomo)")
-	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
-	c.Flags().Bool("dry-run", false, "试运行模式:环境/下载策略/落位/配置渲染预览,不执行不需要 root")
+	addSubSourceFlags(c)
+	addDeployFlags(c)
+	addDownloadFlags(c)
+	addDryRunFlag(c, "试运行模式:环境/下载策略/落位/配置渲染预览,不执行不需要 root")
 	return c
 }
 
@@ -205,11 +199,9 @@ func cmdDeploy() *cobra.Command {
   sudo ./panixy deploy --proxy-mode tproxy                        # 以 TPROXY 模式部署`,
 		RunE: runDeploy,
 	}
-	c.Flags().String("name", "SUB", "订阅 provider 名称(仅 [a-zA-Z0-9_-])")
-	c.Flags().String("file", "", "本地订阅 YAML 文件(无外网时离线导入)")
-	c.Flags().String("proxy-mode", "tun", "透明代理模式: tun | tproxy")
-	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
-	c.Flags().Bool("dry-run", false, "试运行模式:环境/资产/下载策略/配置渲染预览,不执行不需要 root")
+	addSubSourceFlags(c)
+	addDeployFlags(c)
+	addDryRunFlag(c, "试运行模式:环境/资产/下载策略/配置渲染预览,不执行不需要 root")
 	return c
 }
 
@@ -237,8 +229,7 @@ func cmdSetSub() *cobra.Command {
 		Example: "  sudo panixy set-sub --name airport2 'https://example.com/sub2'\n  sudo panixy set-sub   # 粘贴模式",
 		RunE:    runSetSub,
 	}
-	c.Flags().String("name", "SUB", "订阅 provider 名称(默认 SUB;仅 [a-zA-Z0-9_-])")
-	c.Flags().String("file", "", "本地订阅 YAML 文件(跳过联网拉取)")
+	addSubSourceFlags(c)
 	c.Flags().StringSlice("group", nil, "限定融合的组(默认:全部 use 非空的组/锚点持有者)")
 	return c
 }

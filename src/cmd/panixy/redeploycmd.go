@@ -51,7 +51,7 @@ func cmdRedeploy() *cobra.Command {
   sudo ./panixy redeploy --dry-run      # 试运行:预览将替换的文件与决策`,
 		RunE: runRedeploy,
 	}
-	c.Flags().Bool("dry-run", false, "试运行模式:预览落位与决策,不执行")
+	addDryRunFlag(c, "试运行模式:预览落位与决策,不执行")
 	return c
 }
 
