@@ -345,7 +345,7 @@ git tag V0.1.0 && git push origin V0.1.0
 | `sudo panixy sub import [URL]` | 导入订阅(粘贴模式免引号) |
 | `sudo panixy sub del --name N` | 删除订阅 |
 | `panixy sub list [--json]` | 各订阅状态/节点数 |
-| `panixy status [-v\|-q\|--json]` | 健康一览(`-q` 退出码供监控) |
+| `panixy status [-q\|--json\|--detail]` | 健康一览(`-q` 退出码供监控) |
 | `sudo panixy mode [tun\|tproxy]` | 查看/切换模式 |
 | `sudo panixy upgrade [--core\|--ui] [--check]` | 参数化升级 |
 | `sudo panixy rollback [vX]` | 内核回滚 |

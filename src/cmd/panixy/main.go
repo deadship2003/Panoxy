@@ -87,7 +87,7 @@ func NewRootCmd() *cobra.Command {
 		}
 	}
 	root.AddCommand(
-		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdInstall(), cmdSub(),
+		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdSub(),
 		cmdTry(), cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
 		cmdFw(), cmdMan(),
@@ -205,15 +205,6 @@ func cmdDeploy() *cobra.Command {
 	return c
 }
 
-func cmdInstall() *cobra.Command {
-	return &cobra.Command{
-		Use:    "install",
-		Short:  "仅部署 systemd 服务与防火墙(文件已就位时;deploy 的内部步骤)",
-		Hidden: true,
-		RunE:   runInstall,
-	}
-}
-
 func cmdSub() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "sub",
@@ -273,17 +264,17 @@ func cmdSubList() *cobra.Command {
 
 func cmdStatus() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "status [-v|-q|--json]",
+		Use:   "status [-q|--json|--detail]",
 		Short: "健康一览:服务/防火墙/各订阅节点数/内核UI版本/出口连通",
 		Long: `健康一览。包含:服务状态、防火墙后端与残留规则、全部 proxy-providers 状态、
 内核/UI 版本、上次升级时间、代理出口连通性;并提示浏览器 DoH 无法被内核劫持。
 
-  -v/--detail  追加明细:当前代理模式(tun/tproxy)、TUN 栈风险提示、路由/缓存细节
+  --detail  追加明细:当前代理模式(tun/tproxy)、TUN 栈风险提示、路由/缓存细节
   -q  静默,仅退出码:0健康 1降级(节点0或代理出网不通) 2故障(服务/API 不可用)
   --json 机器可读单行`,
 		RunE: runStatus,
 	}
-	c.Flags().BoolP("detail", "v", false, "追加明细")
+	c.Flags().Bool("detail", false, "追加明细")
 	c.Flags().BoolP("quiet", "q", false, "静默,仅退出码")
 	c.Flags().Bool("json", false, "以 JSON 输出")
 	return c

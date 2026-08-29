@@ -70,7 +70,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println("提示:     浏览器内置 DoH(443)无法被内核劫持,域名分流对其不生效,建议关闭")
 
 	if v {
-		fmt.Println("-- 详细(-v/--detail) --")
+		fmt.Println("-- 详细(--detail) --")
 		if r.Mode == "tun" {
 			fmt.Println("TUN 栈:   system(当前配置;重度 BT/UDP、频繁掉线、老内核建议 gvisor 兜底)")
 		} else {
