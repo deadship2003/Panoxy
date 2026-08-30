@@ -62,6 +62,7 @@ func NewRootCmd() *cobra.Command {
 订阅/配置:
   sudo panixy sub import '订阅链接'        # 导入订阅(回车粘贴,免引号)
   sudo panixy merge-conf ~/my.yaml        # 融合个人配置(--dry-run 预览)
+  panixy config                            # 打印默认配置模板(免 root)
 
 日常:
   panixy status                          # 健康一览(服务/防火墙/订阅/出网)
@@ -96,7 +97,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(
 		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdSub(),
 		cmdTry(), cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdRollback(),
-		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(),
+		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(), cmdConfig(),
 		cmdFw(), cmdMan(),
 	)
 	return root
@@ -439,6 +440,32 @@ func cmdApplyConf() *cobra.Command {
 		Example: "  sudo panixy apply-conf ~/my-clash.yaml",
 		RunE:    runApplyConf,
 	}
+}
+
+func cmdConfig() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "config",
+		Short: "渲染/打印默认配置模板(免 root;--write 写回 config.default.yaml)",
+		Long: `渲染内嵌默认模板(config.tpl)并打印到 stdout —— 与 init/deploy 首次落盘的 /etc/clash.yaml
+同源,保留 SUB_URL_PLACEHOLDER、不含任何订阅。
+
+默认密钥/端口:secret=deadship、mixed-port=33833、HTTP 6666、SOCKS 6699、API 9999。
+--mode tun|tproxy 决定 tun/tproxy 变体;--secret 覆盖面板密钥。
+
+--write 额外把渲染结果写回 /opt/panixy/config.default.yaml(纯净默认副本,供
+merge-conf 重建基线),需对安装目录有写权限(通常 sudo)。
+
+只读、不部署、不动防火墙/服务;无需 root(除非 --write)。`,
+		Example: `  panixy config                       # 打印默认配置(stdout)
+  panixy config > clash.yaml          # 导出到文件
+  panixy config --mode tproxy         # TPROXY 变体
+  sudo panixy config --write          # 写回 config.default.yaml`,
+		RunE: runConfig,
+	}
+	c.Flags().String("mode", "tun", "透明代理模式: tun | tproxy")
+	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
+	c.Flags().Bool("write", false, "写回 /opt/panixy/config.default.yaml(默认仅打印)")
+	return c
 }
 
 func cmdFw() *cobra.Command {

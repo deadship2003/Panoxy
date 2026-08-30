@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/deadship2003/panixy/internal/asset"
 	"github.com/deadship2003/panixy/internal/config"
 	"github.com/deadship2003/panixy/internal/constants"
 	"github.com/deadship2003/panixy/internal/health"
@@ -91,6 +92,31 @@ func runUnits(cmd *cobra.Command, args []string) error {
 	}
 	for _, name := range []string{"panixy.service", "panixy-upgrade.service", "panixy-upgrade.timer"} {
 		fmt.Printf("===== %s =====\n%s\n", name, units[name])
+	}
+	return nil
+}
+
+// runConfig 渲染默认模板打印到 stdout;--write 额外写回 config.default.yaml(不部署、不碰系统)。
+func runConfig(cmd *cobra.Command, args []string) error {
+	mode, _ := cmd.Flags().GetString("mode")
+	if mode != "tun" && mode != "tproxy" {
+		return fmt.Errorf("--mode 只能是 tun 或 tproxy")
+	}
+	secret, _ := cmd.Flags().GetString("secret")
+	d := asset.DefaultConfigData()
+	d.TProxy = mode == "tproxy"
+	d.Secret = secret
+	out, err := asset.RenderConfig(d)
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
+	if write, _ := cmd.Flags().GetBool("write"); write {
+		p := paths.Get()
+		if err := writeDefaultConf(p, mode, secret); err != nil {
+			return err
+		}
+		logx.Info("默认配置已写回 %s(模式 %s,密钥 %s)", p.DefaultConf, mode, secret)
 	}
 	return nil
 }

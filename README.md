@@ -346,6 +346,7 @@ git tag V0.1.0 && git push origin V0.1.0
 | `sudo panixy deploy [URL]` | 从离线包部署 |
 | `sudo panixy redeploy` | 就地重装:强制刷新全部程序文件(保留配置),重挂防火墙并重启 |
 | `sudo panixy merge-conf <yaml>` | 个人配置叠加融合(`--dry-run`/`--rollback`) |
+| `panixy config [--mode tun\|tproxy] [--write]` | 打印默认配置模板(免 root;`--write` 写回 config.default.yaml) |
 | `sudo panixy sub import [URL]` | 导入订阅(粘贴模式免引号) |
 | `sudo panixy sub del --name N` | 删除订阅 |
 | `panixy sub list [--json]` | 各订阅状态/节点数 |
