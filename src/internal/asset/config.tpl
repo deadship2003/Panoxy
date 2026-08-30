@@ -1,6 +1,6 @@
 # =====================================================================
 # panixy 基础配置 v0.2.0(Go 版,由 panixy 渲染)
-# ★ proxy-providers 段由 set-sub/sub-rm 增量管理,请勿手改该段(其余随意)
+# ★ proxy-providers 段由 sub import/sub del 增量管理,请勿手改该段(其余随意)
 # ★ 端口/密钥改动后 panixy 自动跟随 —— 配置文件是唯一事实源
 #
 # v0.2.0 要点(相对 bash 版 v0.1.4):
@@ -13,7 +13,7 @@
 # =====================================================================
 
 # ============ 锚点模板(&pr 服务组 / &prd 国内组 / &p 订阅 / &use 通用组)============
-# set-sub 会把订阅名追加进下列 use 列表:一处修改,全部消费组生效
+# sub import 会把订阅名追加进下列 use 列表:一处修改,全部消费组生效
 pr: &pr
   type: select
   proxies: [🔃 自动选择, 🎬 流媒体, 🎮 游戏, 🇨🇳 回国, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 英国, 德国, 法国, 荷兰, 加拿大, 澳大利亚, 俄罗斯, 土耳其, 印度, 马来西亚, 泰国, 越南, 菲律宾, 印度尼西亚, 巴西, 阿根廷, 其他地区, 全部节点, DIRECT]
@@ -22,7 +22,7 @@ prd: &prd
   type: select
   proxies: [DIRECT, 🔃 自动选择, 香港, 台湾, 日本, 新加坡, 韩国, 美国, 英国, 德国, 法国, 荷兰, 加拿大, 澳大利亚, 俄罗斯, 土耳其, 印度, 马来西亚, 泰国, 越南, 菲律宾, 印度尼西亚, 巴西, 阿根廷, 其他地区, 全部节点]
   use: [SUB]
-# 订阅 provider 公共模板:set-sub --name 生成的条目以 <<: *p 复用
+# 订阅 provider 公共模板:sub import --name 生成的条目以 <<: *p 复用
 p: &p
   type: http
   interval: 86400
@@ -37,9 +37,9 @@ use: &use
   type: select
   use: [SUB]
 
-# ============ 订阅源(set-sub --name 管理)============
+# ============ 订阅源(sub import --name 管理)============
 # 默认占位订阅:status 检测到 SUB_URL_PLACEHOLDER 即提示"尚未设置";
-# set-sub 默认改写 SUB;--name 其他名称则新增并列条目
+# sub import 默认改写 SUB;--name 其他名称则新增并列条目
 proxy-providers:
   SUB:
     <<: *p
@@ -184,7 +184,7 @@ proxy-groups:
   # 兜底组:所有规则没匹配到的流量
   - { name: 其他, <<: *pr }
 
-  # ===== 地区分组(全分组:覆盖绝大多数机场命名;set-sub 会按实际节点剔除无匹配项)=====
+  # ===== 地区分组(全分组:覆盖绝大多数机场命名;sub import 会按实际节点剔除无匹配项)=====
   - { name: 香港, <<: *use, type: url-test, filter: '(?i)香港|港|HK|Hong ?Kong|HKG' }
   - { name: 台湾, <<: *use, type: url-test, filter: '(?i)台湾|台北|新北|桃园|台中|台南|彰化|TW|Taiwan|TPE' }
   - { name: 日本, <<: *use, type: url-test, filter: '(?i)日本|东京|東京|大阪|埼玉|冲绳|JP|Japan|Tokyo|Osaka|Narita' }
@@ -209,7 +209,7 @@ proxy-groups:
   - { name: 阿根廷, <<: *use, type: url-test, filter: '(?i)阿根廷|阿|布宜诺斯|AR|Argentina|Buenos ?Aires' }
   - { name: 其他地区, <<: *use, type: url-test, filter: '(?i)阿联酋|迪拜|沙特|南非|墨西哥|智利|波兰|瑞典|瑞士|挪威|丹麦|芬兰|奥地利|比利时|西班牙|意大利|葡萄牙|爱尔兰|捷克|乌克兰|UAE|Dubai|Saudi|South ?Africa|Mexico|Chile|Poland|Sweden|Switzerland|Norway|Denmark|Finland|Austria|Belgium|Spain|Italy|Portugal|Ireland|Czech|Ukraine' }
 
-  # ===== 类型分组(按节点用途派生;set-sub 会按实际节点剔除无匹配项)=====
+  # ===== 类型分组(按节点用途派生;sub import 会按实际节点剔除无匹配项)=====
   - { name: 🎬 流媒体, <<: *use, type: url-test, filter: '(?i)流媒体|解锁|原生IP|原生|奈飞|网飞|Netflix|Disney|迪士尼|媒体|Media|影视|4K|Streaming' }
   - { name: 🎮 游戏, <<: *use, type: url-test, filter: '(?i)游戏|电竞|低延迟|Game|Gaming|IEPL|IPLC|专线|内网' }
   - { name: 🇨🇳 回国, <<: *use, type: url-test, filter: '(?i)回国|大陆|中国|China|CN2|回国线路|国内中转' }
