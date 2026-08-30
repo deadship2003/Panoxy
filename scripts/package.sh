@@ -169,7 +169,24 @@ build_one() {
   leak_scan "$pkg"
   mkdir -p dist && tar -czf "dist/$pkg.tar.gz" "$pkg"
   (cd . && (cd dist && sha256sum "$pkg.tar.gz" > "$pkg.tar.gz.sha256"))
+  rm -rf "$pkg"   # 清暂存目录,只留 dist/ 产物
   echo "      产出: $pkg.tar.gz"
+}
+
+# cleanup_old 移除旧版本产物:dist/ 只保留本次版本,并清掉遗留的暂存目录。
+# 旧版本可经 git 重编,无需在 dist/ 堆积;运行时的内核回滚由 panixy rollback 负责。
+cleanup_old() {
+  local f d
+  for f in dist/Panixy-*.tar.gz dist/Panixy-*.tar.gz.sha256; do
+    [ -e "$f" ] || continue
+    [[ "$f" == dist/Panixy-"$VER"-*.tar.gz* ]] && continue
+    rm -f "$f"
+  done
+  for d in Panixy-*; do
+    [ -d "$d" ] || continue
+    [[ "$d" == Panixy-"$VER"-* ]] && continue
+    rm -rf "$d"
+  done
 }
 
 echo "== [4/5] 组装 =="
@@ -181,4 +198,5 @@ case "$ARCH" in
 esac
 
 echo "== [5/5] 完成 =="
+cleanup_old
 ls -la dist/Panixy-*.tar.gz* 2>/dev/null | tail -4

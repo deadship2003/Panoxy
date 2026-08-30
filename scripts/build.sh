@@ -12,7 +12,7 @@ case "${1:-}" in
 esac
 
 VER="${1:-$(git describe --tags 2>/dev/null || echo "")}"
-[ -n "$VER" ] || VER="0.1.0-dev"
+[ -n "$VER" ] || VER="V0.1.0-dev"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 OUT=../dist
 mkdir -p "$OUT"
