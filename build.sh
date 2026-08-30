@@ -167,6 +167,8 @@ build_one() {
   test -f "$pkg/assets/ui/official/index.html" || { echo "UI 包异常"; exit 1; }
   cp "$TMP/HyperADRules-Ads.yaml" "$pkg/assets/rule/"
   cp README.md "$pkg/"
+  cp LICENSE THIRD_PARTY_NOTICES "$pkg/" 2>/dev/null || true
+  cp -r LICENSES "$pkg/LICENSES" 2>/dev/null || true
   leak_scan "$pkg"
   mkdir -p dist && tar -czf "dist/$pkg.tar.gz" "$pkg"
   (cd dist && sha256sum "$pkg.tar.gz" > "$pkg.tar.gz.sha256")

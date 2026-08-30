@@ -5,7 +5,7 @@
 **基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理网关部署/管理工具**
 
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%7Carm64-lightgrey)]()
 [![Release](https://img.shields.io/badge/Release-V0.0.1-orange)](../../releases)
 
@@ -428,9 +428,11 @@ E2E 使用真实编译的二进制 + 真实 mihomo 内核 + 模拟订阅服务�
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 故障排查指南 |
 | `Panoxy man` | 手册(部署后 `man Panoxy` / `man Panoxy-<命令>`) |
 
-## 📄 License
+## 📄 许可
 
-MIT
+Panoxy 本身采用**保留商用权利**的专有许可:源码公开仅供审计/评估,商用与再分发需另行授权,见 [LICENSE](LICENSE)。
+
+捆绑/下载的第三方组件(mihomo、metacubexd、meta-rules-dat 等)各自适用其开源许可,见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) 与 [LICENSES/](LICENSES/)。
 
 ---
 

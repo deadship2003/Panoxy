@@ -1,0 +1,41 @@
+# 第三方组件声明(THIRD PARTY NOTICES)
+
+Panoxy 在编译或运行时捆绑/下载以下第三方组件。每个组件各自适用其自身许可,
+与 Panoxy 本身的许可([LICENSE](LICENSE))无关。请以下方链接为准(许可可能随上游更新而变化)。
+
+## Go 依赖(编译进 Panoxy 二进制)
+
+| 依赖 | 许可 |
+|---|---|
+| github.com/spf13/cobra | Apache-2.0 |
+| github.com/spf13/pflag | BSD-3-Clause |
+| github.com/russross/blackfriday/v2 | BSD-2-Clause |
+| github.com/cpuguy83/go-md2man/v2 | MIT |
+| github.com/inconshreveable/mousetrap | Apache-2.0 |
+| go.yaml.in/yaml/v3 · gopkg.in/yaml.v3 | MIT / Apache-2.0 |
+
+## 运行时组件(由 init/upgrade 下载,并打入离线包)
+
+### mihomo(内核)— MIT / GPL-3.0(按分支不同)
+
+- 仓库:https://github.com/MetaCubeX/mihomo
+- `main` 分支:**MIT**,版权 © 2023 KT(文本见 [LICENSES/MIT.txt](LICENSES/MIT.txt))
+- `Meta` 分支(旧 Clash.Meta 血统):**GPL-3.0**(文本见 [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt))
+- Panoxy 下载其 Release 产物,并以**独立二进制**运行(不链接其代码)。
+  相应源码见上方仓库。
+
+### metacubexd(Web 面板)— MIT
+
+- 仓库:https://github.com/MetaCubeX/metacubexd
+- 文本见 [LICENSES/MIT.txt](LICENSES/MIT.txt)
+
+### meta-rules-dat(geoip/geosite/country.mmdb)— GPL-3.0
+
+- 仓库:https://github.com/MetaCubeX/meta-rules-dat
+- 文本见 [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt)
+
+### HyperADRules(广告规则)— 未声明许可
+
+- 仓库:https://github.com/Lynricsy/HyperADRules
+- ⚠️ 该仓库未附带 LICENSE 文件,默认"保留所有权利"。
+  如计划对外分发离线包,请与上游确认,或改用有明确许可的规则源。
