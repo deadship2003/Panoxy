@@ -110,7 +110,7 @@ sudo panixy merge-conf --dry-run ~/我的.yaml   # 先看融合决策
 Panixy/
 ├── src/               Go 源码(cmd/internal/tests)
 ├── dist/              发布产物(二进制+离线包,gitignored)
-├── scripts/           编译/打包脚本
+├── build.sh          编译/打包/清理脚本(单一入口)
 ├── docs/              扩展文档
 │   ├── TPROXY.md      TPROXY 模式完整指南
 │   ├── MIGRATION.md   bash 版迁移步骤
@@ -131,15 +131,17 @@ Panixy/
 ### 用 Makefile(推荐)
 
 ```bash
-make build                    # 编译双架构 → dist/
-make build VERSION=V0.1.0    # 指定版本号
+make build                              # 编译当前架构 → dist/(amd64 自动检测 AVX2)
+make build PANIXY_VERSION=V0.1.0        # 指定版本号
 ```
 
 ### 用脚本
 
 ```bash
-./scripts/build.sh V0.1.0     # 与 make build 等效
-./scripts/build.sh -h         # 查看帮助
+./build.sh                              # 编译当前架构(默认)
+./build.sh --arch arm64                 # 指定架构
+./build.sh --arch all                   # 双架构
+./build.sh --ver V0.1.0                 # 指定版本
 ```
 
 ### 手工编译
@@ -172,11 +174,11 @@ cd ../dist && sha256sum panixy-linux-* > sha256sums.txt
 | `-trimpath` | 去掉编译机路径信息(安全+体积) |
 | `-ldflags "-s -w"` | 去掉符号表和调试信息(体积减 30%) |
 | `-X main.version=X` | 注入版本号(`panixy --version` 显示) |
-| `GOAMD64=v3` | 默认 v3(需 AVX2:Intel 2013+/AMD 2017+);老 CPU 改 `GOAMD64=v1` 全兼容 |
+| `GOAMD64` | amd64 编译档:`build.sh` 默认自动检测 AVX2(有→v3,无→v1);手工可显式 `GOAMD64=v3`/`v1` |
 
 </details>
 
-> **CLI 与内核的 CPU 选型**：panixy CLI 默认 `GOAMD64=v3`（需 AVX2:Intel 2013+/AMD 2017+；老 CPU 用 `make build GOAMD64=v1` 全兼容）。mihomo 内核则由 `panixy init` / `panixy upgrade` / `scripts/package.sh` 在**运行时探测本机架构与 AVX2**，据此下载匹配的内核（有 AVX2 → `v3`，否则 → 标准档，再失败降 `compatible`）；内核下载/入包后即缓存，**不再重复探测**。
+> **CLI 与内核的 CPU 选型**：panixy CLI 编译时默认按当前 CPU **自动检测** GOAMD64（amd64 有 AVX2 → `v3`，无 → `v1` 全兼容；可 `GOAMD64=v1 ./build.sh` 强制覆盖）。mihomo 内核则由 `panixy init` / `panixy upgrade` / `build.sh package` 在**运行时探测本机架构与 AVX2**，据此下载匹配的内核（有 AVX2 → `v3`，否则 → 标准档，再失败降 `compatible`）；内核下载/入包后即缓存，**不再重复探测**。
 
 ### 验证编译产物
 
@@ -193,16 +195,17 @@ dist/panixy-linux-amd64 --version
 ### 用 Makefile(推荐)
 
 ```bash
-make package VERSION=V0.1.0         # 打当前架构离线包 → dist/
-make package-all VERSION=V0.1.0     # 双架构 → dist/
+make package                            # 打双架构离线包 → dist/(编译全部平台)
+make package PANIXY_VERSION=V0.1.0      # 指定版本号
 ```
 
 ### 用脚本
 
 ```bash
-./scripts/package.sh --ver V0.1.0                     # 当前架构
-./scripts/package.sh --arch all --ver V0.1.0         # 双架构
-./scripts/package.sh -h                               # 查看帮助
+./build.sh package                       # 双架构离线包(默认 all)
+./build.sh package --arch amd64          # 只打 amd64
+./build.sh package --arch all --ver V0.1.0
+./build.sh package -h                    # 查看帮助
 ```
 
 ### 脚本支持的参数/环境变量
@@ -249,7 +252,7 @@ TMP=$(mktemp -d)
 MIHOMO_VER="$(curl -fsSL --connect-timeout 8 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
   | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
 
-# mihomo 内核(18MB):探测本机 AVX2 决定 v3/标准档(与 package.sh 同源)
+# mihomo 内核(18MB):探测本机 AVX2 决定 v3/标准档(与 build.sh package 同源)
 if grep -qw avx2 /proc/cpuinfo; then
   curl -fsSL -o "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" \
     "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
@@ -297,7 +300,7 @@ echo "产物: dist/$PKG.tar.gz ($(du -h dist/$PKG.tar.gz | cut -f1))"
 **本机已有资产时跳过下载:**
 
 ```bash
-# 内核版本取自本机已装内核(断网打包;与 package.sh 的本地兜底同源)
+# 内核版本取自本机已装内核(断网打包;与 build.sh package 的本地兜底同源)
 MIHOMO_VER="$(/opt/panixy/bin/mihomo -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 gzip -c /opt/panixy/bin/mihomo > "$PKG/assets/core/mihomo-linux-amd64-$MIHOMO_VER.gz"
 cp /opt/panixy/Geo*.dat /opt/panixy/Country.mmdb "$PKG/assets/geo/"
@@ -323,7 +326,7 @@ Panixy-V0.1.0-amd64/
 
 ### CI 自动打包
 
-推 `V*` 标签触发 GitHub Actions,与本地 `scripts/package.sh` 同一脚本:
+推 `V*` 标签触发 GitHub Actions,与本地 `build.sh package` 同一脚本:
 
 ```bash
 git tag V0.1.0 && git push origin V0.1.0

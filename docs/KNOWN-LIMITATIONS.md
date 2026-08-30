@@ -6,4 +6,4 @@
 4. 订阅预取只是预校验;运行期 mihomo 会按 interval 自行远程拉取
 5. sub import `--name` 依赖配置锚点 `&p`(基础模板自带;纯手写配置需自备)
 6. tun `stack: system` 家用默认;重度 BT/长时 UDP 流媒体/节点频繁掉线/老内核(5.4/5.15)建议改 `gvisor`(进程崩溃可被 systemd 自动拉起,优于静默僵死)
-7. **离线包内核按「打包机」CPU 选型**:`scripts/package.sh` 在打包时探测本机 AVX2 决定内置 v3/标准档内核;跨 CPU 类别部署(有 AVX2 的机器打包 → 无 AVX2 的老机器)会跑不起来。目标机用 `panixy init` 或 `panixy upgrade` 重新探测下载即可(`deploy` 不探测,直接解包内置内核)
+7. **离线包内核按「打包机」CPU 选型**:`build.sh package` 在打包时探测本机 AVX2 决定内置 v3/标准档内核;跨 CPU 类别部署(有 AVX2 的机器打包 → 无 AVX2 的老机器)会跑不起来。目标机用 `panixy init` 或 `panixy upgrade` 重新探测下载即可(`deploy` 不探测,直接解包内置内核)

@@ -1,5 +1,5 @@
-# Go 版发布:推 V* 标签 → 跑测试 → 调 package.sh 组装双架构离线包 → Release
-# 本地与 CI 同一真源:全部打包逻辑在 scripts/package.sh
+# Go 版发布:推 V* 标签 → 跑测试 → 调 build.sh package 组装双架构离线包 → Release
+# 本地与 CI 同一真源:全部打包逻辑在 build.sh package
 name: Release
 
 on:
@@ -23,7 +23,7 @@ jobs:
         run: cd src && go test ./internal/... -timeout 120s
 
       - name: Package (dual-arch offline bundles)
-        run: ./scripts/package.sh --arch all --ver "${GITHUB_REF_NAME}"
+        run: ./build.sh package --arch all --ver "${GITHUB_REF_NAME}"
 
       - name: Create release and upload assets
         env:
@@ -33,7 +33,7 @@ jobs:
           notes="全离线安装包(双架构):mihomo 内核、geo(含 Country.mmdb)、广告规则、metacubexd 面板、Go 版 panixy 单二进制。
           完整性校验:sha256sum -c Panixy-${TAG}-<arch>.tar.gz.sha256
           快速开始:tar xzf Panixy-${TAG}-<arch>.tar.gz && cd Panixy-${TAG}-<arch> && sudo ./panixy deploy
-          随后导入订阅:sudo panixy set-sub(回车进入粘贴模式,URL 无需引号)"
+          随后导入订阅:sudo panixy sub import(回车进入粘贴模式,URL 无需引号)"
           # 幂等:Release 已存在则补传/覆盖资产
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" Panixy-${TAG}-*.tar.gz Panixy-${TAG}-*.tar.gz.sha256 --clobber

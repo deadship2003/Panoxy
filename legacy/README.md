@@ -9,4 +9,4 @@ Go 重构前的 bash 版实现,仅留档对照;**勿部署使用**(无防火墙 
   `internal/asset/config.tpl`,含防火墙暗号 routing-mark/listen 1053)
 - `smoke.sh`:bash 版冒烟测试(Go 版测试在 `tests/` 与 `internal/*/_test.go`)
 
-现行版本:Go(入口 `cmd/panixy`,构建 `scripts/build.sh`)。
+现行版本:Go(入口 `cmd/panixy`,构建 `build.sh`)。
