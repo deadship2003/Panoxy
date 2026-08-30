@@ -2,194 +2,198 @@
 
 # Panoxy
 
-**基于 [mihomo](https://github.com/MetaCubeX/mihomo) 内核的 Linux 透明代理网关部署/管理工具**
+**A Linux transparent-proxy gateway deploy/management tool built on the [mihomo](https://github.com/MetaCubeX/mihomo) core**
 
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%7Carm64-lightgrey)]()
 [![Release](https://img.shields.io/badge/Release-V0.0.1-orange)](../../releases)
 
-单二进制 · 零依赖 · 事务式部署 · 全量回滚
+Single binary · zero dependencies · transactional deployment · full rollback
 
 </div>
 
-> **程序名**：默认程序名为 `Panoxy`，可在编译期定制为任意名字（如 `myproxy`）。定制后，二进制名、安装路径、配置路径、systemd 单元、nft 表、iptables 链、环境变量前缀、man 手册**全部跟随**该名字。见[「编译 · 定制程序名」](#定制程序名)。
+**What it does.** Panoxy turns one Linux box into a transparent proxy gateway for your entire network. Install it on a single machine and every device behind it — phones, laptops, consoles, IoT — is proxied automatically at the network layer (TUN/TPROXY), with no client software and no per-app configuration. It bundles the mihomo core, a web panel, geo/rules data, and a transactional deploy/upgrade flow with full rollback, so standing up and maintaining a gateway is a single command.
+
+> **The name.** *Panoxy* = Greek *πᾶν* (*pan*, "all") + *proxy*: one proxy for *all* of your traffic.
+
+> **Program name.** The default program name is `Panoxy`, and it can be customized to any name at build time (e.g. `myproxy`). Once renamed, the binary name, install path, config path, systemd unit, nft table, iptables chains, environment-variable prefix and man page **all follow** that name. See [Build · Custom program name](#custom-program-name).
 
 ---
 
-## ✨ 特性
+## ✨ Features
 
-- 🔧 **TUN / TPROXY 双模式** — TUN 开箱稳定(默认);TPROXY 保留客户端真实源 IP、内核转发性能最优
-- 🛡️ **DNS 劫持 = nftables** — 独立表 `inet Panoxy`,53 redirect → mihomo:1053,拒绝 853(DoT/DoQ)
-- 🔄 **自愈** — kill -9/OOM 残留随 `systemctl restart Panoxy` 自动清除,无需手工干预
-- 📡 **订阅可验证** — 预取 → 校验 → 增量写入 → 重启 → **节点数 > 0 才算成功**,绝不假成功
-- 🧩 **配置融合** — `merge-conf` 同名组字段级合并(proxies/use 并集),基底组保留不删
-- ⬆️ **参数化升级** — `--core/--ui/--cli/--check/--core-version`,试运行校验、失败自动回滚
-- 📖 **全量文档** — `-h/-?/--help` 每命令含示例;`man Panoxy` 与 `--help` 同源生成
-- 🔍 **调试友好** — `--verbose` 分步明细;`--debug` 外部命令/API I/O 零遮蔽
+- 🔧 **TUN / TPROXY dual mode** — TUN is stable out of the box (default); TPROXY preserves the client's real source IP with the best kernel forwarding performance
+- 🛡️ **DNS hijack = nftables** — a dedicated `inet Panoxy` table; port 53 redirect → mihomo:1053, and reject 853 (DoT/DoQ)
+- 🔄 **Self-healing** — `kill -9`/OOM residue is cleaned automatically on `systemctl restart Panoxy`; no manual intervention
+- 📡 **Verifiable subscriptions** — prefetch → validate → incremental write → restart → **node count > 0 counts as success**; never a false success
+- 🧩 **Config merge** — `merge-conf` does field-level merge of same-named groups (union of proxies/use); base groups are preserved, never deleted
+- ⬆️ **Parameterized upgrade** — `--core/--ui/--cli/--check/--core-version`; dry-run validation, automatic rollback on failure
+- 📖 **Complete documentation** — every command's `-h/-?/--help` includes examples; `man Panoxy` is generated from the same source as `--help`
+- 🔍 **Debug-friendly** — `--verbose` for step-by-step detail; `--debug` for zero-obfuscation of external command/API I/O
 
-## 🚀 快速开始
+## 🚀 Quick start
 
-### 方式一:单二进制直装(自用,推荐)
+### Option 1: Single-binary direct install (personal use, recommended)
 
 ```bash
-# 拷贝 Panoxy 二进制到目标机器,然后:
-sudo Panoxy init '你的订阅链接'
+# Copy the Panoxy binary to the target machine, then:
+sudo Panoxy init '<your-subscription-url>'
 ```
 
-九步自动完成:预检 → 取订阅 → 网络探测 → 下载内核 → 下载 geo/规则 → 下载面板 → 资产就位 → 部署服务 → 导入订阅。
-每步带进度条;直连不通时经订阅节点建立代理下载(需本机已有 mihomo 内核);无内核时提示用离线包 `deploy` 或手工复制内核到 `/opt/Panoxy/bin/mihomo`。
+Nine steps run automatically: precheck → fetch subscription → network probe → download core → download geo/rules → download panel → place assets → deploy service → import subscription. Each step has a progress bar; when a direct connection fails, downloads are proxied through subscription nodes (requires an existing local mihomo core); with no core present it suggests the offline package `deploy`, or manually copying the core to `/opt/Panoxy/bin/mihomo`.
 
-### 方式二:离线包(给朋友)
+### Option 2: Offline package (for friends)
 
-从 [Releases](../../releases) 下载离线包(34MB,含内核+geo+UI+规则):
+Download the offline package from [Releases](../../releases) (34 MB, core + geo + UI + rules):
 
 ```bash
 tar xzf Panoxy-V0.0.1-amd64.tar.gz && cd Panoxy-V0.0.1-amd64
-sudo ./Panoxy deploy                 # 全自动安装
-sudo Panoxy sub import              # 粘贴订阅链接(免引号)
-Panoxy status                        # 验证健康
+sudo ./Panoxy deploy                 # fully automatic install
+sudo Panoxy sub import              # paste the subscription link (no quotes needed)
+Panoxy status                        # verify health
 ```
 
-### 方式三:预安装(免 root 试跑)
+### Option 3: Pre-install (rootless trial)
 
 ```bash
-Panoxy try '订阅链接'                 # 沙箱实测完整安装,不触碰真实系统
-Panoxy init --dry-run                # 只读预演(环境/下载策略/配置渲染)
+Panoxy try '<subscription-url>'       # sandboxed full-install test, never touches the real system
+Panoxy init --dry-run                # read-only rehearsal (environment / download strategy / config render)
 ```
 
-### 已有个人配置?
+### Already have your own config?
 
 ```bash
-sudo Panoxy merge-conf ~/我的.yaml    # 叠加融合:同名组合并,基底组保留
-sudo Panoxy merge-conf --dry-run ~/我的.yaml   # 先看融合决策
+sudo Panoxy merge-conf ~/my.yaml    # overlay-merge: same-named groups merge, base groups preserved
+sudo Panoxy merge-conf --dry-run ~/my.yaml   # preview the merge decision first
 ```
 
-## 📐 架构
+## 📐 Architecture
 
 ```
-                 DNS(53/853)                        数据流量(非53)
-┌──────────┐  nft redirect → :1053  ┌─┐  路由表 → TUN 设备 → mihomo
-│ TUN 模式 │ ─────────────────────► │同│
-├──────────┤                        │一│  nft mark 1 + 策略路由
-│TPROXY模式│  nft redirect → :1053  │套│  + tproxy → :7893(保留源 IP)
+                 DNS(53/853)                        Data traffic (non-53)
+┌──────────┐  nft redirect → :1053  ┌─┐  routing table → TUN device → mihomo
+│ TUN mode │ ─────────────────────► │same│
+├──────────┤                        │core│  nft mark 1 + policy routing
+│TPROXY mode│  nft redirect → :1053 │  │  + tproxy → :7893 (preserves source IP)
 └──────────┘ ─────────────────────► └─┘
 ```
 
-- 数据面(节点/组选择)在 **Web 面板**;传输面(tun/tproxy)在 **CLI**
-- mihomo 自身出站 `routing-mark: 6666` 放行 → 防 DNS 回环死锁
-- systemd 单元零 resolvectl;`fw apply` 自清洁 → restart 自愈
+- Data plane (node/group selection) lives in the **web panel**; transport plane (tun/tproxy) lives in the **CLI**
+- mihomo's own outbound traffic is allowed via `routing-mark: 6666` → prevents DNS loop deadlock
+- systemd unit has zero `resolvectl`; `fw apply` self-cleans → restart self-heals
 
-### 流量策略(不阻断任何协议)
+### Traffic policy (blocks nothing)
 
-透明代理的第一目标是**正常访问**,分流只是优化走向:
+The first goal of transparent proxying is **normal access**; routing is only an optimization of which path traffic takes:
 
-| 协议 | 处理 | 说明 |
+| Protocol | Handling | Notes |
 |---|---|---|
-| 普通 DNS(53) | **劫持** → mihomo | 为大多数设备提供域名级分流(fake-ip) |
-| QUIC/HTTP3(UDP 443) | **正常分流** | HTTP/3 原生体验;SNI 加密,域名规则不生效(IP 分流) |
-| DoT(TCP 853) | **正常分流** | 加密 DNS 走代理(为自定义设备保留访问) |
-| DoQ(UDP 853) | **正常分流** | 同上 |
-| DoH(TCP 443) | **正常分流** | 与 HTTPS 同端口,无法也不应阻断 |
+| Plain DNS (53) | **hijack** → mihomo | provides domain-level routing (fake-ip) for most devices |
+| QUIC/HTTP3 (UDP 443) | **normal routing** | native HTTP/3 experience; SNI is encrypted, so domain rules don't apply (IP routing) |
+| DoT (TCP 853) | **normal routing** | encrypted DNS goes through the proxy (preserved for custom devices) |
+| DoQ (UDP 853) | **normal routing** | same as above |
+| DoH (TCP 443) | **normal routing** | same port as HTTPS, cannot and should not be blocked |
 
-### 基础服务直连(32 条规则,不走代理)
+### Direct-connect base services (32 rules, no proxy)
 
-| 类别 | 端口 | 服务 |
+| Category | Ports | Services |
 |---|---|---|
-| **远程管理** | 22, 23 | SSH/SFTP, Telnet |
-| **远程桌面** | 3389, 5900 | RDP, VNC |
-| **VPN/组网** | 41641, 3478, 51820, 1194, 500, 4500, 1701, 1723 | Tailscale, STUN/TURN, WireGuard, OpenVPN, IPSec(IKE/NAT-T), L2TP, PPTP |
+| **Remote management** | 22, 23 | SSH/SFTP, Telnet |
+| **Remote desktop** | 3389, 5900 | RDP, VNC |
+| **VPN/overlay** | 41641, 3478, 51820, 1194, 500, 4500, 1701, 1723 | Tailscale, STUN/TURN, WireGuard, OpenVPN, IPSec (IKE/NAT-T), L2TP, PPTP |
 | **VoIP** | 5060, 5061 | SIP, SIPS |
-| **域认证** | 88, 389, 636, 1812, 1813 | Kerberos, LDAP, LDAPS, RADIUS |
-| **发现/时间** | 5353, 123, 161, 1900 | mDNS, NTP, SNMP, SSDP/UPnP |
+| **Domain auth** | 88, 389, 636, 1812, 1813 | Kerberos, LDAP, LDAPS, RADIUS |
+| **Discovery/time** | 5353, 123, 161, 1900 | mDNS, NTP, SNMP, SSDP/UPnP |
 | **IoT** | 1883, 8883, 5683 | MQTT, MQTT/TLS, CoAP |
-| **存储/数据库** | 3260, 3306, 5432, 6379, 27017, 873 | iSCSI, MySQL, PostgreSQL, Redis, MongoDB, Rsync |
-| **Tailscale 专属** | 100.100.100.100, 100.64.0.0/10 | MagicDNS, CGNAT 子网 |
+| **Storage/database** | 3260, 3306, 5432, 6379, 27017, 873 | iSCSI, MySQL, PostgreSQL, Redis, MongoDB, Rsync |
+| **Tailscale-specific** | 100.100.100.100, 100.64.0.0/10 | MagicDNS, CGNAT subnet |
 
-## 📂 仓库布局
+## 📂 Repository layout
 
 ```
 Panoxy/
-├── src/               Go 源码(cmd/internal/tests)
-├── dist/              发布产物(二进制+离线包,gitignored)
-├── build.sh          打包分发脚本(离线包/订阅引导/泄露扫描)
-├── docs/              扩展文档
-│   ├── TPROXY.md      TPROXY 模式完整指南
-│   ├── MIGRATION.md   bash 版迁移步骤
+├── src/               Go source (cmd/internal/tests)
+├── dist/              release artifacts (binary + offline package, gitignored)
+├── build.sh           packaging/distribution script (offline package / subscription bootstrap / leak scan)
+├── docs/              extended docs
+│   ├── TPROXY.md      complete TPROXY-mode guide
+│   ├── MIGRATION.md   bash-version migration steps
 │   ├── KNOWN-LIMITATIONS.md
 │   └── TROUBLESHOOTING.md
-├── legacy/            旧 bash 版归档
-├── Makefile           本机编译/安装入口(make)
+├── legacy/            archived old bash version
+├── Makefile           local build/install entry (make)
 └── README.md
 ```
 
-## 🛠️ 编译
+## 🛠️ Build
 
-### 前提
+### Prerequisites
 
-- Go 1.23+([安装](https://go.dev/dl/))
-- 无需 CGO 依赖(纯静态编译)
+- Go 1.23+ ([install](https://go.dev/dl/))
+- No CGO dependency (fully static build)
 
-### 用 Makefile(推荐)
-
-```bash
-make                                    # 编译当前架构 → dist/(amd64 自动检测 AVX2)
-make build                              # 同上(显式)
-make install                            # 安装 CLI → /usr/local/bin/Panoxy(PREFIX/BINDIR 可自定义)
-make build PANOXY_VERSION=V0.0.1        # 指定版本号
-make build PROG=myproxy                 # 定制程序名(默认 Panoxy,见「定制程序名」)
-```
-
-### 用脚本
+### Using Makefile (recommended)
 
 ```bash
-./build.sh                              # 编译当前架构(默认)
-./build.sh --arch arm64                 # 指定架构
-./build.sh --arch all                   # 双架构
-./build.sh --ver V0.0.1                 # 指定版本
+make                                    # build current arch → dist/ (amd64 auto-detects AVX2)
+make build                              # same as above (explicit)
+make install                            # install CLI → /usr/local/bin/Panoxy (PREFIX/BINDIR customizable)
+make build PANOXY_VERSION=V0.0.1        # set a version number
+make build PROG=myproxy                 # customize program name (default Panoxy, see "Custom program name")
 ```
 
-### 手工编译
+### Using the script
+
+```bash
+./build.sh                              # build current arch (default)
+./build.sh --arch arm64                 # target arch
+./build.sh --arch all                   # both arches
+./build.sh --ver V0.0.1                 # set version
+```
+
+### Manual build
 
 ```bash
 cd src
 
-# 本机架构(amd64)
+# native arch (amd64)
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v3 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-amd64 \
   ./cmd/panixy
 
-# 交叉编译 ARM64(无需 ARM 机器)
+# cross-compile ARM64 (no ARM machine needed)
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-arm64 \
   ./cmd/panixy
 
-# 生成校验和
+# generate checksums
 cd ../dist && sha256sum Panoxy-linux-* > sha256sums.txt
 ```
 
 <details>
-<summary>📖 编译参数说明</summary>
+<summary>📖 Build flags reference</summary>
 
-| 参数 | 作用 |
+| Flag | Effect |
 |---|---|
-| `CGO_ENABLED=0` | 纯静态编译,无 libc 依赖,任意 Linux 可跑 |
-| `-trimpath` | 去掉编译机路径信息(安全+体积) |
-| `-ldflags "-s -w"` | 去掉符号表和调试信息(体积减 30%) |
-| `-X main.version=X` | 注入版本号(`Panoxy --version` 显示) |
-| `-X github.com/deadship2003/Panoxy/internal/constants.ProgName=X` | 注入程序名(默认 `Panoxy`;详见[「定制程序名」](#定制程序名)) |
-| `GOAMD64` | amd64 编译档:`build.sh` 默认自动检测 AVX2(有→v3,无→v1);手工可显式 `GOAMD64=v3`/`v1` |
+| `CGO_ENABLED=0` | fully static build, no libc dependency, runs on any Linux |
+| `-trimpath` | strip build-machine path info (security + size) |
+| `-ldflags "-s -w"` | strip symbol table and debug info (size -30%) |
+| `-X main.version=X` | inject the version number (shown by `Panoxy --version`) |
+| `-X github.com/deadship2003/Panoxy/internal/constants.ProgName=X` | inject the program name (default `Panoxy`; see [Custom program name](#custom-program-name)) |
+| `GOAMD64` | amd64 build level: `build.sh` auto-detects AVX2 by default (present → v3, absent → v1); manually override with `GOAMD64=v3`/`v1` |
 
 </details>
 
-### 定制程序名
+### Custom program name
 
-默认程序名 `Panoxy` 在 `internal/constants.ProgName` 中定义;编译期用 `-X` 注入即可改名,二进制与运行期路径**全部继承**:
+The default program name `Panoxy` is defined in `internal/constants.ProgName`; inject `-X` at build time to rename it — the binary and all runtime artifacts **inherit** the name:
 
 ```bash
-# 改名为 myproxy:二进制名、安装路径、配置路径、systemd 单元、nft 表、环境变量前缀、man 手册全部跟随
+# rename to myproxy: binary name, install path, config path, systemd unit,
+# nft table, env prefix, man page all follow
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath \
   -ldflags "-s -w -X main.version=V0.0.1 -X github.com/deadship2003/Panoxy/internal/constants.ProgName=myproxy" \
@@ -197,30 +201,30 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   ./cmd/panixy
 ```
 
-更省事的方式是交给构建入口:
+The easy way is to hand it to the build entry:
 
 ```bash
-make PROG=myproxy                     # Makefile:PROG 变量
-./build.sh --prog myproxy             # build.sh:--prog 参数
-PROG=myproxy ./build.sh package       # 或环境变量 PROG(打包同理)
+make PROG=myproxy                     # Makefile: PROG variable
+./build.sh --prog myproxy             # build.sh: --prog flag
+PROG=myproxy ./build.sh package       # or env var PROG (packaging works the same)
 ```
 
-改名后运行期产物随之派生(以 `myproxy` 为例):
+Runtime artifacts follow the renamed program (using `myproxy` as the example):
 
-| 维度 | 默认 `Panoxy` | 改名 `myproxy` |
+| Dimension | Default `Panoxy` | Renamed `myproxy` |
 |---|---|---|
-| 二进制 / 安装路径 | `Panoxy` → `/usr/local/bin/Panoxy` | `myproxy` → `/usr/local/bin/myproxy` |
-| 配置 / 根目录 | `/etc/Panoxy.yaml` · `/opt/Panoxy` | `/etc/myproxy.yaml` · `/opt/myproxy` |
-| systemd 单元 | `Panoxy.service` 等 | `myproxy.service` 等 |
-| nft 表 / iptables 链 | `inet Panoxy` · `PANOXY_DNS` | `inet myproxy` · `MYPROXY_DNS` |
-| 环境变量前缀 | `PANOXY_` | `MYPROXY_`(程序名转大写、`-`→`_`) |
-| man 手册 | `Panoxy.1.gz` · `man Panoxy` | `myproxy.1.gz` · `man myproxy` |
+| Binary / install path | `Panoxy` → `/usr/local/bin/Panoxy` | `myproxy` → `/usr/local/bin/myproxy` |
+| Config / root dir | `/etc/Panoxy.yaml` · `/opt/Panoxy` | `/etc/myproxy.yaml` · `/opt/myproxy` |
+| systemd unit | `Panoxy.service` etc. | `myproxy.service` etc. |
+| nft table / iptables chains | `inet Panoxy` · `PANOXY_DNS` | `inet myproxy` · `MYPROXY_DNS` |
+| Env prefix | `PANOXY_` | `MYPROXY_` (program name uppercased, `-`→`_`) |
+| man page | `Panoxy.1.gz` · `man Panoxy` | `myproxy.1.gz` · `man myproxy` |
 
-> 注意:程序名(编译期变量)与 GitHub 仓库名(`deadship2003/Panoxy`)是两回事——改名只影响二进制与运行期产物,不影响仓库与升级源。
+> Note: the program name (a build-time variable) and the GitHub repo name (`deadship2003/Panoxy`) are two different things — renaming only affects the binary and runtime artifacts, not the repo or the upgrade source.
 
-> **CLI 与内核的 CPU 选型**：Panoxy CLI 编译时默认按当前 CPU **自动检测** GOAMD64（amd64 有 AVX2 → `v3`，无 → `v1` 全兼容；可 `GOAMD64=v1 ./build.sh` 强制覆盖）。mihomo 内核则由 `Panoxy init` / `Panoxy upgrade` / `build.sh package` 在**运行时探测本机架构与 AVX2**，据此下载匹配的内核（有 AVX2 → `v3`，否则 → 标准档，再失败降 `compatible`）；内核下载/入包后即缓存，**不再重复探测**。
+> **CPU selection for CLI and core**: the Panoxy CLI auto-detects `GOAMD64` against the current CPU at build time by default (amd64 with AVX2 → `v3`, without → `v1` full compatibility; force with `GOAMD64=v1 ./build.sh`). The mihomo core, on the other hand, is matched at **runtime** by `Panoxy init` / `Panoxy upgrade` / `build.sh package`, which probe the local arch and AVX2 to download a matching core (AVX2 → `v3`, otherwise → standard, falling back to `compatible`); once downloaded/cached the core is not re-probed.
 
-### 验证编译产物
+### Verify the build
 
 ```bash
 file dist/Panoxy-linux-amd64
@@ -230,63 +234,64 @@ dist/Panoxy-linux-amd64 --version
 # Panoxy version V0.0.1
 ```
 
-## 📦 打包
+## 📦 Packaging
 
-### 用 build.sh
+### Using build.sh
 
 ```bash
-./build.sh package                       # 当前架构(默认)
-./build.sh package all                    # 全部目标平台(amd64+arm64)
+./build.sh package                       # current arch (default)
+./build.sh package all                    # all target platforms (amd64+arm64)
 ./build.sh package --arch arm64 --ver V0.0.1
-./build.sh package -h                    # 查看帮助
+./build.sh package -h                    # help
 ```
 
-### 脚本支持的参数/环境变量
+### Script flags / env vars
 
-| 参数/变量 | 默认 | 说明 |
+| Flag / var | Default | Meaning |
 |---|---|---|
-| `--arch amd64\|arm64\|all` | 当前平台 | 目标架构 |
-| `--ver V0.0.1` | git describe | 版本号 |
-| `--prog Panoxy`(或 `PROG` 环境变量) | `Panoxy` | 程序名(编译期注入,决定二进制/包名与运行期路径) |
-| `--sub-url URL` | (空) | 断网时经订阅代理下载资产 |
-| `ASSETS_SRC` | `/opt/Panoxy` | 本地资产目录(存在则复制,不下载) |
-| `MIHOMO_VERSION` | 运行时探测上游最新 | 内核版本(显式指定可固定/复现) |
-| `PROXY_PORT` | `33999` | 订阅引导代理端口 |
+| `--arch amd64\|arm64\|all` | current platform | target arch |
+| `--ver V0.0.1` | git describe | version number |
+| `--prog Panoxy` (or `PROG` env) | `Panoxy` | program name (build-time injection; determines binary/package name and runtime paths) |
+| `--sub-url URL` | (empty) | download assets through subscription proxy when offline |
+| `ASSETS_SRC` | `/opt/Panoxy` | local assets dir (copied if present, not downloaded) |
+| `MIHOMO_VERSION` | latest probed at runtime | core version (pin for reproducibility) |
+| `PROXY_PORT` | `33999` | subscription bootstrap proxy port |
 
-### 打包流程(内部步骤)
+### Packaging flow (internal steps)
 
 ```
-[1/5] 编译 ─── 内联 go build → dist/Panoxy-linux-<arch>(all 则双架构)
-[2/5] 资产 ─── 本地优先(ASSETS_SRC)> 直连(15s 检测)> 订阅代理 > gh 镜像
-                下载: mihomo 内核 + geo×3 + Country.mmdb + HyperADRules 规则 + metacubexd UI
-[3/5] 扫描 ─── 订阅泄露检测(token= 等特征命中即中止,URL 永不进包)
-[4/5] 组装 ─── Panoxy-V<ver>-<arch>/{Panoxy, README.md, assets/}
-[5/5] 打包 ─── tar.gz + sha256 → dist/
+[1/5] build ─── inline go build → dist/Panoxy-linux-<arch> (both arches when `all`)
+[2/5] assets ── local first (ASSETS_SRC) > direct (15s check) > subscription proxy > gh mirror
+                 download: mihomo core + geo×3 + Country.mmdb + HyperADRules + metacubexd UI
+[3/5] scan ──── subscription-leak detection (token= etc. → abort; URL never enters the package)
+[4/5] assemble ─ Panoxy-V<ver>-<arch>/{Panoxy, README.md, assets/}
+[5/5] package ── tar.gz + sha256 → dist/
 ```
 
-### 手工打包
+### Manual packaging
 
 <details>
-<summary>📖 展开手工打包完整步骤</summary>
+<summary>📖 Expand the full manual packaging steps</summary>
 
 ```bash
 cd ~/Panoxy
 mkdir -p dist
 
-# ===== 第 1 步:编译 =====
+# ===== Step 1: build =====
 cd src
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-amd64 ./cmd/panixy
 cd ..
 
-# ===== 第 2 步:下载资产 =====
+# ===== Step 2: download assets =====
 TMP=$(mktemp -d)
-# 运行时探测上游最新内核版本(不写死);断网时用本机 /opt/Panoxy/bin/mihomo -v 兜底
+# probe the latest upstream core version at runtime (not hardcoded);
+# fall back to the local /opt/Panoxy/bin/mihomo -v when offline
 MIHOMO_VER="$(curl -fsSL --connect-timeout 8 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
   | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
 
-# mihomo 内核(18MB):探测本机 AVX2 决定 v3/标准档(与 build.sh package 同源)
+# mihomo core (18MB): probe AVX2 to pick v3/standard (same source as build.sh package)
 if grep -qw avx2 /proc/cpuinfo; then
   curl -fsSL -o "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" \
     "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
@@ -295,21 +300,21 @@ else
     "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-$MIHOMO_VER.gz"
 fi
 
-# geo 三件(28MB)
+# geo trio (28MB)
 geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
 curl -fsSL -o $TMP/GeoIP.dat    "$geo/geoip.dat"
 curl -fsSL -o $TMP/GeoSite.dat  "$geo/geosite.dat"
 curl -fsSL -o $TMP/Country.mmdb "$geo/country.mmdb"
 
-# 广告规则
+# ad rules
 curl -fsSL -o $TMP/HyperADRules-Ads.yaml \
   "https://github.com/Lynricsy/HyperADRules/releases/latest/download/hyper_adrules_ads_clash.yaml"
 
-# metacubexd 面板
+# metacubexd panel
 curl -fsSL -o $TMP/ui.tgz \
   "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"
 
-# ===== 第 3 步:组装离线包 =====
+# ===== Step 3: assemble the offline package =====
 PKG="Panoxy-V0.0.1-amd64"
 rm -rf "$PKG"
 mkdir -p "$PKG/assets/core" "$PKG/assets/geo" "$PKG/assets/ui/official" "$PKG/assets/rule"
@@ -322,19 +327,19 @@ cp $TMP/HyperADRules-Ads.yaml "$PKG/assets/rule/"
 tar xzf $TMP/ui.tgz -C "$PKG/assets/ui/official"
 cp README.md "$PKG/"
 
-# ===== 第 4 步:打 tar 包 =====
+# ===== Step 4: tar it up =====
 tar -czf "dist/$PKG.tar.gz" "$PKG"
 (cd dist && sha256sum "$PKG.tar.gz" > "$PKG.tar.gz.sha256")
 
-# ===== 第 5 步:清理 =====
+# ===== Step 5: clean up =====
 rm -rf "$PKG" $TMP
-echo "产物: dist/$PKG.tar.gz ($(du -h dist/$PKG.tar.gz | cut -f1))"
+echo "artifact: dist/$PKG.tar.gz ($(du -h dist/$PKG.tar.gz | cut -f1))"
 ```
 
-**本机已有资产时跳过下载:**
+**Skip downloads when assets already exist locally:**
 
 ```bash
-# 内核版本取自本机已装内核(断网打包;与 build.sh package 的本地兜底同源)
+# core version taken from the installed core (offline packaging; same local fallback as build.sh package)
 MIHOMO_VER="$(/opt/Panoxy/bin/mihomo -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 gzip -c /opt/Panoxy/bin/mihomo > "$PKG/assets/core/mihomo-linux-amd64-$MIHOMO_VER.gz"
 cp /opt/Panoxy/Geo*.dat /opt/Panoxy/Country.mmdb "$PKG/assets/geo/"
@@ -343,96 +348,95 @@ cp /opt/Panoxy/rule_provider/HyperADRules-Ads.yaml "$PKG/assets/rule/"
 
 </details>
 
-### 最终包内结构
+### Final package structure
 
 ```
 Panoxy-V0.0.1-amd64/
-├── Panoxy                                    ← Go 二进制(9MB)
+├── Panoxy                                    ← Go binary (9MB)
 ├── README.md
 └── assets/
-    ├── core/mihomo-linux-amd64-<版本>.gz  ← 内核(18MB)
+    ├── core/mihomo-linux-amd64-<version>.gz  ← core (18MB)
     ├── geo/GeoIP.dat GeoSite.dat Country.mmdb
-    ├── rule/HyperADRules-Ads.yaml           ← 广告规则
-    └── ui/official/                          ← metacubexd 面板(161 文件)
+    ├── rule/HyperADRules-Ads.yaml            ← ad rules
+    └── ui/official/                          ← metacubexd panel (161 files)
 ```
 
-**总计约 34MB** · 用户拿到后 `tar xzf` → `sudo ./Panoxy deploy` 即完成安装。
+**~34 MB total** · the recipient runs `tar xzf` → `sudo ./Panoxy deploy` and installation is done.
 
-### CI 自动打包
+### CI auto-packaging
 
-推 `V*` 标签触发 GitHub Actions,与本地 `build.sh package` 同一脚本:
+Pushing a `V*` tag triggers GitHub Actions, using the same script as local `build.sh package`:
 
 ```bash
 git tag V0.0.1 && git push origin V0.0.1
-# → CI 自动编译+打包+发布 Release
+# → CI auto-builds, packages and publishes a Release
 ```
 
-**订阅 URL 永不进包**:打包前自动扫描 `token=` 等特征,命中即中止。
+**Subscription URLs never enter the package**: a pre-packaging scan aborts on patterns like `token=`.
 
-## 📋 命令参考
+## 📋 Command reference
 
-| 命令 | 作用 |
+| Command | Effect |
 |---|---|
-| `Panoxy try [URL]` | 预安装(免 root 沙箱实测) |
-| `Panoxy init/deploy --dry-run` | 试运行模式(免 root) |
-| `sudo Panoxy init [URL]` | 裸机初始化(九步带进度) |
-| `sudo Panoxy deploy [URL]` | 从离线包部署 |
-| `sudo Panoxy redeploy` | 就地重装:强制刷新全部程序文件(保留配置),重挂防火墙并重启 |
-| `sudo Panoxy merge-conf <yaml>` | 个人配置叠加融合(`--dry-run`/`--rollback`) |
-| `Panoxy config [--mode tun\|tproxy] [--write]` | 打印默认配置模板(免 root;`--write` 写回 config.default.yaml) |
-| `sudo Panoxy sub import [URL]` | 导入订阅(粘贴模式免引号) |
-| `sudo Panoxy sub del --name N` | 删除订阅 |
-| `Panoxy sub list [--json]` | 各订阅状态/节点数 |
-| `Panoxy status [-q\|--json\|--detail]` | 健康一览(`-q` 退出码供监控) |
-| `sudo Panoxy mode [tun\|tproxy]` | 查看/切换模式 |
-| `sudo Panoxy upgrade [--core\|--ui\|--cli] [--check]` | 参数化升级 |
-| `sudo Panoxy rollback [vX]` | 内核回滚 |
-| `Panoxy check [yaml]` | 校验配置 |
-| `sudo Panoxy apply-conf <yaml>` | 应用配置(热重载优先) |
-| `sudo Panoxy uninstall` | 卸载(保留数据) |
-| `Panoxy man [命令]` | 查看手册(根页或子命令页) |
-| `sudo Panoxy fw <apply\|teardown\|clean>` | 防火墙管理 |
+| `Panoxy try [URL]` | pre-install (rootless sandboxed trial) |
+| `Panoxy init/deploy --dry-run` | dry-run mode (rootless) |
+| `sudo Panoxy init [URL]` | bare-metal init (nine steps with progress) |
+| `sudo Panoxy deploy [URL]` | deploy from the offline package |
+| `sudo Panoxy redeploy` | in-place reinstall: force-refresh all program files (config preserved), re-apply firewall and restart |
+| `sudo Panoxy merge-conf <yaml>` | overlay-merge a personal config (`--dry-run`/`--rollback`) |
+| `Panoxy config [--mode tun\|tproxy] [--write]` | print the default config template (rootless; `--write` writes config.default.yaml) |
+| `sudo Panoxy sub import [URL]` | import a subscription (paste mode, no quotes) |
+| `sudo Panoxy sub del --name N` | delete a subscription |
+| `Panoxy sub list [--json]` | per-subscription status / node count |
+| `Panoxy status [-q\|--json\|--detail]` | health overview (`-q` exit code for monitoring) |
+| `sudo Panoxy mode [tun\|tproxy]` | view/switch mode |
+| `sudo Panoxy upgrade [--core\|--ui\|--cli] [--check]` | parameterized upgrade |
+| `sudo Panoxy rollback [vX]` | core rollback |
+| `Panoxy check [yaml]` | validate a config |
+| `sudo Panoxy apply-conf <yaml>` | apply a config (hot-reload first) |
+| `sudo Panoxy uninstall` | uninstall (data preserved) |
+| `Panoxy man [command]` | view manual (root page or subcommand page) |
+| `sudo Panoxy fw <apply\|teardown\|clean>` | firewall management |
 
-**全局参数**:`--root <dir>` 自定义安装目录 · `--verbose` 分步明细 · `--debug` 全量透蔽
+**Global flags**: `--root <dir>` custom install dir · `--verbose` step-by-step detail · `--debug` full transparency
 
-## 🧪 测试
+## 🧪 Testing
 
 ```bash
-make test          # 单元测试(YAML 编辑器/防火墙规则文本/模板 -t)
-make e2e           # 端到端测试(真实内核+假 systemd,约 60s)
-make test-all      # 全部
+make test          # unit tests (YAML editor / firewall-rule text / template -t)
+make e2e           # end-to-end tests (real core + fake systemd, ~60s)
+make test-all      # everything
 make lint          # go vet
 ```
 
 <details>
-<summary>📖 测试金字塔说明</summary>
+<summary>📖 Testing pyramid</summary>
 
-| 层级 | 测什么 | Panoxy 中 | 数量 | 速度 |
+| Layer | Tests what | In Panoxy | Count | Speed |
 |---|---|---|---|---|
-| 单元 | 单个函数 | YAML 融合/防火墙规则生成/模板渲染 | ~15 | <1s |
-| 集成 | 组件配合 | 配置过 mihomo `-t` | ~5 | 1-2s |
-| E2E | 完整流程 | deploy→sub import→status 全链路 | 3 | ~50s |
+| Unit | single function | YAML merge / firewall-rule generation / template rendering | ~15 | <1s |
+| Integration | component interplay | config through mihomo `-t` | ~5 | 1-2s |
+| E2E | full flow | deploy → sub import → status end-to-end | 3 | ~50s |
 
-E2E 使用真实编译的二进制 + 真实 mihomo 内核 + 模拟订阅服务器 + 假 systemd,
-不 mock 业务逻辑,验证用户实际体验。
+E2E uses the real compiled binary + real mihomo core + a mock subscription server + fake systemd; business logic is not mocked, so it validates the actual user experience.
 
 </details>
 
-## 📖 更多文档
+## 📖 More docs
 
-| 文档 | 内容 |
+| Doc | Contents |
 |---|---|
-| [docs/TPROXY.md](docs/TPROXY.md) | TPROXY 模式完整指南(前置检测/切换/验证/网络拓扑/故障排查) |
-| [docs/MIGRATION.md](docs/MIGRATION.md) | 从 bash 版迁移步骤 |
-| [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md) | 已知限制(mihomo 限制/DoH/内核要求等) |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 故障排查指南 |
-| `Panoxy man` | 手册(部署后 `man Panoxy` / `man Panoxy-<命令>`) |
+| [docs/TPROXY.md](docs/TPROXY.md) | complete TPROXY-mode guide (precheck / switch / verify / network topology / troubleshooting) |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | migration steps from the bash version |
+| [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md) | known limitations (mihomo limits / DoH / core requirements, etc.) |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | troubleshooting guide |
+| `Panoxy man` | manual (after deploy: `man Panoxy` / `man Panoxy-<command>`) |
 
-## 📄 许可
+## 📄 License
 
-Panoxy 本身采用**保留商用权利**的专有许可:源码公开仅供审计/评估,商用与再分发需另行授权,见 [LICENSE](LICENSE)。
+Panoxy itself is under a **commercial-rights-reserved** proprietary license: the source is public for audit/evaluation only; commercial use and redistribution require separate authorization, see [LICENSE](LICENSE).
 
-捆绑/下载的第三方组件(mihomo、metacubexd、meta-rules-dat 等)各自适用其开源许可,见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) 与 [LICENSES/](LICENSES/)。
+Bundled/downloaded third-party components (mihomo, metacubexd, meta-rules-dat, etc.) each carry their own open-source license, see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) and [LICENSES/](LICENSES/).
 
 ---
 
