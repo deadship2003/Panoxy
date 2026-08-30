@@ -1,4 +1,4 @@
-.PHONY: build test e2e package clean help
+.PHONY: build test e2e package package-all clean help
 
 # panixy Makefile — 一键入口(委托根目录 build.sh)
 # 用法: make <target>   (make 或 make help 查看全部)
@@ -20,8 +20,11 @@ e2e: ## 运行端到端测试(约 60s)
 
 test-all: test e2e ## 运行全部测试
 
-package: ## 打双架构离线包 → dist/(编译全部目标平台)
+package: ## 打当前架构离线包 → dist/
 	@./build.sh package --ver $(PANIXY_VERSION)
+
+package-all: ## 打双架构离线包 → dist/(amd64+arm64)
+	@./build.sh package --arch all --ver $(PANIXY_VERSION)
 
 clean: ## 清理全部编译产物(dist/ 与暂存目录)
 	@./build.sh clean

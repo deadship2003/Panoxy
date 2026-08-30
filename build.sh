@@ -3,12 +3,12 @@
 # 用法: build.sh [命令]
 #   编译(默认)   build.sh [--arch amd64|arm64|all] [--ver V0.1.0]
 #                 默认只编当前 CPU 架构;amd64 自带检测 AVX2(有→v3,无→v1)
-#   打包         build.sh package [--arch ...] [--ver ...] [--sub-url 订阅URL]
-#                 默认编译+打包全部目标平台(amd64+arm64 双包)
+#   打包         build.sh package [all|amd64|arm64] [--arch ...] [--ver ...] [--sub-url 订阅URL]
+#                 默认只打包当前 CPU 架构;加 all(或 --arch all)打全部目标平台
 #   清理         build.sh clean
 #   帮助         build.sh -h|-?|--help
 # 选项:
-#   --arch <amd64|arm64|all>   目标架构。编译默认当前平台;打包默认 all
+#   --arch <amd64|arm64|all>   目标架构。编译/打包默认当前平台;--arch all 打全部
 #   --ver  <V0.1.0>            版本号(默认 git describe;无 git 时 V0.1.0-dev)
 #   --sub-url <订阅URL>        打包时直连下载失败,经订阅节点建本地代理再下载
 # 环境变量:
@@ -196,11 +196,13 @@ package_cmd() {
       --arch) ARCH="$2"; shift 2 ;;
       --ver)  VER="$2"; shift 2 ;;
       --sub-url) SUB_URL="$2"; shift 2 ;;
+      all|amd64|arm64) [ -n "$ARCH" ] && { echo "位置参数与 --arch 冲突: $1"; exit 1; }; ARCH="$1"; shift ;;
       -h|-\?|--help) usage ;;
       *) echo "未知参数: $1(查看用法: $0 -h)"; exit 1 ;;
     esac
   done
-  [ -n "$ARCH" ] || ARCH="all"   # 打包默认全部目标平台
+  [ -n "$ARCH" ] || ARCH="$(host_arch)"          # 打包默认当前 CPU 架构
+  [ -n "$ARCH" ] || { echo "无法识别当前架构,请 --arch amd64|arm64|all 或位置参数 all 指定"; exit 1; }
   [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "V0.1.0-dev")"
   MIHOMO_VER="${MIHOMO_VERSION:-$(latest_gh_release MetaCubeX/mihomo)}"
   # 本地资产源(断网打包):存在则优先复制,缺失才联网下载

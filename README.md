@@ -195,16 +195,17 @@ dist/panixy-linux-amd64 --version
 ### 用 Makefile(推荐)
 
 ```bash
-make package                            # 打双架构离线包 → dist/(编译全部平台)
+make package                            # 打当前架构离线包 → dist/
+make package-all                        # 打双架构离线包 → dist/
 make package PANIXY_VERSION=V0.1.0      # 指定版本号
 ```
 
 ### 用脚本
 
 ```bash
-./build.sh package                       # 双架构离线包(默认 all)
-./build.sh package --arch amd64          # 只打 amd64
-./build.sh package --arch all --ver V0.1.0
+./build.sh package                       # 当前架构(默认)
+./build.sh package all                    # 全部目标平台(amd64+arm64)
+./build.sh package --arch arm64 --ver V0.1.0
 ./build.sh package -h                    # 查看帮助
 ```
 
@@ -222,7 +223,7 @@ make package PANIXY_VERSION=V0.1.0      # 指定版本号
 ### 打包流程(内部步骤)
 
 ```
-[1/5] 编译 ─── 调用 build.sh → dist/panixy-linux-{amd64,arm64}
+[1/5] 编译 ─── 调用 build.sh → dist/panixy-linux-<arch>(all 则双架构)
 [2/5] 资产 ─── 本地优先(ASSETS_SRC)> 直连(15s 检测)> 订阅代理 > gh 镜像
                 下载: mihomo 内核 + geo×3 + Country.mmdb + AWAvenue 规则 + metacubexd UI
 [3/5] 扫描 ─── 订阅泄露检测(token= 等特征命中即中止,URL 永不进包)
