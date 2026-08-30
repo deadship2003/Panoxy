@@ -21,12 +21,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 
 	r := health.Collect(p.Conf, p.Bin, p.UiStamp, p.LastUp, p.State)
-	// 修正残留规则判定:表存在+服务 active=正常;表存在+服务 inactive=真残留
+	// Fix the stale-rule judgement: table exists + service active = normal; table exists + service inactive = truly stale.
 	if r.Stale && r.Service == "active" {
-		r.Stale = false // 服务在跑,表里有规则是正常状态
+		r.Stale = false // service is running, rules in the table is the normal state
 	}
 
-	// -q:仅退出码(0健康 1降级 2故障)
+	// -q: exit code only (0 healthy, 1 degraded, 2 faulty).
 	if q {
 		if r.Service != "active" || !r.APIAlive {
 			os.Exit(2)
@@ -43,10 +43,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("== %s v%s  (%s) ==\n", constants.ProgName, constants.Version, p.Root)
-	fmt.Printf("服务:     %s\n", r.Service)
-	fmt.Printf("模式:     %s   防火墙: %s", r.Mode, r.FwBackend)
+	fmt.Printf("service:  %s\n", r.Service)
+	fmt.Printf("mode:     %s   firewall: %s", r.Mode, r.FwBackend)
 	if r.Stale {
-		fmt.Printf("  ⚠️ 检测到残留规则(restart %s 自愈)", constants.ProgName)
+		fmt.Printf("  ⚠️ stale rules detected (restart %s self-heals)", constants.ProgName)
 	}
 	fmt.Println()
 	for _, st := range r.Providers {
@@ -55,31 +55,31 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if st.Error != "" {
 			mark, err = "⚠️", "  "+st.Error
 		} else if st.Nodes == 0 {
-			mark = "⚠️ 节点为0"
+			mark = "⚠️ 0 nodes"
 		}
-		fmt.Printf("订阅:     %s %-16s %d 节点%s\n", mark, st.Name, st.Nodes, err)
+		fmt.Printf("sub:      %s %-16s %d nodes%s\n", mark, st.Name, st.Nodes, err)
 	}
 	if len(r.Providers) == 0 {
-		fmt.Printf("订阅:     -(配置无 proxy-providers)\n")
+		fmt.Printf("sub:      - (config has no proxy-providers)\n")
 	}
-	fmt.Printf("内核:     %s\n", r.CoreVer)
-	fmt.Printf("UI:       %s   上次升级: %s\n", r.UIVer, orUnknown(r.LastUp))
-	fmt.Printf("API:      %s\n", orUnreachable(r.APIAlive, r.APIVer))
-	fmt.Printf("代理出网: %s (期望204)\n", r.Egress)
-	fmt.Printf("直连出网: %s (期望204)\n", r.Direct)
-	fmt.Println("提示:     浏览器内置 DoH(443)无法被内核劫持,域名分流对其不生效,建议关闭")
+	fmt.Printf("kernel:   %s\n", r.CoreVer)
+	fmt.Printf("ui:       %s   last upgrade: %s\n", r.UIVer, orUnknown(r.LastUp))
+	fmt.Printf("api:      %s\n", orUnreachable(r.APIAlive, r.APIVer))
+	fmt.Printf("egress:   %s (expect 204)\n", r.Egress)
+	fmt.Printf("direct:   %s (expect 204)\n", r.Direct)
+	fmt.Println("tip:      browser built-in DoH (443) cannot be hijacked by the kernel; domain-based routing does not apply to it, recommend disabling it")
 
 	if v {
-		fmt.Println("-- 详细(--detail) --")
+		fmt.Println("-- detail (--detail) --")
 		if r.Mode == "tun" {
-			fmt.Println("TUN 栈:   system(当前配置;重度 BT/UDP、频繁掉线、老内核建议 gvisor 兜底)")
+			fmt.Println("TUN stack: system (current config; for heavy BT/UDP, frequent drops, or old kernels, gvisor is recommended as a fallback)")
 		} else {
-			fmt.Println("TPROXY:   保留客户端源 IP;注意 IPv6/容器劫持坑(见 README)")
+			fmt.Println("TPROXY:   keeps the client source IP; note the IPv6/container hijack pitfalls (see README)")
 		}
 		if b, err := os.ReadFile(p.State); err == nil {
-			fmt.Printf("状态文件: %s\n%s", p.State, indentLines(string(b)))
+			fmt.Printf("state file: %s\n%s", p.State, indentLines(string(b)))
 		}
-		fmt.Printf("数据面(节点/组选择)请在 Web 面板操作;传输面(tun/tproxy)用 %s mode\n", constants.ProgName)
+		fmt.Printf("data plane (node/group selection) is done in the web UI; transport plane (tun/tproxy) via %s mode\n", constants.ProgName)
 	}
 	return nil
 }
@@ -95,13 +95,13 @@ func runMode(cmd *cobra.Command, args []string) error {
 
 func orUnknown(s string) string {
 	if s == "" {
-		return "未知"
+		return "unknown"
 	}
 	return s
 }
 func orUnreachable(ok bool, v string) string {
 	if !ok {
-		return "不可达"
+		return "unreachable"
 	}
 	return v
 }

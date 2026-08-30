@@ -21,7 +21,7 @@ func Run(name string, args ...string) (string, error) {
 func RunOK(what, name string, args ...string) (string, error) {
 	out, err := Run(name, args...)
 	if err != nil {
-		return out, fmt.Errorf("%s失败: %s", what, strings.TrimSpace(out))
+		return out, fmt.Errorf("%s failed: %s", what, strings.TrimSpace(out))
 	}
 	return out, nil
 }

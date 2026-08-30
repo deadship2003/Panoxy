@@ -19,7 +19,7 @@ import (
 	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
-// runCheck 用内核 -t 校验配置(只读,免 root)。
+// runCheck validates config with the kernel's -t flag (read-only, no root).
 func runCheck(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
 	f := p.Conf
@@ -27,28 +27,28 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		f = args[0]
 	}
 	if _, err := os.Stat(f); err != nil {
-		return fmt.Errorf("文件不存在: %s", f)
+		return fmt.Errorf("file does not exist: %s", f)
 	}
 	out, err := mihomoTest(p, f)
 	fmt.Print(out)
 	return err
 }
 
-// runApplyConf 应用自定义配置:优先热重载(仅非 provider 改动!),失败退重启,再失败恢复。
+// runApplyConf applies a custom config: prefer hot-reload (non-provider changes only!), fall back to restart, then restore on failure.
 func runApplyConf(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runApplyConfBody(p, cmd, args) })
 }
 
 func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("用法: %s apply-conf <yaml>", constants.ProgName)
+		return fmt.Errorf("usage: %s apply-conf <yaml>", constants.ProgName)
 	}
 	src := args[0]
 	if _, err := os.Stat(src); err != nil {
-		return fmt.Errorf("文件不存在: %s", src)
+		return fmt.Errorf("file does not exist: %s", src)
 	}
 	if out, err := mihomoTest(p, src); err != nil {
-		return fmt.Errorf("该文件未通过内核校验(%s),系统未做任何改动", firstErrLine(out))
+		return fmt.Errorf("file failed kernel validation (%s); system unchanged", firstErrLine(out))
 	}
 	warnCompat(src)
 	if err := config.Backup(p.Conf); err != nil {
@@ -63,27 +63,27 @@ func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	api := mihomoapi.NewFromConf(p.Conf)
-	// 热重载不刷新 proxy-providers(mihomo 限制);此处仅对非 provider 改动有效
+	// Hot-reload does not refresh proxy-providers (mihomo limitation); only effective for non-provider changes.
 	if err := api.ReloadConf(p.Conf); err == nil && health.WaitHealthy(p.Conf, 20*time.Second, "") == nil {
 		config.ClearBackup(p.Conf)
-		logx.Info("配置已热重载生效(未重启);注意 provider 改动需重启才生效")
+		logx.Info("config hot-reloaded (no restart); note provider changes need a restart")
 		return nil
 	}
-	logx.Step("热重载未生效,改用重启方式")
+	logx.Step("hot-reload had no effect, falling back to restart")
 	if err := systemdunit.Restart(); err != nil {
 		rollbackRestart(p)
-		return fmt.Errorf("重启失败,已恢复原配置")
+		return fmt.Errorf("restart failed, original config restored")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		rollbackRestart(p)
-		return fmt.Errorf("重启后健康检查未过,已恢复原配置:%w", err)
+		return fmt.Errorf("health check failed after restart, original config restored: %w", err)
 	}
 	config.ClearBackup(p.Conf)
-	logx.Info("配置已生效: %s -> %s", src, p.Conf)
+	logx.Info("config applied: %s -> %s", src, p.Conf)
 	return nil
 }
 
-// runUnits 输出渲染后的单元文本(离线审查,不动系统)。
+// runUnits prints rendered unit text (offline review, does not touch the system).
 func runUnits(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
 	units, err := systemdunit.Render(p, "tun")
@@ -96,11 +96,11 @@ func runUnits(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runConfig 渲染默认模板打印到 stdout;--write 额外写回 config.default.yaml(不部署、不碰系统)。
+// runConfig renders the default template to stdout; --write additionally writes config.default.yaml back (no deploy, does not touch the system).
 func runConfig(cmd *cobra.Command, args []string) error {
 	mode, _ := cmd.Flags().GetString("mode")
 	if mode != "tun" && mode != "tproxy" {
-		return fmt.Errorf("--mode 只能是 tun 或 tproxy")
+		return fmt.Errorf("--mode must be tun or tproxy")
 	}
 	secret, _ := cmd.Flags().GetString("secret")
 	d := asset.DefaultConfigData()
@@ -116,12 +116,12 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		if err := writeDefaultConf(p, mode, secret); err != nil {
 			return err
 		}
-		logx.Info("默认配置已写回 %s(模式 %s,密钥 %s)", p.DefaultConf, mode, secret)
+		logx.Info("default config written back to %s (mode %s, secret %s)", p.DefaultConf, mode, secret)
 	}
 	return nil
 }
 
-// runLog 透传 journalctl。
+// runLog passes through to journalctl.
 func runLog(cmd *cobra.Command, args []string) error {
 	n := "80"
 	if len(args) > 0 {
@@ -132,11 +132,12 @@ func runLog(cmd *cobra.Command, args []string) error {
 	return err
 }
 
-// warnCompat 个人配置融合前的兼容自检:与防火墙方案的三个"暗号"对不上会出实际问题。
+// warnCompat runs a compatibility self-check before merging a personal config: mismatching
+// any of the three firewall "contract" values causes real problems.
 //
-//	routing-mark 6666 —— 防火墙据此放行 mihomo 自身流量,缺失会 DNS 回环
-//	dns.listen 0.0.0.0:1053 —— nft redirect 的落点,不一致则 DNS 劫持落空
-//	tun.dns-hijack —— 防火墙已统一做 DNS 劫持,保留会双重处理
+//	routing-mark 6666 —— the firewall exempts mihomo's own traffic by this mark; missing it causes a DNS loop
+//	dns.listen 0.0.0.0:1053 —— the nft redirect target; mismatching it makes DNS hijack a no-op
+//	tun.dns-hijack —— the firewall already hijacks DNS uniformly; keeping it double-processes
 func warnCompat(path string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -155,12 +156,12 @@ func warnCompat(path string) {
 		return
 	}
 	if c.RoutingMark != constants.MarkSelf {
-		logx.Warn("配置缺 routing-mark: %d —— 防火墙将无法放行 mihomo 自身流量,可能造成 DNS 回环死锁(模板默认已带,勿删)", constants.MarkSelf)
+		logx.Warn("config is missing routing-mark: %d — the firewall will be unable to exempt mihomo's own traffic, possibly causing a DNS loop deadlock (the template ships it by default, do not remove)", constants.MarkSelf)
 	}
 	if !strings.Contains(c.DNS.Listen, ":1053") {
-		logx.Warn("dns.listen=%q 与防火墙劫持落点(0.0.0.0:1053)不一致 —— DNS 劫持将落空,请改为 0.0.0.0:1053", c.DNS.Listen)
+		logx.Warn("dns.listen=%q does not match the firewall hijack target (0.0.0.0:1053) — DNS hijack will be a no-op, please change it to 0.0.0.0:1053", c.DNS.Listen)
 	}
 	if len(c.TUN.DNSHijack) > 0 {
-		logx.Warn("tun.dns-hijack 仍存在 —— DNS 劫持已由防火墙统一处理,请删除该项避免双重劫持")
+		logx.Warn("tun.dns-hijack still present — DNS hijack is already handled uniformly by the firewall, remove this item to avoid double hijacking")
 	}
 }

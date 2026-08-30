@@ -14,12 +14,12 @@ import (
 
 // TproxyPolicyAdd 加载策略路由(TPROXY 模式 Apply 时调用;先幂等清旧再加载,防累积)。
 func TproxyPolicyAdd() error {
-	return runIps(tproxyPolicyCmds(true, constants.MarkTproxy, constants.TproxyTable), "加载 TPROXY 策略路由")
+	return runIps(tproxyPolicyCmds(true, constants.MarkTproxy, constants.TproxyTable), "load TPROXY policy routing")
 }
 
 // TproxyPolicyDel 清理策略路由(幂等)。
 func TproxyPolicyDel() error {
-	return runIps(tproxyPolicyCmds(false, constants.MarkTproxy, constants.TproxyTable), "清理 TPROXY 策略路由")
+	return runIps(tproxyPolicyCmds(false, constants.MarkTproxy, constants.TproxyTable), "clean TPROXY policy routing")
 }
 
 func tproxyPolicyCmds(add bool, mark, table int) [][]string {
@@ -48,7 +48,7 @@ func runIps(cmds [][]string, what string) error {
 		// 注意 ip 对不存在的 rule/table 报 "No such file or directory"(RTNETLINK
 		// ENOENT)—— 真机首装必现,漏容会导致 fw apply 失败、服务被判死(实测踩过)。
 		if err != nil && !tolerantError(string(out)) {
-			return fmt.Errorf("%s 失败: %s", what, strings.TrimSpace(string(out)))
+			return fmt.Errorf("%s failed: %s", what, strings.TrimSpace(string(out)))
 		}
 	}
 	return nil

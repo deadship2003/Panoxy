@@ -13,13 +13,14 @@ import (
 	"github.com/deadship2003/Panoxy/internal/logx"
 )
 
-// runTry 预安装(免 root 沙箱实测):在不触碰真实系统的前提下,把 init/deploy 的
-// 全流程真跑一遍 —— 真实下载资产、真实启动内核(TUN/routing-mark 按非 root 约束
-// 剥离)、真实导入订阅并验证节点数、真实健康检查。通过 = 可以放心 sudo 真装。
+// runTry is a pre-install dry run (sandboxed, no root): it truly runs the full init/deploy
+// flow without touching the real system — real asset downloads, real kernel boot (TUN/routing-mark
+// stripped under the non-root constraint), real subscription import with node-count verification,
+// and a real health check. Passing = safe to sudo for a real install.
 //
-// 实现即"产品化的 e2e 沙箱":路径全部经环境变量重定向到沙箱目录;systemd/ip/
-// sysctl 用内置 shim 替身(内核引导时剥 tun 与 routing-mark —— 非 root 下
-// TUN 建设备与 SO_MARK 会 EPERM,真机 root 部署无此限制)。
+// Implementation is a "productized e2e sandbox": all paths are redirected into a sandbox dir via
+// env vars; systemd/ip/sysctl use built-in shims (kernel boot strips tun and routing-mark —
+// without root, TUN device creation and SO_MARK fail with EPERM; a real root deploy has no such limit).
 func runTry(cmd *cobra.Command, args []string) error {
 	dir, _ := cmd.Flags().GetString("dir")
 	if dir == "" {
@@ -32,15 +33,16 @@ func runTry(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 沙箱 systemd 替身:enable/restart 以剥离 tun+routing-mark 的配置直接引导内核
+	// Sandbox systemd shim: enable/restart boot the kernel directly with tun+routing-mark stripped.
 	shim := filepath.Join(dir, "bin", "systemctl")
 	pidf := filepath.Join(dir, "pid")
-	// 退出时兜底停掉沙箱内核:不留后台 mihomo 占用透明代理端口,
-	// 否则紧接着的 sudo panixy init/deploy 会被自己的残留进程挡住(端口占用)。
+	// On exit, stop the sandbox kernel as a last resort: do not leave a background mihomo holding
+	// the transparent-proxy ports, otherwise a subsequent sudo panixy init/deploy would be blocked
+	// by our own leftover process (port conflict).
 	defer stopSandboxMihomo(pidf)
 	shimScript := fmt.Sprintf(`#!/bin/sh
-# {{PROG}} try 沙箱替身(产品化 e2e):非 root 引导内核时剥离 tun 段与 routing-mark
-# (TUN 建设备/SO_MARK 需 CAP_NET_ADMIN;真机 root 部署不受此限制)
+# {{PROG}} try sandbox shim (productized e2e): strip tun section and routing-mark when booting the kernel as non-root
+# (TUN device creation / SO_MARK need CAP_NET_ADMIN; a real root deploy has no such limit)
 PIDF=%s
 start_mh() {
   awk '/^tun:/{s=1;next} /^routing-mark:/{next} s && /^[^ \t#]/{s=0} !s{print}' "${{PREFIX}}_CONF" > "${{PREFIX}}_CONF.notun"
@@ -65,7 +67,7 @@ exit 0
 		os.WriteFile(filepath.Join(dir, "bin", name), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	}
 
-	// 路径全部重定向进沙箱;PATH 前置 shim;免 root
+	// Redirect all paths into the sandbox; prepend shim to PATH; no root.
 	pfx := constants.EnvPrefix()
 	for k, v := range map[string]string{
 		pfx + "_ROOT":          filepath.Join(dir, "root"),
@@ -81,9 +83,9 @@ exit 0
 	} {
 		os.Setenv(k, v)
 	}
-	// 复用环境:之后可在同 shell 对沙箱跑 status/sub list 等
+	// Reusable environment: after sourcing, you can run status/sub list etc. against the sandbox in the same shell.
 	envFile := filepath.Join(dir, "env.sh")
-	os.WriteFile(envFile, []byte(fmt.Sprintf(`# source 后即可对本沙箱执行 %[1]s status / sub list / sub import 等
+	os.WriteFile(envFile, []byte(fmt.Sprintf(`# after sourcing, you can run %[1]s status / sub list / sub import etc. against this sandbox
 export %[2]s_ROOT=%[3]q
 export %[2]s_CONF=%[4]q
 export %[2]s_UNIT_DIR=%[5]q
@@ -93,7 +95,7 @@ export %[2]s_STATE=%[8]q
 export %[2]s_SYSCTL=%[9]q
 export %[2]s_LOCK=%[10]q
 export %[2]s_ALLOW_NONROOT=1
-# 沙箱替身优先(status/is-active 等对沙箱生效)
+# sandbox shim takes priority (status/is-active etc. act on the sandbox)
 case ":$PATH:" in
   *":%[11]s:"*) ;;
   *) export PATH="%[11]s:$PATH" ;;
@@ -105,20 +107,20 @@ esac
 		filepath.Join(dir, "state.yaml"), filepath.Join(dir, "99-sysctl.conf"), filepath.Join(dir, "lock"),
 		filepath.Join(dir, "bin"))), 0o644)
 
-	logx.Info("沙箱:%s(免 root;真实下载/内核/订阅,防火墙与 TUN 不落地)", dir)
-	logx.Info("沙箱约束:引导时剥离 tun 与 routing-mark(非 root 限制);真实部署(sudo init)无此限制")
-	logx.Info("提示:若本机已有部署占用 33833/9999/1053 端口,先停服务或换机器 try")
+	logx.Info("sandbox: %s (no root; real download/kernel/subscription, firewall and TUN not installed)", dir)
+	logx.Info("sandbox constraint: tun and routing-mark stripped at boot (non-root limit); a real deploy (sudo init) has no such limit")
+	logx.Info("tip: if an existing deployment on this machine holds ports 33833/9999/1053, stop the service first or try on another machine")
 
-	// 复用 init 全流程(其内部 needRoot 已被 PANIXY_ALLOW_NONROOT 放行)
+	// Reuse the full init flow (its internal needRoot is bypassed by PANIXY_ALLOW_NONROOT).
 	if err := runInit(cmd, args); err != nil {
-		return fmt.Errorf("预安装未通过:%w\n沙箱保留在 %s(查 %s/root/run.log),排除后重试或 rm -rf 清理", err, dir, dir)
+		return fmt.Errorf("pre-install check failed: %w\nsandbox kept at %s (see %s/root/run.log), fix and retry or rm -rf to clean up", err, dir, dir)
 	}
 
 	fmt.Fprintln(os.Stderr)
-	logx.Info("预安装通过 ✓ 真实部署请执行: sudo %s init %s", constants.ProgName, subArgsHint(args))
-	logx.Info("沙箱内核已停止(不留后台进程,不影响后续 deploy/init);沙箱文件保留在 %s(查 %s/root/run.log)", dir, dir)
-	logx.Info("清理沙箱: rm -rf %s   # 随时可删,不影响系统", dir)
-	// 确保终端干净返回 prompt(stdout+stderr 各补一个换行并 flush)
+	logx.Info("pre-install check passed ✓ for a real deployment run: sudo %s init %s", constants.ProgName, subArgsHint(args))
+	logx.Info("sandbox kernel stopped (no background process left, won't affect a later deploy/init); sandbox files kept at %s (see %s/root/run.log)", dir, dir)
+	logx.Info("clean up the sandbox: rm -rf %s   # safe to delete anytime, does not affect the system", dir)
+	// Ensure a clean prompt return (append a newline to stdout+stderr and flush).
 	fmt.Fprintln(os.Stdout)
 	os.Stdout.Sync()
 	fmt.Fprintln(os.Stderr)
@@ -128,13 +130,14 @@ esac
 
 func subArgsHint(args []string) string {
 	if len(args) > 0 {
-		return "'" + args[0] + "'   # 记得引号"
+		return "'" + args[0] + "'   # remember the quotes"
 	}
-	return "(回车粘贴订阅)"
+	return "(press enter to paste subscription)"
 }
 
-// stopSandboxMihomo 停止沙箱替身启动的内核(shim 的 start_mh 把 pid 写入 pidf)。
-// try 结束后必须调用,否则残留 mihomo 会占用透明代理端口,阻塞后续真实 init/deploy。
+// stopSandboxMihomo stops the kernel booted by the sandbox shim (the shim's start_mh writes its pid into pidf).
+// It must be called when try finishes, otherwise the leftover mihomo would hold the transparent-proxy ports
+// and block a subsequent real init/deploy.
 func stopSandboxMihomo(pidf string) {
 	b, err := os.ReadFile(pidf)
 	if err != nil {

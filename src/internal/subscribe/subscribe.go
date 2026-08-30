@@ -34,7 +34,7 @@ func Fetch(url, proxy, ua string, w io.Writer) error {
 		req.Header.Set("User-Agent", ua)
 		resp, err := hc.Do(req)
 		if err != nil {
-			logx.Debug("订阅拉取(%s)失败: %v", orDefault(p, "直连"), err)
+			logx.Debug("subscription fetch (%s) failed: %v", orDefault(p, "direct"), err)
 			return err
 		}
 		defer resp.Body.Close()
@@ -47,10 +47,10 @@ func Fetch(url, proxy, ua string, w io.Writer) error {
 	if err := try(""); err == nil {
 		return nil
 	} else {
-		logx.Step("订阅直连拉取失败,改走本机代理: %v", err)
+		logx.Step("direct subscription fetch failed, switching to local proxy: %v", err)
 	}
 	if proxy == "" {
-		return fmt.Errorf("直连失败且无本机代理可用")
+		return fmt.Errorf("direct fetch failed and no local proxy available")
 	}
 	return try(proxy)
 }
@@ -60,13 +60,13 @@ func Fetch(url, proxy, ua string, w io.Writer) error {
 // 机场对无效 token 常返回网页/空,必须拦下(bash 时代实测教训)。
 func Validate(b []byte) error {
 	if len(strings.TrimSpace(string(b))) == 0 {
-		return fmt.Errorf("订阅内容为空")
+		return fmt.Errorf("subscription content is empty")
 	}
 	if Detect(b) == FormatUnknown {
-		return fmt.Errorf("订阅不是可识别的格式(支持 Clash YAML / base64或明文 URI 列表 / sing-box JSON / Surge;机场对无效 token 常返回网页)")
+		return fmt.Errorf("subscription is not in a recognizable format (supported: Clash YAML / base64 or plaintext URI list / sing-box JSON / Surge; airports often return a web page for an invalid token)")
 	}
 	if nodeCount(b) == 0 {
-		return fmt.Errorf("订阅中未解析到任何节点(检查链接/token;机场对无效请求可能返回网页)")
+		return fmt.Errorf("no nodes parsed from the subscription (check the link/token; airports may return a web page for invalid requests)")
 	}
 	return nil
 }
@@ -75,7 +75,7 @@ func Validate(b []byte) error {
 func ValidateFile(path string) ([]byte, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取本地订阅文件失败: %w", err)
+		return nil, fmt.Errorf("failed to read local subscription file: %w", err)
 	}
 	if err := Validate(b); err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // CheckName 校验 provider 名称(防注入 YAML 键与 API 路径)。
 func CheckName(name string) error {
 	if !nameRe.MatchString(name) {
-		return fmt.Errorf("名称只能包含 [a-zA-Z0-9_-]:%q", name)
+		return fmt.Errorf("name may only contain [a-zA-Z0-9_-]: %q", name)
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func CheckName(name string) error {
 // CheckURL 校验订阅 URL。
 func CheckURL(u string) error {
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		return fmt.Errorf("URL 需以 http(s):// 开头(命令行传参记得整体加单引号,或直接 %s sub import 回车粘贴)", constants.ProgName)
+		return fmt.Errorf("URL must start with http(s):// (quote the whole argument when passing it on the command line, or run %s sub import and paste it at the prompt)", constants.ProgName)
 	}
 	return nil
 }

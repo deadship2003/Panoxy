@@ -16,9 +16,9 @@ import (
 	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
-// runMergeConf 叠加式融合:同名组合并 + 新增追加 + 基底保留 + 备份回滚。
+// runMergeConf is an additive merge: same-name group merge + new append + base keep + backup rollback.
 func runMergeConf(cmd *cobra.Command, args []string) error {
-	// --rollback:从 premerge 备份恢复
+	// --rollback: restore from the premerge backup.
 	if rb, _ := cmd.Flags().GetBool("rollback"); rb {
 		return mergeRollback()
 	}
@@ -27,22 +27,23 @@ func runMergeConf(cmd *cobra.Command, args []string) error {
 
 func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("用法: %s merge-conf <个人配置.yaml>(叠加融合;--dry-run 试运行;--rollback 回滚)", constants.ProgName)
+		return fmt.Errorf("usage: %s merge-conf <personal-config.yaml> (additive merge; --dry-run preview; --rollback revert)", constants.ProgName)
 	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	dnsMode, _ := cmd.Flags().GetString("dns")
 	noWire, _ := cmd.Flags().GetBool("no-wire")
 
-	// 基底用纯净默认模板(config.default.yaml),而非运行中的 /etc/clash.yaml ——
-	// 保证融合结果可复现:个人配置叠加到干净基线上,占位订阅(SUB_URL_PLACEHOLDER)由 MergePersonal 自动退场。
+	// The base uses the clean default template (config.default.yaml), not the running /etc/clash.yaml —
+	// so the merge result is reproducible: the personal config is overlaid onto a clean baseline, and the
+	// placeholder subscription (SUB_URL_PLACEHOLDER) is auto-retired by MergePersonal.
 	base, err := config.Load(p.DefaultConf)
 	if err != nil {
-		return fmt.Errorf("读取默认基底配置失败: %w(%s 不存在,先 sudo %s redeploy 生成)", err, p.DefaultConf, constants.ProgName)
+		return fmt.Errorf("failed to read the default base config: %w (%s does not exist, run sudo %s redeploy first to generate it)", err, p.DefaultConf, constants.ProgName)
 	}
 	personal, err := config.Load(args[0])
 	if err != nil {
-		return fmt.Errorf("读取个人配置失败: %w", err)
+		return fmt.Errorf("failed to read the personal config: %w", err)
 	}
 
 	opts := config.MergeOpts{DNSMine: dnsMode == "mine", NoWire: noWire}
@@ -56,16 +57,16 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	printMergeReport(rep, baseProviders)
 
 	if dryRun {
-		fmt.Fprintln(os.Stderr, "--dry-run:试运行模式,不落盘不备份。融合结果预览输出到 stdout。")
+		fmt.Fprintln(os.Stderr, "--dry-run: dry-run mode, no writes and no backup. The merge result preview goes to stdout.")
 		os.Stdout.WriteString(mustRender(base))
 		return nil
 	}
 
-	// 备份(premerge)→ 融合 → -t → 应用 → 健康 → 失败恢复
-	logx.Step("备份当前配置 → %s", p.Conf+constants.PremergeSuffix())
+	// Back up (premerge) → merge → -t → apply → health → restore on failure.
+	logx.Step("back up current config → %s", p.Conf+constants.PremergeSuffix())
 	bakPath, err := config.PremergeBackup(p.Conf)
 	if err != nil {
-		return fmt.Errorf("premerge 备份失败: %w", err)
+		return fmt.Errorf("premerge backup failed: %w", err)
 	}
 	rep.BackupPath = bakPath
 
@@ -73,10 +74,10 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	defer os.Remove(tmpConf)
 	os.WriteFile(tmpConf, []byte(mustRender(base)), 0o644)
 	if out, err := mihomoTest(p, tmpConf); err != nil {
-		return fmt.Errorf("融合结果未通过内核校验(%s),系统未做任何改动;可用 --dry-run 检查", firstErrLine(out))
+		return fmt.Errorf("merge result failed kernel validation (%s), system unchanged; use --dry-run to inspect", firstErrLine(out))
 	}
 
-	logx.Step("应用融合配置 → 重启服务")
+	logx.Step("apply merged config → restart service")
 	if err := os.WriteFile(p.Conf, []byte(mustRender(base)), 0o644); err != nil {
 		config.PremergeRestore(p.Conf)
 		return err
@@ -84,73 +85,73 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if err := systemdunit.Restart(); err != nil {
 		config.PremergeRestore(p.Conf)
 		systemdunit.Restart()
-		return fmt.Errorf("重启失败,已从 premerge 恢复")
+		return fmt.Errorf("restart failed, restored from premerge")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		config.PremergeRestore(p.Conf)
 		systemdunit.Restart()
-		return fmt.Errorf("融合后健康检查超时,已从 premerge 恢复:%w", err)
+		return fmt.Errorf("health check timed out after merge, restored from premerge: %w", err)
 	}
-	logx.Info("融合完成:%s sub list 查看订阅;分组/节点选择在 Web 面板操作", constants.ProgName)
-	logx.Info("回滚: sudo %s merge-conf --rollback(恢复到融合前)", constants.ProgName)
+	logx.Info("merge complete: %s sub list to view subscriptions; group/node selection is done in the web UI", constants.ProgName)
+	logx.Info("rollback: sudo %s merge-conf --rollback (restore to pre-merge state)", constants.ProgName)
 	return nil
 }
 
 func mergeRollback() error {
 	return withRootLock(func(p paths.Paths) error {
 		if !config.PremergeExists(p.Conf) {
-			return fmt.Errorf("无 premerge 备份(%s%s 不存在)", p.Conf, constants.PremergeSuffix())
+			return fmt.Errorf("no premerge backup (%s%s does not exist)", p.Conf, constants.PremergeSuffix())
 		}
 		if err := config.PremergeRestore(p.Conf); err != nil {
-			return fmt.Errorf("恢复失败: %w", err)
+			return fmt.Errorf("restore failed: %w", err)
 		}
 		if err := systemdunit.Restart(); err != nil {
-			return fmt.Errorf("配置已恢复但重启失败: %w", err)
+			return fmt.Errorf("config restored but restart failed: %w", err)
 		}
-		logx.Info("已从 premerge 备份恢复并重启")
+		logx.Info("restored from the premerge backup and restarted")
 		return nil
 	})
 }
 
 func printMergeReport(r *config.MergeReport, _ []string) {
-	logx.Info("融合决策:")
+	logx.Info("merge decision:")
 	if len(r.GroupsMerged) > 0 {
-		logx.Info("  组融合(同名): %v", r.GroupsMerged)
+		logx.Info("  groups merged (same name): %v", r.GroupsMerged)
 	}
 	if len(r.GroupsAdded) > 0 {
-		logx.Info("  组新增(个人): %v", r.GroupsAdded)
+		logx.Info("  groups added (personal): %v", r.GroupsAdded)
 	}
 	if len(r.GroupsKept) > 0 {
-		logx.Info("  组保留(基底): %v(共 %d 组)", r.GroupsKept[:min(5, len(r.GroupsKept))], len(r.GroupsKept))
+		logx.Info("  groups kept (base): %v (%d groups total)", r.GroupsKept[:min(5, len(r.GroupsKept))], len(r.GroupsKept))
 		if len(r.GroupsKept) > 5 {
-			logx.Info("    ...等")
+			logx.Info("    ...etc")
 		}
 	}
 	if r.RulesPersonal > 0 || r.RulesBase > 0 {
-		logx.Info("  规则: 个人 %d 条前置 + 基底 %d 条兜底(去重 %d)", r.RulesPersonal, r.RulesBase, r.RulesDeduped)
+		logx.Info("  rules: %d personal prepended + %d base fallback (deduped %d)", r.RulesPersonal, r.RulesBase, r.RulesDeduped)
 	}
-	logx.Info("  接管(个人): %v", r.Taken)
-	logx.Info("  保留(基底): %v", r.Kept)
+	logx.Info("  taken over (personal): %v", r.Taken)
+	logx.Info("  kept (base): %v", r.Kept)
 	if len(r.Providers.BaseKept) > 0 {
-		logx.Info("  订阅基底: %v", r.Providers.BaseKept)
+		logx.Info("  subscription base: %v", r.Providers.BaseKept)
 	}
 	if len(r.Providers.Personal) > 0 {
-		logx.Info("  订阅新增: %v", r.Providers.Personal)
+		logx.Info("  subscription added: %v", r.Providers.Personal)
 	}
 	if len(r.Providers.Conflict) > 0 {
-		logx.Warn("  订阅同名(基底优先): %v", r.Providers.Conflict)
+		logx.Warn("  subscription same-name (base wins): %v", r.Providers.Conflict)
 	}
 	if len(r.RuleProvidersAdded) > 0 {
-		logx.Info("  规则订阅并入: %v", r.RuleProvidersAdded)
+		logx.Info("  rule subscription merged in: %v", r.RuleProvidersAdded)
 	}
 	if len(r.PersonalProxies) > 0 {
-		logx.Info("  个人节点带入(%d 个,追加进组末尾)", len(r.PersonalProxies))
+		logx.Info("  personal nodes brought in (%d, appended to group end)", len(r.PersonalProxies))
 	}
 	for _, a := range r.Adjustments {
-		logx.Info("  自动调整: %s", a)
+		logx.Info("  auto-adjustment: %s", a)
 	}
 	if r.BackupPath != "" {
-		logx.Info("  备份: %s(--rollback 可恢复)", r.BackupPath)
+		logx.Info("  backup: %s (recoverable via --rollback)", r.BackupPath)
 	}
 }
 
@@ -160,7 +161,7 @@ func mustRender(e *config.Editor) string {
 	e.SetPath(tmp)
 	defer e.SetPath(old)
 	if err := e.Save(); err != nil {
-		return fmt.Sprintf("# 渲染失败: %v\n", err)
+		return fmt.Sprintf("# render failed: %v\n", err)
 	}
 	b, _ := os.ReadFile(tmp)
 	os.Remove(tmp)

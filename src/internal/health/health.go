@@ -116,7 +116,7 @@ func WaitHealthy(confPath string, timeout time.Duration, expectVer string) error
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return fmt.Errorf("健康检查超时(服务/API 未就绪)")
+	return fmt.Errorf("health check timed out (service/API not ready)")
 }
 
 func firstLine(s string) string {

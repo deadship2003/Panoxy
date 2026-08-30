@@ -60,9 +60,9 @@ func (p *Progress) Done(err error) {
 		fmt.Fprint(os.Stderr, "\r"+p.render(p.n)+"\n")
 	}
 	if err != nil {
-		Warn("%s 失败: %v", p.label, err)
+		Warn("%s failed: %v", p.label, err)
 	} else {
-		Info("%s 完成(%s)", p.label, humanBytes(p.n, p.total))
+		Info("%s done (%s)", p.label, humanBytes(p.n, p.total))
 	}
 }
 

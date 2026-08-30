@@ -27,8 +27,8 @@ import (
 	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
-// runInit:不打包、单二进制裸机初始化 —— 自己下载全部资产并部署,随后导入订阅。
-// 下载三级策略:直连(15s 硬顶)> 订阅引导代理(需本机有可用内核) > gh 镜像。
+// runInit: no packaging, single-binary bare-metal init — downloads all assets and deploys by itself, then imports the subscription.
+// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs a usable kernel on this machine) > gh mirror.
 func runInit(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return initDryRun(cmd, args)
@@ -54,18 +54,18 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		url = args[0]
 	}
 
-	stepf(1, "环境预检(root/systemd/架构/旧版残留)")
+	stepf(1, "environment precheck (root/systemd/arch/legacy residue)")
 	if runtimeArch() == "" {
-		return fmt.Errorf("不支持的架构(仅 amd64/arm64)")
+		return fmt.Errorf("unsupported architecture (only amd64/arm64)")
 	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
-		return fmt.Errorf("需要 systemd")
+		return fmt.Errorf("systemd required")
 	}
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
-		return fmt.Errorf("检测到 bash 旧版部署残留:%s(先 sudo %s uninstall 并删除 %s,详见 README 迁移一节)", legacy, constants.ProgName, constants.DefConfPath)
+		return fmt.Errorf("bash legacy deployment residue detected: %s (first sudo %s uninstall and delete %s, see the README migration section)", legacy, constants.ProgName, constants.DefConfPath)
 	}
 
-	stepf(2, "获取订阅内容(%s)", orURL(url, file))
+	stepf(2, "fetch subscription content (%s)", orURL(url, file))
 	var body []byte
 	if file != "" {
 		if body, err = subscribe.ValidateFile(file); err != nil {
@@ -73,7 +73,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		if url == "" {
-			if url, err = promptSubURL(constants.ProgName + " init [订阅URL] [--file 本地订阅文件]"); err != nil {
+			if url, err = promptSubURL(constants.ProgName + " init [subscription-URL] [--file local-subscription-file]"); err != nil {
 				return err
 			}
 		}
@@ -82,27 +82,27 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 		api := mihomoapi.NewFromConf(p.Conf)
 		if body, err = fetchSubBody(url, api); err != nil {
-			return fmt.Errorf("订阅拉取失败:%v(订阅必须直连可达;或任意设备下载后用 --file 离线导入)", err)
+			return fmt.Errorf("subscription fetch failed: %v (the subscription must be directly reachable; or download it on any device and import offline with --file)", err)
 		}
 	}
 
-	stepf(3, "网络探测:直连 GitHub 发布资产(15s 硬顶)")
+	stepf(3, "network probe: direct GitHub release assets (15s hard cap)")
 	mirrorList := mirrors
-	// 探测必须打真实资产 URL:CN 环境常见 github.com 主页通、
-	// releases 资产域(objects.githubusercontent)被墙
+	// The probe must hit a real asset URL: in CN environments the github.com homepage often works while
+	// the releases asset domain (objects.githubusercontent) is blocked.
 	probeURL := "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
 	allowDirect := directAssetReachable(probeURL, 15*time.Second)
 	if allowDirect {
-		logx.Info("直连可用,直接下载")
+		logx.Info("direct connection works, downloading directly")
 	} else {
-		logx.Info("直连不可用(资产域不可达),下载将走订阅引导代理/镜像")
+		logx.Info("direct connection unavailable (asset domain unreachable), downloads will go through the subscription bootstrap proxy / mirror")
 	}
-	// 惰性引导代理:首个需要它的下载发生时才启动(用已取得的订阅体)
+	// Lazy bootstrap proxy: only starts when the first download that needs it happens (using the fetched subscription body).
 	proxyOnce := false
 	proxyFn := func() string {
 		if !proxyOnce {
 			proxyOnce = true
-			bootProxyFromSub(body, cmd) // 设置 bootProxyAddr()
+			bootProxyFromSub(body, cmd) // sets bootProxyAddr()
 		}
 		return bootProxyAddr()
 	}
@@ -110,23 +110,23 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	tmp, _ := os.MkdirTemp("", "panixy-init-")
 	defer os.RemoveAll(tmp)
 
-	stepf(4, "下载 mihomo 内核(%s)", runtimeArch())
+	stepf(4, "download mihomo kernel (%s)", runtimeArch())
 	coreVer, err := detectCoreVer(proxyFn)
 	if err != nil {
-		return fmt.Errorf("无法探测 mihomo 最新内核版本:%v(请用离线包 sudo ./%s deploy,或手工复制内核到 %s 并 chmod +x 后重试)", err, constants.ProgName, p.Bin)
+		return fmt.Errorf("cannot probe the latest mihomo kernel version: %v (use the offline package sudo ./%s deploy, or manually copy the kernel to %s and chmod +x then retry)", err, constants.ProgName, p.Bin)
 	}
-	logx.Info("运行时探测到上游最新内核 %s", coreVer)
+	logx.Info("latest upstream kernel detected at runtime: %s", coreVer)
 	kernel := ""
 	for _, base := range upgrade.CoreAssetCandidates(coreVer) {
 		kurl := fmt.Sprintf("https://github.com/MetaCubeX/mihomo/releases/download/%s/%s.gz", coreVer, base)
-		if downloadAny(kurl, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "core.gz"), "内核 "+shortAsset(base)) {
+		if downloadAny(kurl, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "core.gz"), "kernel "+shortAsset(base)) {
 			core := filepath.Join(tmp, "core")
 			if err := upgrade.GunzipFile(filepath.Join(tmp, "core.gz"), core); err != nil {
 				continue
 			}
 			os.Chmod(core, 0o755)
 			if err := upgrade.VerifyCore(core, coreVer); err != nil {
-				logx.Step("%v,降级下一档", err)
+				logx.Step("%v, degrading to next candidate", err)
 				continue
 			}
 			kernel = core
@@ -134,10 +134,10 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 	}
 	if kernel == "" {
-		return fmt.Errorf("内核下载失败(直连/代理/镜像均不可得);请用离线包 sudo ./%s deploy,或手工复制 mihomo 内核到 %s 并 chmod +x 后重试", constants.ProgName, p.Bin)
+		return fmt.Errorf("kernel download failed (direct/proxy/mirror all unavailable); use the offline package sudo ./%s deploy, or manually copy the mihomo kernel to %s and chmod +x then retry", constants.ProgName, p.Bin)
 	}
 
-	stepf(5, "下载 geo 数据与广告规则")
+	stepf(5, "download geo data and ad rules")
 	geoBase := "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
 	geos := map[string]string{
 		"GeoIP.dat":    geoBase + "/geoip.dat",
@@ -151,18 +151,18 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 	}
 	ruleURL := "https://github.com/Lynricsy/HyperADRules/releases/latest/download/hyper_adrules_ads_clash.yaml"
-	haveRule := downloadAny(ruleURL, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "HyperADRules-Ads.yaml"), "广告规则")
+	haveRule := downloadAny(ruleURL, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "HyperADRules-Ads.yaml"), "ad rules")
 	if geoOK < 3 {
-		return fmt.Errorf("geo 数据下载不完整(%d/3)", geoOK)
+		return fmt.Errorf("geo data download incomplete (%d/3)", geoOK)
 	}
 
-	stepf(6, "下载 metacubexd 面板")
+	stepf(6, "download metacubexd web UI")
 	uiOK := downloadAny("https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz",
-		allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "ui.tgz"), "面板")
+		allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "ui.tgz"), "web UI")
 
-	// ---- 至此资产齐备,以下与 deploy 同构 ----
+	// ---- assets are all ready now; from here on it is structurally identical to deploy ----
 	snap := snapshot(p)
-	stepf(7, "资产就位 %s + 渲染配置(密钥 %s)", constants.DefRootDir, secret)
+	stepf(7, "place assets in %s + render config (secret %s)", constants.DefRootDir, secret)
 	os.MkdirAll(filepath.Join(p.Root, "bin"), 0o755)
 	if err := copyFile(kernel, p.Bin); err != nil {
 		return err
@@ -181,14 +181,14 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if uiOK {
 		os.MkdirAll(p.UiDir, 0o755)
 		if err := runExtractTgz(filepath.Join(tmp, "ui.tgz"), p.UiDir); err != nil {
-			logx.Warn("面板解包失败(%s),跳过面板", firstLineOf(err.Error()))
+			logx.Warn("UI unpack failed (%s), skipping UI", firstLineOf(err.Error()))
 		} else {
 			os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
 		}
 	}
 	confNew := false
 	if _, err := os.Stat(p.Conf); err == nil {
-		logx.Info("检测到现有配置,保留不动:%s(分组规则与自定义参数全部继承)", p.Conf)
+		logx.Info("existing config detected, kept untouched: %s (group rules and custom parameters are all inherited)", p.Conf)
 	} else {
 		d := asset.DefaultConfigData()
 		d.TProxy = mode == "tproxy"
@@ -197,7 +197,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		// 纯净默认模板副本(供 merge-conf 重建基线)与实际配置同时落盘
+		// The clean default-template copy (for merge-conf to rebuild its baseline) and the actual config are written at the same time.
 		if err := os.WriteFile(p.DefaultConf, []byte(out), 0o644); err != nil {
 			return err
 		}
@@ -218,13 +218,13 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	installMan(p.ManGz, self)
 	statemode.Write(p.State, statemode.State{ProxyMode: mode})
 
-	stepf(8, "部署服务(单元/防火墙/健康验证)")
+	stepf(8, "deploy service (units/firewall/health verification)")
 	if err := runInstall(cmd, args); err != nil {
 		deployRollback(p, snap)
 		return err
 	}
 
-	stepf(9, "导入订阅(%s)", name)
+	stepf(9, "import subscription (%s)", name)
 	subFile := filepath.Join(tmp, "sub.yaml")
 	os.WriteFile(subFile, body, 0o644)
 	setCmd := &cobra.Command{}
@@ -232,26 +232,26 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	setCmd.Flags().String("file", subFile, "")
 	setCmd.Flags().StringSlice("group", nil, "")
 	if err := runSubImport(setCmd, []string{url}); err != nil {
-		return fmt.Errorf("订阅导入失败:%v(资产与服务已就绪,可稍后 sudo %s sub import 重试)", err, constants.ProgName)
+		return fmt.Errorf("subscription import failed: %v (assets and service are ready, you can retry later with sudo %s sub import)", err, constants.ProgName)
 	}
 	if bp := bootProxyAddr(); bp != "" {
 		bootProxyStop()
-		logx.Info("引导代理已清理")
+		logx.Info("bootstrap proxy cleaned up")
 	}
-	logx.Info("init 完成:%s status 查看健康;面板 http://<本机IP>:%d/ui/(密钥 %s)", constants.ProgName, constants.ApiPortDef, secret)
+	logx.Info("init complete: %s status to check health; web UI http://<host-IP>:%d/ui/ (secret %s)", constants.ProgName, constants.ApiPortDef, secret)
 	return nil
 }
 
-// ---- 辅助 ----
+// ---- helpers ----
 
 func orURL(u, f string) string {
 	if f != "" {
-		return "本地文件 " + f
+		return "local file " + f
 	}
 	if u != "" {
 		return u
 	}
-	return "粘贴模式"
+	return "paste mode"
 }
 
 func shortAsset(base string) string {
@@ -261,9 +261,10 @@ func shortAsset(base string) string {
 	return base
 }
 
-// detectCoreVer 运行时探测上游最新内核版本(绝不写死):直连 → 订阅引导代理。
-// 直连探测不依赖 allowDirect(api.github.com 与发布资产域是不同域,一个通一个可能不通),
-// 失败才借订阅节点起引导代理再试;两路都通不了则报错交给离线包/手工内核兜底。
+// detectCoreVer probes the latest upstream kernel version at runtime (never hard-coded): direct → subscription bootstrap proxy.
+// The direct probe does not depend on allowDirect (api.github.com and the release asset domain are different domains; one may work
+// while the other does not); only on failure does it borrow a subscription node to start a bootstrap proxy and retry; if both fail
+// it returns an error and falls back to the offline package / a manually placed kernel.
 func detectCoreVer(proxyFn func() string) (string, error) {
 	if v, err := upgrade.Latest("MetaCubeX/mihomo", ""); err == nil {
 		return v, nil
@@ -273,10 +274,10 @@ func detectCoreVer(proxyFn func() string) (string, error) {
 			return v, nil
 		}
 	}
-	return "", fmt.Errorf("GitHub API 不可达(直连与订阅代理均失败)")
+	return "", fmt.Errorf("GitHub API unreachable (both direct and subscription proxy failed)")
 }
 
-// directAssetReachable 用 Range 探测真实发布资产(只取 1 字节,15s 硬顶)。
+// directAssetReachable probes a real release asset with a Range request (fetch 1 byte only, 15s hard cap).
 func directAssetReachable(u string, timeout time.Duration) bool {
 	hc := &http.Client{Timeout: timeout}
 	req, _ := http.NewRequest("GET", u, nil)
@@ -290,7 +291,7 @@ func directAssetReachable(u string, timeout time.Duration) bool {
 	return resp.StatusCode < 400
 }
 
-// downloadAny 依次尝试:直连(仅当探测通过,免重复烧 15s)→ 订阅代理(惰性启动)→ 镜像前缀。
+// downloadAny tries in order: direct (only when the probe passed, to avoid burning another 15s) → subscription proxy (lazy start) → mirror prefixes.
 func downloadAny(url string, allowDirect bool, proxyFn func() string, mirrors []string, dst, label string) bool {
 	if allowDirect {
 		if err := upgrade.DownloadProgress(url, "", dst, label); err == nil {
@@ -304,15 +305,15 @@ func downloadAny(url string, allowDirect bool, proxyFn func() string, mirrors []
 	}
 	for _, m := range mirrors {
 		m = strings.TrimRight(m, "/") + "/" + url
-		if err := upgrade.DownloadProgress(m, "", dst, label+"(镜像)"); err == nil {
-			logx.Info("%s 经镜像下载成功(镜像属第三方源;内核已做试运行校验)", label)
+		if err := upgrade.DownloadProgress(m, "", dst, label+"(mirror)"); err == nil {
+			logx.Info("%s downloaded via mirror (mirror is a third-party source; the kernel was verified by a trial run)", label)
 			return true
 		}
 	}
 	return false
 }
 
-// bootProxyAddr / bootProxyStop / bootProxyFromSub 订阅引导代理(包级状态)。
+// bootProxyAddr / bootProxyStop / bootProxyFromSub subscription bootstrap proxy (package-level state).
 var bootProxyDir, bootProxyPort = "", ""
 
 func bootProxyAddr() string {
@@ -342,17 +343,17 @@ func syscallKill(pid string) {
 	}
 }
 
-// bootProxyFromSub 用已取得的订阅体起临时 mihomo 引导代理(需本机有内核)。
+// bootProxyFromSub starts a temporary mihomo bootstrap proxy using the fetched subscription body (needs a kernel on this machine).
 func bootProxyFromSub(body []byte, cmd *cobra.Command) string {
 	bootBin, _ := cmd.Flags().GetString("boot-bin")
 	if bootBin == "" {
-		bootBin = paths.Get().Bin // 跟随 --root/环境;无安装时退回默认 /opt
+		bootBin = paths.Get().Bin // follows --root/env; falls back to default /opt when nothing is installed
 	}
 	if _, err := os.Stat(bootBin); err != nil {
-		// 裸机无内核:无法经订阅节点起引导代理。打印清晰指引后跳过,交给镜像/离线包兜底。
-		logx.Step("无引导内核(%s),无法经订阅节点下载资产", bootBin)
-		logx.Step("  方案1(推荐):在能上网的机器 make package 打离线包 → 目标机 sudo ./%s deploy", constants.ProgName)
-		logx.Step("  方案2:手工复制 mihomo 内核到 %s 并 chmod +x,再重跑 init", bootBin)
+		// Bare-metal with no kernel: cannot start a bootstrap proxy via a subscription node. Print clear guidance then skip, falling back to mirror/offline package.
+		logx.Step("no bootstrap kernel (%s), cannot download assets via a subscription node", bootBin)
+		logx.Step("  option 1 (recommended): run make package on a machine with internet to build an offline package → then sudo ./%s deploy on the target", constants.ProgName)
+		logx.Step("  option 2: manually copy the mihomo kernel to %s and chmod +x, then rerun init", bootBin)
 		return ""
 	}
 	port := freePortStr()
@@ -371,11 +372,11 @@ rules:
   - MATCH,P
 `, port)
 	os.WriteFile(filepath.Join(dir, "boot.yaml"), []byte(conf), 0o644)
-	// 引导内核同样只认 Clash YAML:非 Clash 格式(sing-box/Surge/base64-Clash)先归一化,
-	// 否则引导代理起不来,后面的资产下载都会失败。
+	// The bootstrap kernel likewise only accepts Clash YAML: normalize non-Clash formats (sing-box/Surge/base64-Clash) first,
+	// otherwise the bootstrap proxy won't start and all subsequent asset downloads will fail.
 	bootBody, _, err := subscribe.Normalize(body)
 	if err != nil {
-		bootBody = body // 归一化失败退回原文,让 mihomo 自己报错(与真实导入路径行为一致)
+		bootBody = body // fall back to the original on normalization failure, letting mihomo report its own error (consistent with the real import path)
 	}
 	os.WriteFile(filepath.Join(dir, "boot.sub.yaml"), bootBody, 0o644)
 	c := exec.Command(bootBin, "-f", "boot.yaml", "-d", dir)
@@ -386,7 +387,7 @@ rules:
 	}
 	os.WriteFile(filepath.Join(dir, "pid"), []byte(fmt.Sprint(c.Process.Pid)), 0o644)
 	bootProxyDir, bootProxyPort = dir, port
-	// 等就绪(15s)
+	// Wait for readiness (15s).
 	for i := 0; i < 15; i++ {
 		hc := &http.Client{Timeout: 3 * time.Second}
 		pu, _ := url.Parse("http://127.0.0.1:" + port)
@@ -394,7 +395,7 @@ rules:
 		req, _ := http.NewRequest("GET", "https://www.gstatic.com/generate_204", nil)
 		if resp, err := hc.Do(req); err == nil {
 			resp.Body.Close()
-			logx.Info("订阅引导代理已就绪(127.0.0.1:%s,临时内核 pid %d)", port, c.Process.Pid)
+			logx.Info("subscription bootstrap proxy ready (127.0.0.1:%s, temp kernel pid %d)", port, c.Process.Pid)
 			return "http://127.0.0.1:" + port
 		}
 		time.Sleep(time.Second)
@@ -412,7 +413,7 @@ func freePortStr() string {
 	return fmt.Sprint(l.Addr().(*net.TCPAddr).Port)
 }
 
-// fetchSubBody 订阅拉取:直连优先,失败经本机 mixed-port 代理(升级订阅场景)。
+// fetchSubBody fetches a subscription: direct first, falling back to the local mixed-port proxy (upgrade-subscription scenario).
 func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := subscribe.Fetch(u, api.Proxy(), subscribe.UA(), &buf); err != nil {
@@ -424,46 +425,46 @@ func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// initDryRun 试运行模式:环境检查 + 下载策略判定 + 落位清单 + 配置渲染预览。
-// 不下载、不写盘、不需要 root;完整沙箱实测用 panixy try。
+// initDryRun is a dry-run: environment checks + download strategy decision + placement list + config render preview.
+// No downloads, no writes, no root needed; for a full sandbox run use panixy try.
 func initDryRun(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
-	logx.Info("== init --dry-run(试运行模式,不执行)==")
-	logx.Info("目标目录: %s(--root 可改;配置仍为系统级 %s)", p.Root, p.Conf)
-	logx.Info("CLI/手册: %s / %s", p.Cli, p.ManGz)
+	logx.Info("== init --dry-run (dry-run mode, does not execute) ==")
+	logx.Info("target dir: %s (changeable via --root; config stays system-level %s)", p.Root, p.Conf)
+	logx.Info("CLI/man: %s / %s", p.Cli, p.ManGz)
 
-	logx.Step("[预检] 环境")
+	logx.Step("[precheck] environment")
 	arch := runtimeArch()
 	if arch == "" {
-		return fmt.Errorf("不支持的架构(仅 amd64/arm64)")
+		return fmt.Errorf("unsupported architecture (only amd64/arm64)")
 	}
-	logx.Info("  架构 %s ✓  systemd:%s", arch, orOK(exists("/usr/bin/systemctl") || exists("/bin/systemctl")))
+	logx.Info("  arch %s ✓  systemd:%s", arch, orOK(exists("/usr/bin/systemctl") || exists("/bin/systemctl")))
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
-		logx.Warn("  ⚠️ 检测到 bash 旧版残留:%s(真装会被中止,先清理)", legacy)
+		logx.Warn("  ⚠️ bash legacy residue detected: %s (a real install would be aborted, clean up first)", legacy)
 	} else {
-		logx.Info("  旧版残留: 无 ✓")
+		logx.Info("  legacy residue: none ✓")
 	}
 	if _, err := os.Stat(p.Conf); err == nil {
-		logx.Info("  现有配置: 存在,将原样继承(分组/自定义参数不动)")
+		logx.Info("  existing config: present, will be inherited as-is (groups/custom parameters untouched)")
 	} else {
-		logx.Info("  现有配置: 无,将渲染默认模板(密钥 %s,端口 33833/9966/6699/9999)", drySecret(cmd))
+		logx.Info("  existing config: none, will render the default template (secret %s, ports 33833/9966/6699/9999)", drySecret(cmd))
 	}
 
-	logx.Step("[预检] 下载策略(探测真实资产域,15s 硬顶)")
+	logx.Step("[precheck] download strategy (probe the real asset domain, 15s hard cap)")
 	probe := "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
 	if directAssetReachable(probe, 15*time.Second) {
-		logx.Info("  直连可用 → 直接下载")
+		logx.Info("  direct works → download directly")
 	} else {
-		logx.Info("  直连不可用 → 订阅引导代理(需本机有内核:%s)%s",
-			orOK(exists(bootDefaultBin(cmd))), " → 镜像(--mirror)")
+		logx.Info("  direct unavailable → subscription bootstrap proxy (needs a kernel on this machine: %s)%s",
+			orOK(exists(bootDefaultBin(cmd))), " → mirror (--mirror)")
 	}
 
-	logx.Step("[计划] 下载清单")
-	logx.Info("  内核: mihomo-linux-%s-<运行时自动探测上游最新>.gz(候选降级 v3→标准→compatible)", arch)
+	logx.Step("[plan] download list")
+	logx.Info("  kernel: mihomo-linux-%s-<latest upstream auto-detected at runtime>.gz (candidate degradation v3→standard→compatible)", arch)
 	logx.Info("  geo:  GeoIP.dat / GeoSite.dat / Country.mmdb")
-	logx.Info("  规则: HyperADRules-Ads.yaml   面板: metacubexd compressed-dist.tgz")
+	logx.Info("  rules: HyperADRules-Ads.yaml   web UI: metacubexd compressed-dist.tgz")
 
-	logx.Step("[计划] 配置渲染预览(stdout)")
+	logx.Step("[plan] config render preview (stdout)")
 	d := asset.DefaultConfigData()
 	d.TProxy = modeOf(cmd) == "tproxy"
 	d.Secret = drySecret(cmd)
@@ -472,7 +473,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Print(out)
-	logx.Info("== 试运行结束。真装: sudo %s init ...;完整沙箱实测: %s try ...", constants.ProgName, constants.ProgName)
+	logx.Info("== dry-run done. Real run: sudo %s init ...; full sandbox run: %s try ...", constants.ProgName, constants.ProgName)
 	return nil
 }
 
@@ -493,7 +494,7 @@ func bootDefaultBin(cmd *cobra.Command) string {
 }
 func orOK(ok bool) string {
 	if ok {
-		return "可用 ✓"
+		return "available ✓"
 	}
-	return "缺失"
+	return "missing"
 }

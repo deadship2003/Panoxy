@@ -99,7 +99,7 @@ func Normalize(b []byte) ([]byte, bool, error) {
 	case FormatBase64Clash:
 		dec, err := decodeBase64Line(strings.TrimSpace(string(b)))
 		if err != nil {
-			return nil, false, fmt.Errorf("base64 Clash 解码失败: %w", err)
+			return nil, false, fmt.Errorf("failed to decode base64 Clash: %w", err)
 		}
 		return []byte(dec), true, nil
 	case FormatSingBox:
@@ -109,7 +109,7 @@ func Normalize(b []byte) ([]byte, bool, error) {
 		out, err := surgeToClash(b)
 		return out, true, err
 	case FormatUnknown:
-		return nil, false, fmt.Errorf("订阅不是可识别的格式(支持 Clash YAML / URI 列表 / sing-box JSON / Surge;机场对无效 token 常返回网页)")
+		return nil, false, fmt.Errorf("subscription is not in a recognizable format (supported: Clash YAML / URI list / sing-box JSON / Surge; airports often return a web page for an invalid token)")
 	default:
 		return b, false, nil
 	}
@@ -137,7 +137,7 @@ func NodeNames(b []byte) ([]string, error) {
 	case FormatSurge:
 		return surgeNodeNames(b)
 	default:
-		return nil, fmt.Errorf("无法识别的订阅格式(非 Clash YAML / URI 列表 / sing-box / Surge)")
+		return nil, fmt.Errorf("unrecognized subscription format (not Clash YAML / URI list / sing-box / Surge)")
 	}
 }
 
@@ -150,7 +150,7 @@ func clashNodeNames(b []byte) ([]string, error) {
 		} `yaml:"proxies"`
 	}
 	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("解析 Clash YAML 失败: %w", err)
+		return nil, fmt.Errorf("failed to parse Clash YAML: %w", err)
 	}
 	out := make([]string, 0, len(doc.Proxies))
 	for _, p := range doc.Proxies {
@@ -182,7 +182,7 @@ func singboxNodeNames(b []byte) ([]string, error) {
 		} `json:"outbounds"`
 	}
 	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("解析 sing-box JSON 失败: %w", err)
+		return nil, fmt.Errorf("failed to parse sing-box JSON: %w", err)
 	}
 	out := make([]string, 0, len(doc.Outbounds))
 	for _, ob := range doc.Outbounds {
@@ -228,7 +228,7 @@ func singboxToClash(b []byte) ([]byte, error) {
 		Outbounds []map[string]any `json:"outbounds"`
 	}
 	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("解析 sing-box JSON 失败: %w", err)
+		return nil, fmt.Errorf("failed to parse sing-box JSON: %w", err)
 	}
 	proxies := make([]map[string]any, 0, len(doc.Outbounds))
 	for _, ob := range doc.Outbounds {
@@ -237,7 +237,7 @@ func singboxToClash(b []byte) ([]byte, error) {
 		}
 	}
 	if len(proxies) == 0 {
-		return nil, fmt.Errorf("sing-box JSON 中无可转换的 outbounds(仅支持 vless/vmess/trojan/shadowsocks/hysteria2/tuic)")
+		return nil, fmt.Errorf("no convertible outbounds in sing-box JSON (only vless/vmess/trojan/shadowsocks/hysteria2/tuic supported)")
 	}
 	return renderClashProxies(proxies)
 }
@@ -412,7 +412,7 @@ func surgeToClash(b []byte) ([]byte, error) {
 		}
 	}
 	if len(proxies) == 0 {
-		return nil, fmt.Errorf("Surge 配置 [Proxy] 段无可转换节点(仅支持 ss/trojan/vmess/vless/hysteria2)")
+		return nil, fmt.Errorf("no convertible nodes in Surge config [Proxy] section (only ss/trojan/vmess/vless/hysteria2 supported)")
 	}
 	return renderClashProxies(proxies)
 }
@@ -585,7 +585,7 @@ func countURILines(s string) int {
 func renderClashProxies(proxies []map[string]any) ([]byte, error) {
 	out, err := yaml.Marshal(map[string]any{"proxies": proxies})
 	if err != nil {
-		return nil, fmt.Errorf("渲染 Clash YAML 失败: %w", err)
+		return nil, fmt.Errorf("failed to render Clash YAML: %w", err)
 	}
 	return out, nil
 }
@@ -633,7 +633,7 @@ func decodeBase64Line(s string) (string, error) {
 			return string(dec), nil
 		}
 	}
-	return "", fmt.Errorf("base64 解码失败")
+	return "", fmt.Errorf("base64 decode failed")
 }
 
 func intVal(v any) int {

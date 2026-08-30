@@ -18,9 +18,10 @@ import (
 	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
-// applyFW 按当前模式显式加载防火墙规则(fw apply 的复用)。
-// redeploy 用它显式重挂 FW —— 新编译的 panixy 可能调整了规则,不能只靠服务重启的
-// ExecStartPost 兜底(那是隐式副作用,这里要求一等公民)。
+// applyFW explicitly loads firewall rules for the current mode (shared with fw apply).
+// redeploy uses it to explicitly re-mount the firewall — a newly compiled panixy may have
+// adjusted rules, so it can't rely solely on the service restart's ExecStartPost fallback
+// (that is an implicit side effect; here it is a first-class citizen).
 func applyFW(mode string) error {
 	fw, err := firewall.New()
 	if err != nil {
@@ -35,21 +36,25 @@ func applyFW(mode string) error {
 func cmdRedeploy() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "redeploy",
-		Short: "就地重装:从离线包强制刷新全部程序文件(保留配置),重挂防火墙并重启",
-		Long: `在已安装机器上,从解压的离线包根目录强制刷新全部程序文件并重新部署。
+		Short: "in-place redeploy: force-refresh all program files from an offline package (config kept), re-mount firewall and restart",
+		Long: `On an installed machine, force-refresh all program files from the root of an extracted offline
+package and redeploy.
 
-与 deploy 的区别:deploy 对已存在的内核/geo/规则/UI 一律"存在即跳过";redeploy 则
-全部强制覆盖 —— 用于把新编译的版本推到已安装机器,无需联网、无需卸载重装。
+Difference from deploy: deploy skips any kernel/geo/rules/UI that already exist ("exists = skip");
+redeploy force-overwrites all of them — for pushing a freshly compiled version to an installed
+machine, no network, no uninstall/reinstall.
 
-流程:停服务+清防火墙 → 备份内核/UI(供回滚)→ 强制替换内核/geo/规则/UI →
-刷新 CLI/手册/systemd 单元 → 校验+重启 → 显式重挂防火墙 → 健康验证。
-任一步失败回滚内核/UI(CLI 属管理工具不回滚;config.yaml 始终保留不动)。
-切换透明代理模式请用 panixy mode(模式属数据,redeploy 不碰)。`,
-		Example: `  sudo ./panixy redeploy              # 在解压的新版离线包根目录运行
-  sudo ./panixy redeploy --dry-run    # 试运行:预览将替换的文件与决策`,
+Flow: stop service + clear firewall → back up kernel/UI (for rollback) → force-replace
+kernel/geo/rules/UI → refresh CLI/man/systemd units → validate + restart → explicitly re-mount
+firewall → health verification.
+Any failing step rolls back the kernel/UI (the CLI is a management tool and is not rolled back;
+config.yaml is always kept untouched).
+To switch transparent-proxy mode use panixy mode (mode is data, redeploy does not touch it).`,
+		Example: `  sudo ./panixy redeploy              # run from the root of the extracted new offline package
+  sudo ./panixy redeploy --dry-run    # dry-run: preview the files to replace and the decisions`,
 		RunE: runRedeploy,
 	}
-	addDryRunFlag(c, "试运行模式:预览落位与决策,不执行")
+	addDryRunFlag(c, "dry-run mode: preview placement and decisions, do not execute")
 	return c
 }
 
@@ -61,38 +66,38 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 }
 
 func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
-	// 预检:必须已安装(全新装用 deploy);离线包资产齐全;无 bash 旧版残留
+	// Precheck: must already be installed (fresh install uses deploy); offline package assets complete; no bash legacy residue.
 	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
-		return fmt.Errorf("未检测到已安装的 %s(内核/配置/CLI 缺失)—— 全新安装请用 sudo ./%s deploy", constants.ProgName, constants.ProgName)
+		return fmt.Errorf("no installed %s detected (kernel/config/CLI missing) — for a fresh install use sudo ./%s deploy", constants.ProgName, constants.ProgName)
 	}
-	pkgDir, err := os.Getwd() // redeploy 须在解压的离线包根目录运行
+	pkgDir, err := os.Getwd() // redeploy must be run from the root of the extracted offline package
 	if err != nil {
 		return err
 	}
 	assets := filepath.Join(pkgDir, "assets")
 	if _, err := os.Stat(assets); err != nil {
-		return fmt.Errorf("当前目录无离线资产(%s)—— redeploy 需在解压的 %s 离线包内运行", assets, constants.ProgName)
+		return fmt.Errorf("no offline assets in the current directory (%s) — redeploy must run inside the extracted %s offline package", assets, constants.ProgName)
 	}
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
-		return fmt.Errorf("检测到 bash 旧版部署残留:%s\n请先手动清理(详见 README「从 bash 版迁移」)", legacy)
+		return fmt.Errorf("bash legacy deployment residue detected: %s\nclean it up manually first (see README \"Migrating from the bash version\")", legacy)
 	}
 	mode := statemode.Read(p.State)
 	if mode == "" {
 		mode = "tun"
 	}
-	logx.Info("redeploy 开始:就地刷新程序文件(模式 %s,config.yaml 保留不动)", mode)
+	logx.Info("redeploy started: in-place program file refresh (mode %s, config.yaml kept untouched)", mode)
 
-	// [1] 停服务并显式清防火墙(新二进制可能改了 FW 规则,不能只靠重启的 ExecStartPost)
-	logx.Step("[1/6] 停止服务并清除防火墙规则")
+	// [1] Stop the service and explicitly clear the firewall (the new binary may have changed FW rules, can't rely only on restart's ExecStartPost).
+	logx.Step("[1/6] stop service and clear firewall rules")
 	systemdunit.Stop()
 	if fw, err := firewall.New(); err == nil {
 		if err := fw.Teardown(); err != nil {
-			logx.Warn("防火墙清理失败:%v(重启后 fw apply 会兜底)", err)
+			logx.Warn("firewall cleanup failed: %v (fw apply will cover it after restart)", err)
 		}
 	}
 
-	// [2] 备份内核/UI(失败回滚数据面;geo/规则为静态数据无需回滚)
-	logx.Step("[2/6] 备份当前内核与 UI")
+	// [2] Back up kernel/UI (rollback the data plane on failure; geo/rules are static data, no rollback needed).
+	logx.Step("[2/6] back up current kernel and UI")
 	cur := firstVer(runCmd(p.Bin, "-v"))
 	bak := p.Bin + ".bak-" + cur
 	if err := copyFile(p.Bin, bak); err != nil {
@@ -114,11 +119,11 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		systemdunit.Write(p, mode)
 		systemdunit.EnableNow()
 		applyFW(mode)
-		logx.Warn("redeploy 失败,已回滚内核/UI 并重启旧服务(CLI 保持新版,config 未动)")
+		logx.Warn("redeploy failed, rolled back kernel/UI and restarted the old service (CLI stays at the new version, config untouched)")
 	}
 
-	// [3] 强制替换程序文件
-	logx.Step("[3/6] 强制替换内核/geo/规则/UI")
+	// [3] Force-replace program files.
+	logx.Step("[3/6] force-replace kernel/geo/rules/UI")
 	if err := placeCoreForce(p, assets); err != nil {
 		rollback()
 		return err
@@ -129,8 +134,8 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// [4] 刷新 CLI/手册/systemd 单元/sysctl
-	logx.Step("[4/6] 刷新 CLI/手册/systemd 单元/sysctl")
+	// [4] Refresh CLI/man/systemd units/sysctl.
+	logx.Step("[4/6] refresh CLI/man/systemd units/sysctl")
 	self, err := os.Executable()
 	if err != nil {
 		rollback()
@@ -149,16 +154,16 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	writeSysctl(p)
-	// 刷新纯净默认模板副本(与当前模板/模式/密钥同步,不含订阅),供 merge-conf 重建基线
+	// Refresh the clean default-template copy (in sync with the current template/mode/secret, no subscription), for merge-conf to rebuild its baseline.
 	if err := writeDefaultConf(p, mode, mihomoapi.NewFromConf(p.Conf).Secret); err != nil {
-		logx.Warn("刷新默认配置副本失败:%v", err)
+		logx.Warn("refreshing the default config copy failed: %v", err)
 	}
 
-	// [5] 校验 + 拉起服务
-	logx.Step("[5/6] 校验配置并重启服务")
+	// [5] Validate + bring up the service.
+	logx.Step("[5/6] validate config and restart service")
 	if out, err := mihomoTest(p, p.Conf); err != nil {
 		rollback()
-		return fmt.Errorf("配置校验未通过(%s),已回滚", firstErrLine(out))
+		return fmt.Errorf("config validation failed (%s), rolled back", firstErrLine(out))
 	}
 	if err := systemdunit.PortCheck(p.Conf); err != nil {
 		rollback()
@@ -166,62 +171,62 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	if err := systemdunit.EnableNow(); err != nil {
 		rollback()
-		return fmt.Errorf("服务启动失败,已回滚")
+		return fmt.Errorf("service failed to start, rolled back")
 	}
 	if err := systemdunit.EnableTimer(); err != nil {
 		rollback()
-		return fmt.Errorf("升级 timer 启用失败,已回滚")
+		return fmt.Errorf("upgrade timer enable failed, rolled back")
 	}
 
-	// [6] 显式重挂防火墙(新规则)+ 健康验证(与 ExecStartPost 重复但保证一等公民)
-	logx.Step("[6/6] 重新部署防火墙并健康验证")
+	// [6] Explicitly re-mount the firewall (new rules) + health verification (redundant with ExecStartPost but guarantees first-class status).
+	logx.Step("[6/6] redeploy firewall and health verification")
 	if err := applyFW(mode); err != nil {
 		rollback()
-		return fmt.Errorf("防火墙部署失败,已回滚:%v", err)
+		return fmt.Errorf("firewall deploy failed, rolled back: %v", err)
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		rollback()
-		return fmt.Errorf("健康验证超时,已回滚")
+		return fmt.Errorf("health verification timed out, rolled back")
 	}
 
-	// 成功收尾:清 UI 备份、prune 内核备份、更新升级时间戳
+	// Success cleanup: remove UI backup, prune kernel backups, update the upgrade timestamp.
 	os.RemoveAll(p.UiDir + ".old")
 	pruneCoreBackups(p, constants.CoreKeep)
 	os.WriteFile(p.LastUp, []byte(time.Now().Format("2006-01-02 15:04:05")+"\n"), 0o644)
-	logx.Info("redeploy 完成 v%s:内核/geo/规则/UI/CLI 已刷新,防火墙已重挂,配置保留", constants.Version)
+	logx.Info("redeploy complete v%s: kernel/geo/rules/UI/CLI refreshed, firewall re-mounted, config kept", constants.Version)
 	return nil
 }
 
-// redeployDryRun 试运行:核对资产、决策与将替换的文件清单。
+// redeployDryRun is a dry-run: verify assets, decisions, and the list of files to be replaced.
 func redeployDryRun(cmd *cobra.Command) error {
 	p := paths.Get()
-	logx.Info("== redeploy --dry-run(试运行,不执行)==")
+	logx.Info("== redeploy --dry-run (dry-run mode, does not execute) ==")
 	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
-		logx.Warn("未检测到已安装的 %s;全新安装请用 sudo ./%s deploy", constants.ProgName, constants.ProgName)
+		logx.Warn("no installed %s detected; for a fresh install use sudo ./%s deploy", constants.ProgName, constants.ProgName)
 	}
 	pkgDir, _ := os.Getwd()
 	assets := filepath.Join(pkgDir, "assets")
-	logx.Step("[预检] 离线包资产(%s)", assets)
+	logx.Step("[precheck] offline package assets (%s)", assets)
 	for _, item := range []struct{ name, path string }{
-		{"内核(" + runtimeArch() + ")", filepath.Join(assets, "core")},
+		{"kernel (" + runtimeArch() + ")", filepath.Join(assets, "core")},
 		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
 		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
 		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
-		{"广告规则", filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")},
-		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
+		{"ad rules", filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")},
+		{"web UI", filepath.Join(assets, "ui", "official", "index.html")},
 	} {
 		if exists(item.path) {
 			logx.Info("  ✓ %s", item.name)
 		} else {
-			logx.Warn("  ✗ %s 缺失", item.name)
+			logx.Warn("  ✗ %s missing", item.name)
 		}
 	}
 	mode := statemode.Read(p.State)
 	if mode == "" {
 		mode = "tun"
 	}
-	logx.Step("[计划] 强制替换:内核/geo/规则/UI/CLI/手册/单元 → 清FW → 重启 → 重挂FW(模式 %s)", mode)
-	logx.Info("保留不动: %s(订阅/节点选择/分组)与 %s", p.Conf, p.Proxies)
-	logx.Info("== 试运行结束。真装: sudo ./%s redeploy", constants.ProgName)
+	logx.Step("[plan] force-replace: kernel/geo/rules/UI/CLI/man/units → clear FW → restart → re-mount FW (mode %s)", mode)
+	logx.Info("kept untouched: %s (subscription/node selection/groups) and %s", p.Conf, p.Proxies)
+	logx.Info("== dry-run done. Real run: sudo ./%s redeploy", constants.ProgName)
 	return nil
 }

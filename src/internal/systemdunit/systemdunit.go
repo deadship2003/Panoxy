@@ -59,12 +59,12 @@ func Write(p paths.Paths, mode string) error {
 		return err
 	}
 	if err := os.MkdirAll(p.UnitDir, 0o755); err != nil {
-		return fmt.Errorf("创建单元目录失败: %w", err)
+		return fmt.Errorf("failed to create the unit directory: %w", err)
 	}
 	for name, content := range units {
 		dst := filepath.Join(p.UnitDir, name)
 		if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("写入 %s 失败: %w", dst, err)
+			return fmt.Errorf("failed to write %s: %w", dst, err)
 		}
 	}
 	_, _ = execx.Run("systemctl", "daemon-reload")
@@ -94,18 +94,18 @@ func EnableNow() error {
 	if err != nil {
 		detail := ""
 		if j, jerr := execx.Run("journalctl", "-u", unitMain, "-n", "15", "--no-pager"); jerr == nil && j != "" {
-			detail = "\n── journalctl 尾部 ──\n" + j
+			detail = "\n── journalctl tail ──\n" + j
 		}
-		return fmt.Errorf("启用服务失败: %s%s", strings.TrimSpace(out), detail)
+		return fmt.Errorf("failed to enable the service: %s%s", strings.TrimSpace(out), detail)
 	}
 	return nil
 }
 func EnableTimer() error {
-	_, err := execx.RunOK("启用升级 timer", "systemctl", "enable", "--now", unitTimer)
+	_, err := execx.RunOK("enable upgrade timer", "systemctl", "enable", "--now", unitTimer)
 	return err
 }
 func Restart() error {
-	_, err := execx.RunOK("重启服务", "systemctl", "restart", unitMain)
+	_, err := execx.RunOK("restart service", "systemctl", "restart", unitMain)
 	return err
 }
 func Stop() {
@@ -117,17 +117,17 @@ func Stop() {
 func DetectLegacy(p paths.Paths) string {
 	if b, err := os.ReadFile(filepath.Join(p.UnitDir, unitMain)); err == nil {
 		if strings.Contains(string(b), "resolvectl") {
-			return "systemd 单元含 resolvectl(bash 旧版部署)"
+			return "systemd unit contains resolvectl (bash legacy deployment)"
 		}
 	}
 	if b, err := os.ReadFile(p.Conf); err == nil {
 		for _, l := range strings.Split(string(b), "\n") {
 			t := strings.TrimSpace(l)
 			if strings.HasPrefix(t, "#") {
-				continue // 注释里的字样不算(新模板注释会提及历史字段)
+				continue // wording in comments does not count (the new template's comments mention historical fields)
 			}
 			if strings.HasPrefix(t, "dns-hijack:") {
-				return "/etc/clash.yaml 含 tun dns-hijack(bash 旧版配置)"
+				return "/etc/clash.yaml contains tun dns-hijack (bash legacy config)"
 			}
 		}
 	}
@@ -153,8 +153,8 @@ func PortCheck(confPath string) error {
 		c.MixedPort:                    "mixed-port",
 		c.SocksPort:                    "socks-port",
 		c.TproxyPort:                   "tproxy-port",
-		portTail(c.ExternalController): "external-controller(面板/API)",
-		portTail(c.DNS.Listen):         "DNS 监听",
+		portTail(c.ExternalController): "external-controller (web UI/API)",
+		portTail(c.DNS.Listen):         "DNS listen",
 	}
 	var list []string
 	for p, w := range why {
@@ -170,9 +170,9 @@ func PortCheck(confPath string) error {
 	if len(list) > 0 {
 		hint := ""
 		if pout, _ := execx.Run("sh", "-c", "pgrep -af 'bin/mihomo' | head -3"); strings.TrimSpace(pout) != "" {
-			hint = "\n检测到在运行的 mihomo:\n" + pout + "→ 旧部署未清理:先 sudo " + constants.ProgName + " uninstall(旧版)/停掉旧实例再 deploy\n"
+			hint = "\nrunning mihomo detected:\n" + pout + "→ old deployment not cleaned up: first sudo " + constants.ProgName + " uninstall (old version) / stop the old instance, then deploy\n"
 		}
-		return fmt.Errorf("端口已被占用: %s%s", strings.Join(list, "、"), hint)
+		return fmt.Errorf("port already in use: %s%s", strings.Join(list, ", "), hint)
 	}
 	return nil
 }

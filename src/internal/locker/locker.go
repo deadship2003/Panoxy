@@ -33,12 +33,12 @@ func Lock(path string) (*Locker, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		// 锁文件不可写(如只读环境):降级为无锁,行为与 bash 版一致
-		fmt.Fprintf(os.Stderr, "[%s] WARN 锁文件不可用(%v),继续无锁运行\n", constants.ProgName, err)
+		fmt.Fprintf(os.Stderr, "[%s] WARN lock file unavailable (%v), continuing without a lock\n", constants.ProgName, err)
 		return &Locker{}, nil
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("另一个 %s 实例正在运行,请稍后再试", constants.ProgName)
+		return nil, fmt.Errorf("another %s instance is running, please try again later", constants.ProgName)
 	}
 	mu.Lock()
 	locked = true

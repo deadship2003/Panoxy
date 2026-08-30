@@ -25,14 +25,14 @@ type Editor struct {
 func Load(path string) (*Editor, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置失败: %w", err)
+		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 	var root yaml.Node
 	if err := yaml.Unmarshal(b, &root); err != nil {
-		return nil, fmt.Errorf("解析 YAML 失败: %w", err)
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
 	if root.Kind != yaml.DocumentNode || len(root.Content) == 0 {
-		return nil, fmt.Errorf("配置不是有效的 YAML 文档")
+		return nil, fmt.Errorf("config is not a valid YAML document")
 	}
 	return &Editor{root: &root, path: path}, nil
 }
@@ -46,7 +46,7 @@ func (e *Editor) Save() error {
 	enc := yaml.NewEncoder(&nopWriter{&buf})
 	enc.SetIndent(2)
 	if err := enc.Encode(e.root); err != nil {
-		return fmt.Errorf("编码 YAML 失败: %w", err)
+		return fmt.Errorf("failed to encode YAML: %w", err)
 	}
 	enc.Close()
 	// 反转义非 ASCII(yaml.v3 默认把 emoji 等转成 "\U0001F503",功能正确但可读性差;
@@ -213,7 +213,7 @@ func (e *Editor) ProviderURL(name string) (string, bool) {
 // 已有条目仅改 url/path 两键,其余键与注释保持原样。
 func (e *Editor) SetProvider(name, url, cacheRelPath string) error {
 	if !e.HasAnchorP() {
-		return fmt.Errorf("配置缺少锚点 &p(sub import 依赖它生成 provider 条目;基础模板自带)")
+		return fmt.Errorf("config is missing anchor &p (sub import depends on it to generate provider entries; the base template provides it)")
 	}
 	tm := e.topMap()
 	pm := mapGet(tm, "proxy-providers")
@@ -246,11 +246,11 @@ func (e *Editor) SetProvider(name, url, cacheRelPath string) error {
 func (e *Editor) SetProviderType(name string, file bool) error {
 	pm := mapGet(e.topMap(), "proxy-providers")
 	if pm == nil || pm.Kind != yaml.MappingNode {
-		return fmt.Errorf("配置缺少 proxy-providers 段")
+		return fmt.Errorf("config is missing the proxy-providers section")
 	}
 	entry := mapGet(pm, name)
 	if entry == nil {
-		return fmt.Errorf("provider %s 不存在", name)
+		return fmt.Errorf("provider %s does not exist", name)
 	}
 	if file {
 		mapSet(entry, "type", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "file"})
@@ -434,7 +434,7 @@ func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
 		mapDel(tm, "tun")
 		mapSet(tm, "tproxy-port", &yaml.Node{
 			Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(tproxyPort),
-			LineComment: "TPROXY 模式(mark/策略路由由 " + constants.ProgName + " 防火墙管理)",
+			LineComment: "TPROXY mode (mark / policy routing managed by the " + constants.ProgName + " firewall)",
 		})
 		return
 	}
@@ -458,7 +458,7 @@ func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
 	}
 	tun.Content = append(tun.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "route-exclude-address",
-			LineComment: "排除回环/内网,防代理循环"}, exc)
+			LineComment: "exclude loopback / LAN to prevent proxy loops"}, exc)
 	mapSet(tm, "tun", tun)
 }
 

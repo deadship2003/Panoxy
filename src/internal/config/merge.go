@@ -56,7 +56,7 @@ func PremergeBackup(confPath string) (string, error) {
 // PremergeRestore 从 premerge 备份恢复。
 func PremergeRestore(confPath string) error {
 	if err := restoreFile(confPath, constants.PremergeSuffix()); err != nil {
-		return fmt.Errorf("无 premerge 备份: %w", err)
+		return fmt.Errorf("no premerge backup: %w", err)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 				r.PersonalProxies = append(r.PersonalProxies, n.Value)
 			}
 		}
-		r.Taken = append(r.Taken, "proxies(追加)")
+		r.Taken = append(r.Taken, "proxies (appended)")
 	}
 
 	// 3) proxy-groups:同名融合 + 新增追加 + 基底保留
@@ -144,7 +144,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 				}
 			}
 		}
-		r.Taken = append(r.Taken, "proxy-groups(融合)")
+		r.Taken = append(r.Taken, "proxy-groups (merged)")
 	}
 
 	// 4) rules:个人前置 + 基底兜底(去重,MATCH 排最后)
@@ -190,11 +190,11 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 			newRules.Content = append(newRules.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: rs})
 		}
 		mapSet(tmB, "rules", newRules)
-		r.Taken = append(r.Taken, "rules(前置+兜底)")
+		r.Taken = append(r.Taken, "rules (personal-first + base fallback)")
 	}
 
 	// 5) 保留(基底):模式段/暗号/基础设施
-	r.Kept = append(r.Kept, "tun/tproxy-port(模式段)", "routing-mark", "dns.listen", "external-ui", "geo*", "ntp", "sniffer", "profile")
+	r.Kept = append(r.Kept, "tun/tproxy-port (mode block)", "routing-mark", "dns.listen", "external-ui", "geo*", "ntp", "sniffer", "profile")
 
 	// 6) dns:默认基底;--dns mine 时接管但强制 listen
 	if opts.DNSMine {
@@ -202,7 +202,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 			dn := deepCopy(d)
 			mapSet(tmB, "dns", dn)
 			mapSet(dn, "listen", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "0.0.0.0:1053"})
-			r.Taken = append(r.Taken, "dns(--dns mine,listen 强制 1053)")
+			r.Taken = append(r.Taken, "dns (--dns mine, listen forced to 1053)")
 		}
 	}
 
@@ -261,7 +261,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 		}
 	}
 	if len(retired) > 0 {
-		r.Adjustments = append(r.Adjustments, fmt.Sprintf("占位订阅 %v 移除(真实订阅已就位)", retired))
+		r.Adjustments = append(r.Adjustments, fmt.Sprintf("removed placeholder subscription %v (real subscription is in place)", retired))
 		// 清理所有对已退场 provider 的引用:组的 use 列表 + 顶层锚点定义(pr/prd/use)
 		// (merge key 的 use 在锚点定义里,不在组的直接 Content 中)
 		cleanupRefs := func(m *yaml.Node) {
@@ -312,7 +312,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 	}
 	if hasProcess {
 		mapSet(tmB, "find-process-mode", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "strict"})
-		r.Adjustments = append(r.Adjustments, "find-process-mode → strict(检测到 PROCESS- 规则)")
+		r.Adjustments = append(r.Adjustments, "find-process-mode → strict (PROCESS- rule detected)")
 	}
 
 	return r, nil

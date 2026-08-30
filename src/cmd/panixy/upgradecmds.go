@@ -20,8 +20,8 @@ import (
 	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
-// runUpgrade 参数化升级:默认 core+ui;--core/--ui 二选一;--check dry-run;
-// --core-version/--ui-version 指定版本。全成功才更新 .last-upgrade。
+// runUpgrade is a parameterized upgrade: default core+ui; --core/--ui pick one; --check is a dry-run;
+// --core-version/--ui-version pin a version. .last-upgrade is only updated when everything succeeds.
 func runUpgrade(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runUpgradeBody(p, cmd, args) })
 }
@@ -34,7 +34,7 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	coreVer, _ := cmd.Flags().GetString("core-version")
 	uiVer, _ := cmd.Flags().GetString("ui-version")
 	srcDir, _ := cmd.Flags().GetString("src")
-	// 默认升 core+ui;--cli 需显式指定(CLI 走本地自编译,不进默认全升/每日定时器)
+	// Default upgrades core+ui; --cli must be explicit (the CLI self-compiles locally, it is not part of the default full upgrade / daily timer).
 	anyOnly := coreOnly || uiOnly || cliOnly
 	doCore := !anyOnly || coreOnly
 	doUI := !anyOnly || uiOnly
@@ -59,20 +59,20 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if want == "" {
 			if latestCore, err = upgrade.Latest("MetaCubeX/mihomo", proxy); err != nil {
 				if !check {
-					logx.Warn("内核版本查询失败,本次跳过:%v", err)
+					logx.Warn("kernel version query failed, skipping this time: %v", err)
 				}
 			} else {
 				want = latestCore
 			}
 		}
 		if check {
-			fmt.Printf("内核: 当前 %s 最新 %s → %s\n", orQ(curCore), orQ(want), action(curCore, want))
+			fmt.Printf("kernel: current %s latest %s → %s\n", orQ(curCore), orQ(want), action(curCore, want))
 		} else if want != "" && want != curCore {
 			if err := coreUpgrade(p, proxy, want); err != nil {
 				return err
 			}
 		} else {
-			logx.Info("内核已是最新 %s", curCore)
+			logx.Info("kernel is already latest %s", curCore)
 		}
 	}
 	if doUI {
@@ -80,27 +80,27 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if want == "" {
 			if latestUI, err = upgrade.Latest("MetaCubeX/metacubexd", proxy); err != nil {
 				if !check {
-					logx.Warn("UI 版本查询失败,本次跳过:%v", err)
+					logx.Warn("UI version query failed, skipping this time: %v", err)
 				}
 			} else {
 				want = latestUI
 			}
 		}
 		if check {
-			fmt.Printf("UI:   当前 %s 最新 %s → %s\n", orQ(curUI), orQ(want), action(curUI, want))
+			fmt.Printf("UI:    current %s latest %s → %s\n", orQ(curUI), orQ(want), action(curUI, want))
 		} else if want != "" && want != curUI {
 			if err := uiUpgrade(p, proxy, want); err != nil {
 				return err
 			}
 		} else {
-			logx.Info("UI 已是最新 %s", curUI)
+			logx.Info("UI is already latest %s", curUI)
 		}
 	}
 	if doCLI {
 		cur := version
 		srcVer := cliSrcVersion(srcDir)
 		if check {
-			fmt.Printf("CLI:  当前 %s 源码 %s → %s\n", orQ(cur), orQ(srcVer), action(cur, srcVer))
+			fmt.Printf("CLI:   current %s source %s → %s\n", orQ(cur), orQ(srcVer), action(cur, srcVer))
 		} else if err := cliUpgrade(p, srcDir); err != nil {
 			return err
 		}
@@ -121,26 +121,26 @@ func orQ(s string) string {
 
 func action(cur, want string) string {
 	if cur == want {
-		return "无需升级"
+		return "up to date"
 	}
 	if want == "" {
-		return "查询失败"
+		return "query failed"
 	}
-	return "可升级"
+	return "upgradable"
 }
 
-// coreUpgrade:下载候选资产→试运行→备份→替换→重启→双健康检查→失败回滚。
+// coreUpgrade: download candidate assets → trial run → back up → replace → restart → dual health check → rollback on failure.
 func coreUpgrade(p paths.Paths, proxy, want string) error {
-	logx.Info("内核升级: → %s", want)
+	logx.Info("kernel upgrade: → %s", want)
 	tmp, _ := os.MkdirTemp("", "panixy-up-")
 	defer os.RemoveAll(tmp)
 	var got string
 	for _, base := range upgrade.CoreAssetCandidates(want) {
 		gz := filepath.Join(tmp, "core.gz")
 		url := "https://github.com/MetaCubeX/mihomo/releases/download/" + want + "/" + base + ".gz"
-		logx.Step("尝试资产 %s", base)
+		logx.Step("trying asset %s", base)
 		if err := upgrade.Download(url, proxy, gz); err != nil {
-			logx.Step("下载失败(404/网络),降级下一档")
+			logx.Step("download failed (404/network), degrading to the next candidate")
 			continue
 		}
 		core := filepath.Join(tmp, "core")
@@ -149,14 +149,14 @@ func coreUpgrade(p paths.Paths, proxy, want string) error {
 		}
 		os.Chmod(core, 0o755)
 		if err := upgrade.VerifyCore(core, want); err != nil {
-			logx.Step("%v,降级下一档", err)
+			logx.Step("%v, degrading to the next candidate", err)
 			continue
 		}
 		got = core
 		break
 	}
 	if got == "" {
-		return fmt.Errorf("所有候选资产均失败")
+		return fmt.Errorf("all candidate assets failed")
 	}
 	cur := firstVer(runCmd(p.Bin, "-v"))
 	bak := p.Bin + ".bak-" + cur
@@ -168,13 +168,13 @@ func coreUpgrade(p paths.Paths, proxy, want string) error {
 	os.Chmod(p.Bin, 0o755)
 	if err := systemdunit.Restart(); err != nil {
 		restoreCore(p, bak, cur)
-		return fmt.Errorf("重启失败,已回滚到 %s", cur)
+		return fmt.Errorf("restart failed, rolled back to %s", cur)
 	}
 	if err := health.WaitHealthy(p.Conf, 90*time.Second, want); err != nil || !health.EgressOK(mihomoapi.NewFromConf(p.Conf).Mixed, 3) {
 		restoreCore(p, bak, cur)
-		return fmt.Errorf("升级健康检查失败,已回滚到 %s", cur)
+		return fmt.Errorf("upgrade health check failed, rolled back to %s", cur)
 	}
-	logx.Info("内核升级成功 → %s(备份 %s)", want, bak)
+	logx.Info("kernel upgrade succeeded → %s (backup %s)", want, bak)
 	pruneCoreBackups(p, constants.CoreKeep)
 	return nil
 }
@@ -184,7 +184,7 @@ func restoreCore(p paths.Paths, bak, cur string) {
 	os.Chmod(p.Bin, 0o755)
 	systemdunit.Restart()
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		logx.Warn("回滚后健康检查仍未通过,请 %s log 排查", constants.ProgName)
+		logx.Warn("health check still failing after rollback, troubleshoot with %s log", constants.ProgName)
 	}
 }
 
@@ -199,21 +199,21 @@ func pruneCoreBackups(p paths.Paths, keep int) {
 	}
 }
 
-// uiUpgrade:下载 compressed-dist.tgz → 换目录 → /ui/ 探活 → 失败恢复旧目录。
+// uiUpgrade: download compressed-dist.tgz → swap dir → probe /ui/ → restore the old dir on failure.
 func uiUpgrade(p paths.Paths, proxy, want string) error {
-	logx.Info("UI 升级: → %s", want)
+	logx.Info("UI upgrade: → %s", want)
 	tmp, _ := os.MkdirTemp("", "panixy-ui-")
 	defer os.RemoveAll(tmp)
 	tgz := filepath.Join(tmp, "dist.tgz")
 	url := "https://github.com/MetaCubeX/metacubexd/releases/download/" + want + "/compressed-dist.tgz"
 	if err := upgrade.Download(url, proxy, tgz); err != nil {
-		return fmt.Errorf("UI 下载失败: %w", err)
+		return fmt.Errorf("UI download failed: %w", err)
 	}
 	if err := runExtractTgz(tgz, filepath.Join(tmp, "x")); err != nil {
-		return fmt.Errorf("UI 解包失败: %w", err)
+		return fmt.Errorf("UI unpack failed: %w", err)
 	}
 	if !exists(filepath.Join(tmp, "x", "index.html")) {
-		return fmt.Errorf("UI 包异常(无 index.html)")
+		return fmt.Errorf("UI package is abnormal (no index.html)")
 	}
 	os.RemoveAll(p.UiDir + ".old")
 	if exists(p.UiDir) {
@@ -225,14 +225,14 @@ func uiUpgrade(p paths.Paths, proxy, want string) error {
 		os.RemoveAll(p.UiDir)
 		os.Rename(p.UiDir+".old", p.UiDir)
 		os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
-		return fmt.Errorf("UI 探活异常(http=%s),已恢复旧版", code)
+		return fmt.Errorf("UI probe abnormal (http=%s), restored old version", code)
 	}
 	os.RemoveAll(p.UiDir + ".old")
-	logx.Info("UI 升级成功 → %s", want)
+	logx.Info("UI upgrade succeeded → %s", want)
 	return nil
 }
 
-// runRollback 回滚内核二进制(默认最近备份)。
+// runRollback rolls back the kernel binary (default: the most recent backup).
 func runRollback(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runRollbackBody(p, cmd, args) })
 }
@@ -240,14 +240,14 @@ func runRollback(cmd *cobra.Command, args []string) error {
 func runRollbackBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	matches, _ := filepath.Glob(p.Bin + ".bak-*")
 	if len(matches) == 0 {
-		return fmt.Errorf("没有可用备份")
+		return fmt.Errorf("no backup available")
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 	bak := matches[0]
 	if len(args) > 0 {
 		bak = p.Bin + ".bak-" + args[0]
 		if !exists(bak) {
-			return fmt.Errorf("备份不存在: %s(现有: %s)", bak, strings.Join(matches, " "))
+			return fmt.Errorf("backup does not exist: %s (existing: %s)", bak, strings.Join(matches, " "))
 		}
 	}
 	cur := firstVer(runCmd(p.Bin, "-v"))
@@ -258,9 +258,9 @@ func runRollbackBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		logx.Warn("回滚后健康检查未通过: %v", err)
+		logx.Warn("health check failed after rollback: %v", err)
 	}
-	logx.Info("内核回滚 %s → %s", cur, filepath.Base(bak))
+	logx.Info("kernel rolled back %s → %s", cur, filepath.Base(bak))
 	return nil
 }
 
@@ -274,19 +274,19 @@ func firstVer(s string) string {
 	return s
 }
 
-// cliUpgrade 升级 Panoxy CLI 自身:在源码树内本地自编译(go build)→ 替换已装二进制。
-// 不下载预编译产物 —— git clone 只含源码(手工编译很快);--src 指向仓库根,缺省当前目录。
+// cliUpgrade upgrades the Panoxy CLI itself: self-compile locally inside the source tree (go build) → replace the installed binary.
+// It does not download prebuilt artifacts — a git clone contains only source (manual compile is quick); --src points to the repo root, defaulting to the current directory.
 func cliUpgrade(p paths.Paths, srcDir string) error {
-	logx.Info("CLI 升级:本地自编译")
+	logx.Info("CLI upgrade: local self-compile")
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		return fmt.Errorf("未找到 go 工具链,请先安装 Go 1.23+(或 cd 到仓库根手工 go build)")
+		return fmt.Errorf("go toolchain not found, install Go 1.23+ first (or cd to the repo root and run go build manually)")
 	}
 	if srcDir == "" {
 		srcDir, _ = os.Getwd()
 	}
 	if _, err := os.Stat(filepath.Join(srcDir, "go.mod")); err != nil {
-		return fmt.Errorf("源码根无效(缺 go.mod): %s;请 cd 到仓库根或 --src 指定", srcDir)
+		return fmt.Errorf("invalid source root (go.mod missing): %s; cd to the repo root or specify --src", srcDir)
 	}
 	newVer := cliSrcVersion(srcDir)
 	if newVer == "" {
@@ -301,25 +301,25 @@ func cliUpgrade(p paths.Paths, srcDir string) error {
 	cmd.Dir = srcDir
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("自编译失败: %v\n%s", err, out)
+		return fmt.Errorf("self-compile failed: %v\n%s", err, out)
 	}
 	if out, err := exec.Command(newBin, "--version").CombinedOutput(); err != nil {
-		return fmt.Errorf("新二进制无法运行: %v\n%s", err, out)
+		return fmt.Errorf("new binary cannot run: %v\n%s", err, out)
 	}
 
-	// 备份旧版 → 替换
+	// Back up the old version → replace.
 	bak := p.Cli + ".bak-" + strings.TrimPrefix(version, "v")
 	copyFile(p.Cli, bak)
 	if err := copyFile(newBin, p.Cli); err != nil {
-		copyFile(bak, p.Cli) // 回滚
-		return fmt.Errorf("CLI 替换失败: %w", err)
+		copyFile(bak, p.Cli) // rollback
+		return fmt.Errorf("CLI replace failed: %w", err)
 	}
 	os.Chmod(p.Cli, 0o755)
-	logx.Info("CLI 自编译成功 → %s(备份 %s)", newVer, bak)
+	logx.Info("CLI self-compile succeeded → %s (backup %s)", newVer, bak)
 	return nil
 }
 
-// cliSrcVersion 取源码树的 git describe(与 build.sh 同源);非 git 目录返回空。
+// cliSrcVersion returns the source tree's git describe (same source as build.sh); returns empty for a non-git directory.
 func cliSrcVersion(srcDir string) string {
 	if srcDir == "" {
 		srcDir, _ = os.Getwd()

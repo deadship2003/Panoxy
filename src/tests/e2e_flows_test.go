@@ -25,7 +25,7 @@ func TestE2EDeployWithPresetConf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deploy 失败:\n%s", out)
 	}
-	for _, want := range []string{"内核", "geo 与广告规则", "Web UI", "检测到现有配置"} {
+	for _, want := range []string{"kernel", "geo and ad rules", "web UI", "existing config detected"} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("deploy 输出缺少 %q:\n%s", want, out)
 		}
@@ -49,7 +49,7 @@ func TestE2ESetSubFlows(t *testing.T) {
 
 	// 1) 可达订阅:成功 + 节点数验证
 	out := e.run(t, "sub", "import", "--name", "main", srv.URL+"/sub?token=ok&sid=x")
-	if !strings.Contains(out, "加载成功:4 个节点") {
+	if !strings.Contains(out, "loaded: 4 nodes") {
 		t.Fatalf("未见节点数报告:\n%s", out)
 	}
 	if b, _ := os.ReadFile(e.conf); !strings.Contains(string(b), srv.URL+"/sub?token=ok&sid=x") {
@@ -65,7 +65,7 @@ func TestE2ESetSubFlows(t *testing.T) {
 	// 2) 不可达订阅:诚实失败 + 配置零改动
 	before, _ := os.ReadFile(e.conf)
 	out = e.runFail(t, "sub", "import", "http://192.0.2.1:9/dead")
-	if !strings.Contains(out, "订阅拉取或校验失败") {
+	if !strings.Contains(out, "subscription fetch or validation failed") {
 		t.Fatalf("报错不符:\n%s", out)
 	}
 	after, _ := os.ReadFile(e.conf)
@@ -77,7 +77,7 @@ func TestE2ESetSubFlows(t *testing.T) {
 	seed := filepath.Join(e.dir, "seed.yaml")
 	os.WriteFile(seed, []byte("proxies:\n  - name: offline-x\n    type: socks5\n    server: 127.0.0.1\n    port: 1080\n"), 0o644)
 	out = e.run(t, "sub", "import", "--name", "backup", "--file", seed, "https://blocked.example.com/x?token=w")
-	if !strings.Contains(out, "本地订阅文件") {
+	if !strings.Contains(out, "using local subscription file") {
 		t.Fatalf("未见离线导入日志:\n%s", out)
 	}
 

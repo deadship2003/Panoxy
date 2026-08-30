@@ -19,15 +19,16 @@ import (
 	"github.com/deadship2003/Panoxy/internal/paths"
 )
 
-// runCmd 是 execx.Run 的简写。
+// runCmd is shorthand for execx.Run.
 func runCmd(name string, args ...string) string {
 	out, _ := execx.Run(name, args...)
 	return out
 }
 
-// writeDefaultConf 渲染纯净默认模板副本到 p.DefaultConf(config.default.yaml):
-// 与 /etc/clash.yaml 初始渲染同源、保留 SUB_URL_PLACEHOLDER 且不含任何订阅,
-// 供 merge-conf 或手工从干净基线重建配置。mode 决定 tun/tproxy 变体,secret 对齐当前密钥。
+// writeDefaultConf renders a clean default-template copy to p.DefaultConf (config.default.yaml):
+// same source as the initial /etc/clash.yaml render, keeps SUB_URL_PLACEHOLDER and contains no
+// subscription, for merge-conf or manual rebuild from a clean baseline. mode selects the tun/tproxy
+// variant, secret aligns with the current secret.
 func writeDefaultConf(p paths.Paths, mode, secret string) error {
 	d := asset.DefaultConfigData()
 	d.TProxy = mode == "tproxy"
@@ -52,17 +53,17 @@ func runtimeArch() string {
 	return ""
 }
 
-// checkTproxySupport 探测内核 xt_TPROXY 可用性(不可用则拒绝切换到 tproxy)。
+// checkTproxySupport probes for the kernel xt_TPROXY module (rejects switching to tproxy when unavailable).
 func checkTproxySupport() error {
 	probe := `grep -w TPROXY /proc/net/ip_tables_targets 2>/dev/null || { modprobe xt_TPROXY 2>/dev/null; grep -w TPROXY /proc/net/ip_tables_targets 2>/dev/null; }`
 	out, _ := execx.RunShell(probe)
 	if strings.TrimSpace(out) == "" {
-		return fmt.Errorf("内核缺少 xt_TPROXY 模块(/proc/net/ip_tables_targets 无 TPROXY)")
+		return fmt.Errorf("kernel lacks the xt_TPROXY module (/proc/net/ip_tables_targets has no TPROXY)")
 	}
 	return nil
 }
 
-// copyFile 复制文件(小文件,一次性读入)。
+// copyFile copies a file (small files, read at once).
 func copyFile(src, dst string) error {
 	b, err := os.ReadFile(src)
 	if err != nil {
@@ -86,7 +87,7 @@ func copyDir(src, dst string) error {
 	})
 }
 
-// installMan 生成并安装全部 man 手册(根页 + 每个子命令页,与 --help 同源):
+// installMan generates and installs all man pages (root page + one per subcommand, same source as --help):
 // man panixy / man panixy-init / man panixy-sub-import ...
 func installMan(manGz, self string) {
 	dir, err := os.MkdirTemp("", constants.ProgName+"-man-")
@@ -96,7 +97,7 @@ func installMan(manGz, self string) {
 	defer os.RemoveAll(dir)
 	hdr := manHeader()
 	if err := genAllMan(newRootForMan(), hdr, dir); err != nil {
-		logx.Debug("man 生成失败(跳过): %v", err)
+		logx.Debug("man generation failed (skipping): %v", err)
 		return
 	}
 	files, _ := filepath.Glob(dir + "/" + constants.ProgName + "*.1")
@@ -150,5 +151,5 @@ func runExtractTgz(tgz, dst string) error {
 	return nil
 }
 
-// newRootForMan 重建命令树供手册生成(与 main 同构)。
+// newRootForMan rebuilds the command tree for man generation (structurally identical to main).
 func newRootForMan() *cobra.Command { return NewRootCmd() }

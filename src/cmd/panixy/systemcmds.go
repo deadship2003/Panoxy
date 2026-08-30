@@ -21,22 +21,22 @@ import (
 	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
-// runInstall 仅部署服务与系统设置(文件已就位;deploy 的内部步骤)。
+// runInstall deploys only the service and system settings (files already in place; an internal deploy step).
 func runInstall(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runInstallBody(p, cmd, args) })
 }
 
 func runInstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	mode := statemode.Read(p.State)
-	logx.Step("[1/4] 预检:内核可执行 + 配置过 -t")
+	logx.Step("[1/4] precheck: kernel executable + config passes -t")
 	if err := checkBinary(p); err != nil {
 		return err
 	}
 	if out, err := mihomoTest(p, p.Conf); err != nil {
-		return fmt.Errorf("配置校验未通过(%s)", firstErrLine(out))
+		return fmt.Errorf("config validation failed (%s)", firstErrLine(out))
 	}
 
-	logx.Step("[2/4] 写入 systemd 单元(模式 %s)并开启 ip_forward", mode)
+	logx.Step("[2/4] write systemd units (mode %s) and enable ip_forward", mode)
 	prevFwd := readIPForward()
 	if err := systemdunit.Write(p, mode); err != nil {
 		return err
@@ -47,33 +47,33 @@ func runInstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		systemdunit.Remove(p)
 		os.Remove(p.Sysctl)
 		setIPForward(prevFwd)
-		logx.Warn("已回滚:unit/timer/sysctl 移除,ip_forward 恢复为 %s", prevFwd)
+		logx.Warn("rolled back: unit/timer/sysctl removed, ip_forward restored to %s", prevFwd)
 	}
 
-	logx.Step("[3/4] 拉起服务(ExecStartPost 自动加载防火墙)")
+	logx.Step("[3/4] bring up the service (ExecStartPost auto-loads the firewall)")
 	if err := systemdunit.PortCheck(p.Conf); err != nil {
 		rollback()
 		return err
 	}
 	if err := systemdunit.EnableNow(); err != nil {
 		rollback()
-		return fmt.Errorf("服务启动失败,已回滚")
+		return fmt.Errorf("service failed to start, rolled back")
 	}
 	if err := systemdunit.EnableTimer(); err != nil {
 		rollback()
-		return fmt.Errorf("升级 timer 启用失败,已回滚")
+		return fmt.Errorf("upgrade timer enable failed, rolled back")
 	}
 
-	logx.Step("[4/4] 健康验证(服务+API)")
+	logx.Step("[4/4] health verification (service+API)")
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		rollback()
-		return fmt.Errorf("健康验证超时,已回滚")
+		return fmt.Errorf("health verification timed out, rolled back")
 	}
-	logx.Info("install 完成 v%s(健康验证通过)", constants.Version)
+	logx.Info("install complete v%s (health verification passed)", constants.Version)
 	return nil
 }
 
-// runDeploy 全新部署(离线包内运行):资产→配置→CLI/手册→服务→可选订阅导入。
+// runDeploy is a fresh deployment (run inside an offline package): assets → config → CLI/man → service → optional subscription import.
 func runDeploy(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return deployDryRun(cmd, args)
@@ -82,49 +82,49 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
-	pkgDir, err := os.Getwd() // deploy 须在解压的离线包根目录运行
+	pkgDir, err := os.Getwd() // deploy must be run from the root of the extracted offline package
 	if err != nil {
 		return err
 	}
 	assets := filepath.Join(pkgDir, "assets")
 	if _, err := os.Stat(assets); err != nil {
-		return fmt.Errorf("当前目录无离线资产(%s)—— deploy 需在解压的 %s 离线包内运行", assets, constants.ProgName)
+		return fmt.Errorf("no offline assets in the current directory (%s) — deploy must run inside the extracted %s offline package", assets, constants.ProgName)
 	}
-	// bash 旧版残留检测:中止并给手动清理指引(Q7 决议:不做自动迁移)
+	// bash legacy residue detection: abort with manual cleanup guidance (Q7 decision: no automatic migration).
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
-		return fmt.Errorf(`检测到 bash 旧版部署残留:%s
-请先手动清理后重试:
+		return fmt.Errorf(`bash legacy deployment residue detected: %s
+clean it up manually first, then retry:
   sudo %s uninstall && sudo systemctl revert ...
-  详见 README「从 bash 版迁移」一节`, legacy, constants.ProgName)
+  see the README "Migrating from the bash version" section`, legacy, constants.ProgName)
 	}
 
 	mode, _ := cmd.Flags().GetString("proxy-mode")
 	if mode != "tun" && mode != "tproxy" {
-		return fmt.Errorf("--proxy-mode 只能是 tun 或 tproxy")
+		return fmt.Errorf("--proxy-mode must be tun or tproxy")
 	}
 	secret, _ := cmd.Flags().GetString("secret")
 
 	snap := snapshot(p)
-	defer func() { /* 失败路径各自显式回滚 */ _ = snap }()
+	defer func() { /* each failure path rolls back explicitly */ _ = snap }()
 
-	logx.Step("[1/6] 内核:解包 assets 内 %s 版本", runtimeArch())
+	logx.Step("[1/6] kernel: unpack the %s version inside assets", runtimeArch())
 	if err := placeCore(p, assets); err != nil {
 		return err
 	}
-	logx.Step("[2/6] geo 与广告规则就位(离线预置)")
+	logx.Step("[2/6] place geo and ad rules (offline preloaded)")
 	placeGeoAndRules(p, assets)
-	logx.Step("[3/6] Web UI 就位")
+	logx.Step("[3/6] place web UI")
 	placeUI(p, assets)
 
-	logx.Step("[4/6] 配置:现有 > 包内手工 clash.yaml > 模板渲染")
+	logx.Step("[4/6] config: existing > in-package manual clash.yaml > template render")
 	confNew := false
 	if _, err := os.Stat(p.Conf); err == nil {
-		logx.Info("检测到现有配置,保留不动: %s", p.Conf)
+		logx.Info("existing config detected, kept untouched: %s", p.Conf)
 	} else if b, err := os.ReadFile(filepath.Join(pkgDir, constants.ProgName+".yaml")); err == nil {
 		if err := os.WriteFile(p.Conf, b, 0o644); err != nil {
 			return err
 		}
-		logx.Info("采用包内手工配置: %s.yaml", constants.ProgName)
+		logx.Info("using the in-package manual config: %s.yaml", constants.ProgName)
 	} else {
 		d := asset.DefaultConfigData()
 		d.TProxy = mode == "tproxy"
@@ -137,11 +137,11 @@ func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 			return err
 		}
 		confNew = true
-		logx.Info("写入基础配置(模式 %s);面板密钥: %s(查看: grep '^secret' %s)", mode, d.Secret, p.Conf)
+		logx.Info("wrote base config (mode %s); web UI secret: %s (view: grep '^secret' %s)", mode, d.Secret, p.Conf)
 	}
 	_ = confNew
 
-	logx.Step("[5/6] CLI 与 man 手册就位;状态文件写入 proxy-mode=%s", mode)
+	logx.Step("[5/6] place CLI and man pages; write proxy-mode=%s to the state file", mode)
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -157,21 +157,21 @@ func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	os.MkdirAll(filepath.Dir(p.State), 0o755)
 	statemode.Write(p.State, statemode.State{ProxyMode: mode})
 
-	logx.Step("[6/6] 服务部署(含防火墙;失败全量回滚)")
+	logx.Step("[6/6] service deployment (incl. firewall; full rollback on failure)")
 	if err := runInstall(cmd, args); err != nil {
 		deployRollback(p, snap)
 		return err
 	}
 
-	// 订阅导入(与 init 对齐):给了订阅 URL 或显式 --name/--file 时导入;仅 deploy 不导订阅。
+	// Subscription import (aligned with init): imported when a subscription URL is given or --name/--file is explicit; plain deploy imports no subscription.
 	if len(args) > 0 || cmd.Flags().Changed("name") || cmd.Flags().Changed("file") {
 		return runSubImport(cmd, args)
 	}
-	logx.Info("deploy 完成。提示: sudo %s sub import 设置订阅(回车进入粘贴模式);%s status 查看健康", constants.ProgName, constants.ProgName)
+	logx.Info("deploy complete. tip: sudo %s sub import to set the subscription (press enter for paste mode); %s status to check health", constants.ProgName, constants.ProgName)
 	return nil
 }
 
-// runUninstall 停服务、清防火墙与单元;保留 /opt 数据与配置。
+// runUninstall stops the service, clears firewall and units; keeps /opt data and config.
 func runUninstall(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runUninstallBody(p, cmd, args) })
 }
@@ -180,46 +180,46 @@ func runUninstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	systemdunit.Stop()
 	if fw, err := firewall.New(); err == nil {
 		if err := fw.Teardown(); err != nil {
-			logx.Warn("防火墙清理失败:%v(restart 后重试 uninstall)", err)
+			logx.Warn("firewall cleanup failed: %v (retry uninstall after restart)", err)
 		}
 	}
 	systemdunit.Remove(p)
 	os.Remove(p.Sysctl)
 	os.Remove(p.ManGz)
-	logx.Info("已卸载 unit/timer/sysctl/手册;数据目录 %s 与 %s 保留(CLI 本身保留)", p.Root, p.Conf)
+	logx.Info("uninstalled unit/timer/sysctl/man pages; data dir %s and %s are kept (the CLI itself is kept)", p.Root, p.Conf)
 	return nil
 }
 
-// runModeSwitch 原子切换:旧防火墙卸载 → 配置变体 → -t → 重启 → 新防火墙 → 验证。
+// runModeSwitch is an atomic switch: unload old firewall → config variant → -t → restart → new firewall → verify.
 func modeSwitch(want string) error {
 	if want != "tun" && want != "tproxy" {
-		return fmt.Errorf("模式只能是 tun 或 tproxy")
+		return fmt.Errorf("mode must be tun or tproxy")
 	}
 	return withRootLock(func(p paths.Paths) error { return modeSwitchBody(p, want) })
 }
 
 func modeSwitchBody(p paths.Paths, want string) error {
 	old := statemode.Read(p.State)
-	// 回滚:恢复配置 + 状态文件 + 重启(仅用于已写状态后的重启/健康失败路径)。
+	// Rollback: restore config + state file + restart (only for the restart/health failure paths after the state was already written).
 	rollbackTo := func() {
 		config.Restore(p.Conf)
 		statemode.Write(p.State, statemode.State{ProxyMode: old})
 		systemdunit.Restart()
 	}
 	if old == want {
-		logx.Info("当前已是 %s 模式", want)
+		logx.Info("already in %s mode", want)
 		return nil
 	}
 	if want == "tproxy" && os.Getenv(constants.EnvPrefix()+"_SKIP_TPROXY_PROBE") == "" {
 		if err := checkTproxySupport(); err != nil {
-			return fmt.Errorf("TPROXY 前置条件不满足:%v", err)
+			return fmt.Errorf("TPROXY precondition not met: %v", err)
 		}
-	} // PANIXY_SKIP_TPROXY_PROBE=1 仅测试沙箱用
-	logx.Step("切换 %s → %s:卸载旧防火墙", old, want)
+	} // PANIXY_SKIP_TPROXY_PROBE=1 is for the test sandbox only
+	logx.Step("switch %s → %s: unload old firewall", old, want)
 	if fw, err := firewall.New(); err == nil {
 		fw.Teardown()
 	}
-	logx.Step("渲染配置变体并校验")
+	logx.Step("render config variant and validate")
 	if err := config.Backup(p.Conf); err != nil {
 		return err
 	}
@@ -235,23 +235,23 @@ func modeSwitchBody(p paths.Paths, want string) error {
 	if out, err := mihomoTest(p, p.Conf); err != nil {
 		msg := firstErrLine(out)
 		config.Restore(p.Conf)
-		return fmt.Errorf("配置校验未通过(%s),已恢复", msg)
+		return fmt.Errorf("config validation failed (%s), restored", msg)
 	}
 	statemode.Write(p.State, statemode.State{ProxyMode: want})
 	if err := systemdunit.Restart(); err != nil {
 		rollbackTo()
-		return fmt.Errorf("重启失败,已回滚到 %s", old)
+		return fmt.Errorf("restart failed, rolled back to %s", old)
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		rollbackTo()
-		return fmt.Errorf("切换后健康检查超时,已回滚到 %s:%w", old, err)
+		return fmt.Errorf("health check timed out after switch, rolled back to %s: %w", old, err)
 	}
 	config.ClearBackup(p.Conf)
-	logx.Info("已切换到 %s 模式(数据面选择仍在 Web 面板)", want)
+	logx.Info("switched to %s mode (data-plane selection is still done in the web UI)", want)
 	return nil
 }
 
-// ---- deploy/install 辅助 ----
+// ---- deploy/install helpers ----
 
 type deploySnap struct {
 	rootNew, confNew, cliNew, manNew, stateNew bool
@@ -288,22 +288,22 @@ func deployRollback(p paths.Paths, s deploySnap) {
 	}
 	if s.rootNew {
 		os.RemoveAll(p.Root)
-		logx.Warn("回滚:新建数据目录已删除")
+		logx.Warn("rollback: newly created data dir removed")
 	} else {
-		logx.Warn("回滚:%s 原本已存在,本次新增文件保留在原地", p.Root)
+		logx.Warn("rollback: %s already existed, files added this run are left in place", p.Root)
 	}
-	logx.Warn("回滚完成,系统已恢复原状")
+	logx.Warn("rollback complete, system restored to its original state")
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func checkBinary(p paths.Paths) error {
 	if !exists(p.Bin) {
-		return fmt.Errorf("内核不存在: %s(在离线包内用 %s deploy,或手动放置)", p.Bin, constants.ProgName)
+		return fmt.Errorf("kernel not found: %s (use %s deploy inside an offline package, or place it manually)", p.Bin, constants.ProgName)
 	}
-	// 教训:空/损坏内核经 ENOEXEC 会被当空脚本执行,-v 假通过 —— 必须校验输出内容
+	// Lesson learned: an empty/corrupt kernel gets executed as an empty script via ENOEXEC and -v falsely passes — the output must be validated.
 	if out := runCmd(p.Bin, "-v"); !strings.Contains(out, "Mihomo") {
-		return fmt.Errorf("内核无法运行(空文件/架构不符?): %s", p.Bin)
+		return fmt.Errorf("kernel cannot run (empty file / wrong arch?): %s", p.Bin)
 	}
 	return nil
 }
@@ -328,21 +328,21 @@ func setIPForward(v string) {
 
 func placeCore(p paths.Paths, assets string) error {
 	if exists(p.Bin) {
-		logx.Info("内核已存在,保留")
+		logx.Info("kernel already exists, keeping it")
 		return nil
 	}
 	return placeCoreForce(p, assets)
 }
 
-// placeCoreForce 无条件解包覆盖内核(redeploy 用;与 placeCore 仅差 exists 跳过)。
+// placeCoreForce unconditionally unpacks and overwrites the kernel (redeploy uses it; the only difference from placeCore is the exists skip).
 func placeCoreForce(p paths.Paths, assets string) error {
 	arch := runtimeArch()
 	if arch == "" {
-		return fmt.Errorf("不支持的架构(包内置 amd64/arm64)")
+		return fmt.Errorf("unsupported architecture (package ships amd64/arm64)")
 	}
 	matches, _ := filepath.Glob(filepath.Join(assets, "core", "mihomo-linux-"+arch+"-*.gz"))
 	if len(matches) == 0 {
-		return fmt.Errorf("assets 缺 %s 内核", arch)
+		return fmt.Errorf("assets missing the %s kernel", arch)
 	}
 	core := matches[len(matches)-1]
 	if err := upgrade.GunzipFile(core, p.Bin); err != nil {
@@ -352,11 +352,11 @@ func placeCoreForce(p paths.Paths, assets string) error {
 	if err := checkBinary(p); err != nil {
 		return err
 	}
-	logx.Info("内核: %s", firstLineOf(runCmd(p.Bin, "-v")))
+	logx.Info("kernel: %s", firstLineOf(runCmd(p.Bin, "-v")))
 	return nil
 }
 
-// geoFiles 部署所需的 GeoIP/GeoSite/Country 数据文件名(init 下载与 deploy 落位同源)。
+// geoFiles lists the GeoIP/GeoSite/Country data filenames needed for deployment (init download and deploy placement share the same source).
 var geoFiles = []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"}
 
 func placeGeoAndRules(p paths.Paths, assets string) {
@@ -374,27 +374,27 @@ func placeGeoAndRules(p paths.Paths, assets string) {
 		if exists(src) {
 			copyFile(src, dst)
 		} else {
-			logx.Warn("包内未带广告规则文件,首启由内核联网拉取")
+			logx.Warn("package has no ad rules file; first start will fetch it from the network via the kernel")
 		}
 	}
 }
 
-// placeGeoAndRulesForce 无条件覆盖 geo 与广告规则(redeploy 用;静态数据无需回滚)。
+// placeGeoAndRulesForce unconditionally overwrites geo and ad rules (redeploy uses it; static data needs no rollback).
 func placeGeoAndRulesForce(p paths.Paths, assets string) {
 	for _, f := range geoFiles {
 		src := filepath.Join(assets, "geo", f)
 		if exists(src) {
 			copyFile(src, filepath.Join(p.Root, f))
-			logx.Info("刷新: %s", f)
+			logx.Info("refreshed: %s", f)
 		}
 	}
 	os.MkdirAll(p.RuleProv, 0o755)
 	src := filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")
 	if exists(src) {
 		copyFile(src, filepath.Join(p.RuleProv, "HyperADRules-Ads.yaml"))
-		logx.Info("刷新: 广告规则 HyperADRules-Ads.yaml")
+		logx.Info("refreshed: ad rules HyperADRules-Ads.yaml")
 	} else {
-		logx.Warn("包内未带广告规则文件,保留现有(首启由内核联网拉取)")
+		logx.Warn("package has no ad rules file, keeping the existing one (first start fetches it from the network via the kernel)")
 	}
 }
 
@@ -409,17 +409,17 @@ func placeUI(p paths.Paths, assets string) {
 	}
 }
 
-// placeUIForce 无条件覆盖 UI(redeploy 用;旧目录已备份为 .old,此处只落新)。
+// placeUIForce unconditionally overwrites the UI (redeploy uses it; the old dir was already backed up as .old, here we only place the new one).
 func placeUIForce(p paths.Paths, assets string) error {
 	src := filepath.Join(assets, "ui", "official")
 	if !exists(src) {
-		return fmt.Errorf("assets 缺 UI")
+		return fmt.Errorf("assets missing UI")
 	}
 	if err := copyDir(src, p.UiDir); err != nil {
 		return err
 	}
 	os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
-	logx.Info("刷新: Web UI(metacubexd)")
+	logx.Info("refreshed: web UI (metacubexd)")
 	return nil
 }
 
@@ -430,47 +430,47 @@ func firstLineOf(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// deployDryRun 试运行模式:核对离线包资产、配置来源决策、落位清单与单元预览。
+// deployDryRun is a dry-run: verify offline package assets, config source decision, placement list, and unit preview.
 func deployDryRun(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
-	logx.Info("== deploy --dry-run(试运行模式,不执行)==")
+	logx.Info("== deploy --dry-run (dry-run mode, does not execute) ==")
 	pkgDir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 	assets := filepath.Join(pkgDir, "assets")
-	logx.Step("[预检] 离线包资产(%s)", assets)
+	logx.Step("[precheck] offline package assets (%s)", assets)
 	if _, err := os.Stat(assets); err != nil {
-		return fmt.Errorf("当前目录无离线资产 —— deploy 需在解压的离线包内运行(裸机直装用 %s init)", constants.ProgName)
+		return fmt.Errorf("no offline assets in the current directory — deploy must run inside the extracted offline package (for a bare-metal direct install use %s init)", constants.ProgName)
 	}
 	arch := runtimeArch()
 	for _, item := range []struct{ name, path string }{
-		{"内核(" + arch + ")", filepath.Join(assets, "core")},
+		{"kernel (" + arch + ")", filepath.Join(assets, "core")},
 		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
 		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
 		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
-		{"广告规则", filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")},
-		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
+		{"ad rules", filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")},
+		{"web UI", filepath.Join(assets, "ui", "official", "index.html")},
 	} {
 		if exists(item.path) {
 			logx.Info("  ✓ %s", item.name)
 		} else {
-			logx.Warn("  ✗ %s 缺失", item.name)
+			logx.Warn("  ✗ %s missing", item.name)
 		}
 	}
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
-		logx.Warn("[预检] ⚠️ bash 旧版残留:%s(真装会被中止)", legacy)
+		logx.Warn("[precheck] ⚠️ bash legacy residue: %s (a real install would be aborted)", legacy)
 	}
-	logx.Step("[决策] 配置来源")
+	logx.Step("[decision] config source")
 	switch {
 	case exists(p.Conf):
-		logx.Info("  现有 %s 存在 → 原样继承", p.Conf)
+		logx.Info("  existing %s present → inherit as-is", p.Conf)
 	case exists(filepath.Join(pkgDir, constants.ProgName+".yaml")):
-		logx.Info("  包内手工 %s.yaml → 采用", constants.ProgName)
+		logx.Info("  in-package manual %s.yaml → use it", constants.ProgName)
 	default:
-		logx.Info("  渲染默认模板(密钥 %s)", drySecret(cmd))
+		logx.Info("  render the default template (secret %s)", drySecret(cmd))
 	}
-	logx.Step("[计划] 落位:%s(内核/geo/规则/面板 → 服务 → 可选订阅导入)", p.Root)
-	logx.Info("== 试运行结束。真装: sudo ./%s deploy ...", constants.ProgName)
+	logx.Step("[plan] placement: %s (kernel/geo/rules/UI → service → optional subscription import)", p.Root)
+	logx.Info("== dry-run done. Real run: sudo ./%s deploy ...", constants.ProgName)
 	return nil
 }

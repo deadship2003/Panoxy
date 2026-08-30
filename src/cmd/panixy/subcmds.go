@@ -26,16 +26,17 @@ import (
 
 func needRoot() error {
 	if os.Getenv(constants.EnvPrefix()+"_ALLOW_NONROOT") != "" {
-		return nil // 测试沙箱钩子:e2e 用,生产勿设
+		return nil // test sandbox hook: for e2e, never set in production
 	}
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("请用 sudo 运行")
+		return fmt.Errorf("please run with sudo")
 	}
 	return nil
 }
 
-// withRootLock 统一「root 校验 + 进程锁」样板:校验通过后把路径交给 fn,返回时自动解锁。
-// 进程内重入由 locker 支持,deploy→install、init→sub import 等嵌套调用天然安全。
+// withRootLock unifies the "root check + process lock" boilerplate: after the check passes it hands
+// the paths to fn, and unlocks automatically on return. In-process re-entry is supported by the
+// locker, so nested calls like deploy→install and init→sub import are naturally safe.
 func withRootLock(fn func(p paths.Paths) error) error {
 	if err := needRoot(); err != nil {
 		return err
@@ -49,13 +50,13 @@ func withRootLock(fn func(p paths.Paths) error) error {
 	return fn(p)
 }
 
-// mihomoTest 用内核 -t 校验配置(CombinedOutput:内核日志走 stdout,必须合并捕获)。
+// mihomoTest validates config with the kernel's -t flag (CombinedOutput: kernel logs go to stdout, must merge-capture).
 func mihomoTest(p paths.Paths, conf string) (string, error) {
 	return execx.Run(p.Bin, "-t", "-f", conf, "-d", p.Root)
 }
 
-// runSubImport 实现 sub import:预取→校验→增量编辑→-t→预置缓存→重启→验证节点数。
-// 任何一步失败恢复备份(带缓存),绝不假成功。
+// runSubImport implements sub import: prefetch → validate → incremental edit → -t → preload cache → restart → verify node count.
+// Any failing step restores the backup (with cache); never a fake success.
 func runSubImport(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runSubImportBody(p, cmd, args) })
 }
@@ -73,7 +74,7 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		url = args[0]
 	} else {
-		if url, err = promptSubURL(constants.ProgName + " sub import [订阅URL] [--file 本地文件](或无参数进入粘贴模式)"); err != nil {
+		if url, err = promptSubURL(constants.ProgName + " sub import [subscription-URL] [--file local-file] (or no argument to enter paste mode)"); err != nil {
 			return err
 		}
 	}
@@ -81,42 +82,42 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 1) 取订阅内容:本地文件 > 直连 > 经本机代理
+	// 1) Fetch subscription content: local file > direct > via local proxy.
 	var body []byte
 	if file != "" {
 		if body, err = subscribe.ValidateFile(file); err != nil {
 			return err
 		}
-		logx.Info("使用本地订阅文件: %s(跳过联网拉取)", file)
+		logx.Info("using local subscription file: %s (skipping network fetch)", file)
 	} else {
 		if body, err = fetchSubBody(url, mihomoapi.NewFromConf(p.Conf)); err != nil {
-			return fmt.Errorf(`订阅拉取或校验失败: %v
-  提示:命令行传 URL 须整体加单引号(含 & ? 等字符会被 shell 拆掉),或直接
-  sudo %s sub import 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
-  sudo %s sub import --file <订阅文件>),或指定可用代理 %s_PROXY`, err, constants.ProgName, constants.ProgName, constants.EnvPrefix())
+			return fmt.Errorf(`subscription fetch or validation failed: %v
+  tip: a URL passed on the command line must be single-quoted as a whole (chars like & ? get split by the shell), or just run
+  sudo %s sub import and press enter for paste mode; in an offline environment import locally (download the subscription on any device then
+  sudo %s sub import --file <subscription-file>), or set a working proxy %s_PROXY`, err, constants.ProgName, constants.ProgName, constants.EnvPrefix())
 		}
 	}
 
-	// 归一化:sing-box/Surge/base64-Clash 等非 Clash YAML 格式统一转成 Clash YAML;
-	// Clash YAML / URI 列表 mihomo 原生解析,原样透传(converted 决定 provider 是否切 file)。
+	// Normalize: non-Clash YAML formats like sing-box/Surge/base64-Clash are converted to Clash YAML;
+	// Clash YAML / URI lists are parsed natively by mihomo and passed through as-is (converted decides whether the provider switches to file).
 	nb, conv, err := subscribe.Normalize(body)
 	if err != nil {
 		return err
 	}
 	body, converted := nb, conv
 	if converted {
-		logx.Step("订阅非 Clash YAML 格式,已归一化;provider 切换为本地缓存模式(type: file)")
+		logx.Step("subscription is not Clash YAML, normalized; provider switched to local cache mode (type: file)")
 	}
 
-	// 2) 备份 → 增量编辑 → -t 校验 → 预置缓存
-	// 汇总全部 provider 的节点名(含本次导入),供派生组剪枝:只保留实际命中的地区/类型组
+	// 2) Back up → incremental edit → -t validation → preload cache.
+	// Collect all providers' node names (including this import) to prune derived groups: only keep the region/type groups actually hit.
 	nodeNames := collectNodeNames(p, body, name)
 	e, err := config.Load(p.Conf)
 	if err != nil {
 		return err
 	}
 	if err := config.Backup(p.Conf); err != nil {
-		return fmt.Errorf("备份配置失败: %w", err)
+		return fmt.Errorf("config backup failed: %w", err)
 	}
 	cache := filepath.Join(p.Proxies, name+".yaml")
 	if b, err := os.ReadFile(cache); err == nil {
@@ -132,13 +133,14 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 			systemdunit.Restart()
 		}
 	}
-	// 全新系统:模板占位订阅(SUB_URL_PLACEHOLDER)在首个真实订阅导入时自动退场,
-	// 避免留下一个永远拉不到的空 provider(继承自现有配置的真实条目不受影响)
+	// Fresh system: the template placeholder subscription (SUB_URL_PLACEHOLDER) automatically retires on the first real
+	// subscription import, avoiding leaving an empty provider that can never be fetched (real entries inherited from the
+	// existing config are unaffected).
 	for _, pn := range e.Providers() {
 		if u, ok := e.ProviderURL(pn); ok && u == "SUB_URL_PLACEHOLDER" && pn != name {
 			e.RemoveProvider(pn)
 			e.WireProvider(pn, false, nil)
-			logx.Step("占位订阅 %s 已由真实订阅 %s 取代", pn, name)
+			logx.Step("placeholder subscription %s replaced by the real subscription %s", pn, name)
 		}
 	}
 	rel := "./proxies/" + name + ".yaml"
@@ -152,16 +154,16 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	e.WireProvider(name, true, groups)
 	if pruned := e.PruneDerived(nodeNames); pruned > 0 {
-		logx.Info("按实际节点剔除 %d 个无匹配的地区/类型组(只保留有效分组)", pruned)
+		logx.Info("pruned %d region/type groups with no matching node (keeping only effective groups)", pruned)
 	}
 	if err := e.Save(); err != nil {
 		recoverAll(false)
-		return fmt.Errorf("配置写入失败: %w", err)
+		return fmt.Errorf("config write failed: %w", err)
 	}
 	if out, err := mihomoTest(p, p.Conf); err != nil {
 		msg := firstErrLine(out)
 		recoverAll(false)
-		return fmt.Errorf("配置校验未通过(%s),已恢复原配置", msg)
+		return fmt.Errorf("config validation failed (%s), original config restored", msg)
 	}
 	if err := os.MkdirAll(p.Proxies, 0o755); err != nil {
 		recoverAll(false)
@@ -172,15 +174,15 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 3) 重启重建 provider(热重载不刷新 provider —— mihomo 限制)+ 验证节点数
-	logx.Step("订阅已写入 provider %s,缓存已预置,重启内核生效(换 URL 必须重启)", name)
+	// 3) Restart to rebuild providers (hot-reload does not refresh providers — mihomo limitation) + verify node count.
+	logx.Step("subscription written to provider %s, cache preloaded, restarting kernel to take effect (changing URL requires a restart)", name)
 	if err := systemdunit.Restart(); err != nil {
 		recoverAll(false)
-		return fmt.Errorf("重启失败,已恢复原订阅")
+		return fmt.Errorf("restart failed, original subscription restored")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		recoverAll(true)
-		return fmt.Errorf("重启后健康检查超时,已恢复原订阅:%w", err)
+		return fmt.Errorf("health check timed out after restart, original subscription restored: %w", err)
 	}
 	api := mihomoapi.NewFromConf(p.Conf)
 	nodes := 0
@@ -195,12 +197,12 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	if nodes == 0 {
 		recoverAll(true)
-		return fmt.Errorf("订阅 %s 未加载(节点数为 0),已恢复原订阅;排查: %s log / %s check", name, constants.ProgName, constants.ProgName)
+		return fmt.Errorf("subscription %s not loaded (node count is 0), original subscription restored; troubleshoot: %s log / %s check", name, constants.ProgName, constants.ProgName)
 	}
-	logx.Info("订阅(%s)加载成功:%d 个节点(测速选优由 🔃 自动选择 组负责,默认走最快节点)", name, nodes)
+	logx.Info("subscription (%s) loaded: %d nodes (speed-based selection is handled by the 🔃 auto-select group, fastest node by default)", name, nodes)
 	config.ClearBackup(p.Conf)
 	os.Remove(cache + constants.BackupSuffix())
-	logx.Info("订阅导入完成: %s", url)
+	logx.Info("subscription import complete: %s", url)
 	return nil
 }
 
@@ -218,7 +220,7 @@ func runSubDelBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if _, ok := e.ProviderURL(name); !ok {
-		return fmt.Errorf("订阅 %s 不存在(现有: %v)", name, e.Providers())
+		return fmt.Errorf("subscription %s does not exist (existing: %v)", name, e.Providers())
 	}
 	if err := config.Backup(p.Conf); err != nil {
 		return err
@@ -232,19 +234,19 @@ func runSubDelBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if out, err := mihomoTest(p, p.Conf); err != nil {
 		msg := firstErrLine(out)
 		config.Restore(p.Conf)
-		return fmt.Errorf("删除后校验未通过(%s —— 删光唯一订阅会使组失去 use),已恢复", msg)
+		return fmt.Errorf("validation failed after deletion (%s — deleting the only subscription makes the group lose its use), restored", msg)
 	}
 	os.Remove(filepath.Join(p.Proxies, name+".yaml"))
 	if err := systemdunit.Restart(); err != nil {
 		rollbackRestart(p)
-		return fmt.Errorf("重启失败,已恢复")
+		return fmt.Errorf("restart failed, restored")
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		rollbackRestart(p)
-		return fmt.Errorf("重启后健康检查超时,已恢复:%w", err)
+		return fmt.Errorf("health check timed out after restart, restored: %w", err)
 	}
 	config.ClearBackup(p.Conf)
-	logx.Info("订阅 %s 已删除并生效", name)
+	logx.Info("subscription %s deleted and applied", name)
 	return nil
 }
 
@@ -259,7 +261,7 @@ func runSubList(cmd *cobra.Command, args []string) error {
 	api := mihomoapi.NewFromConf(p.Conf)
 	stats := make([]mihomoapi.ProviderStat, 0, len(names))
 	for _, n := range names {
-		st, _ := api.Provider(n) // 单订阅故障不影响其他展示
+		st, _ := api.Provider(n) // a single subscription fault must not affect the others' display
 		if st.Name == "" {
 			st.Name = n
 		}
@@ -292,20 +294,20 @@ func readLine() (string, error) {
 	return strings.TrimSpace(s), err
 }
 
-// promptSubURL 无 URL 参数时的粘贴模式:读整行(URL 含 & ? 无需加引号),空输入返回用法错误。
+// promptSubURL is the paste mode used when no URL argument is given: read a whole line (URLs containing & ? need no quotes), empty input returns a usage error.
 func promptSubURL(usage string) (string, error) {
 	if isTTY() {
-		fmt.Fprint(os.Stderr, "请粘贴订阅链接(整行粘贴后回车,无需加引号): ")
+		fmt.Fprint(os.Stderr, "please paste the subscription link (paste the whole line then press enter, no quotes needed): ")
 	}
 	line, _ := readLine()
 	if line == "" {
-		return "", fmt.Errorf("用法: %s", usage)
+		return "", fmt.Errorf("usage: %s", usage)
 	}
 	return line, nil
 }
 
-// collectNodeNames 汇总全部 provider 的节点名(含本次导入 body),供派生组剪枝用。
-// 必须覆盖所有订阅:某地区/类型组只要被任意订阅命中就保留,避免误删。
+// collectNodeNames aggregates the node names of all providers (including this import's body), for pruning derived groups.
+// Must cover every subscription: a region/type group is kept if any subscription hits it, to avoid accidental removal.
 func collectNodeNames(p paths.Paths, newBody []byte, newName string) []string {
 	seen := map[string]bool{}
 	add := func(b []byte) {
@@ -335,7 +337,7 @@ func collectNodeNames(p paths.Paths, newBody []byte, newName string) []string {
 
 var errLineRe = regexp.MustCompile(`level=(error|fatal) msg="([^"]*)"`)
 
-// firstErrLine 从 mihomo 输出提取首条错误(bash 时代教训:错误在 stdout)。
+// firstErrLine extracts the first error from mihomo output (a lesson from the bash era: errors are on stdout).
 func firstErrLine(out string) string {
 	if m := errLineRe.FindStringSubmatch(out); m != nil {
 		return m[2]
@@ -346,7 +348,7 @@ func firstErrLine(out string) string {
 	return out
 }
 
-// rollbackRestart 事务失败兜底:恢复配置备份并重启服务,使内核回到事务前状态。
+// rollbackRestart is the transaction-failure fallback: restore the config backup and restart the service, returning the kernel to its pre-transaction state.
 func rollbackRestart(p paths.Paths) {
 	config.Restore(p.Conf)
 	systemdunit.Restart()

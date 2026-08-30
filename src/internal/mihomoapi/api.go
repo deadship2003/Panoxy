@@ -111,7 +111,7 @@ func (c *Client) Version() (string, error) {
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(b, &v); err != nil || v.Version == "" {
-		return "", fmt.Errorf("version 响应异常: %s", string(b))
+		return "", fmt.Errorf("unexpected version response: %s", string(b))
 	}
 	return v.Version, nil
 }
@@ -138,12 +138,12 @@ func (c *Client) Provider(name string) (ProviderStat, error) {
 	var st ProviderStat
 	st.Name = name
 	if err != nil {
-		st.Error = "获取失败:" + err.Error()
+		st.Error = "fetch failed: " + err.Error()
 		return st, err
 	}
 	var pr providerResp
 	if err := json.Unmarshal(b, &pr); err != nil {
-		st.Error = "解析失败:" + err.Error()
+		st.Error = "parse failed: " + err.Error()
 		return st, err
 	}
 	st.Nodes = len(pr.Proxies)

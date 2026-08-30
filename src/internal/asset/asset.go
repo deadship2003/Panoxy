@@ -23,15 +23,15 @@ type UnitData struct {
 func render(name string, data any) (string, error) {
 	raw, err := files.ReadFile(name)
 	if err != nil {
-		return "", fmt.Errorf("内嵌资源缺失: %s: %w", name, err)
+		return "", fmt.Errorf("embedded asset missing: %s: %w", name, err)
 	}
 	t, err := template.New(name).Parse(string(raw))
 	if err != nil {
-		return "", fmt.Errorf("模板 %s 解析失败: %w", name, err)
+		return "", fmt.Errorf("failed to parse template %s: %w", name, err)
 	}
 	var b bytes.Buffer
 	if err := t.Execute(&b, data); err != nil {
-		return "", fmt.Errorf("模板 %s 渲染失败: %w", name, err)
+		return "", fmt.Errorf("failed to render template %s: %w", name, err)
 	}
 	return b.String(), nil
 }

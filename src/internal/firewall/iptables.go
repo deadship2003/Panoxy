@@ -22,7 +22,7 @@ func runIptCmd(line string) error {
 	out, err := exec.Command("sh", "-c", line).CombinedOutput()
 	logx.DebugCmd("sh", []string{"-c", line}, string(out), err)
 	if err != nil && !iptTolerant(out) {
-		return fmt.Errorf("%s 失败: %s", line, strings.TrimSpace(string(out)))
+		return fmt.Errorf("%s failed: %s", line, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -43,7 +43,7 @@ func (i *iptBackend) CleanAll() error {
 	if err := TproxyPolicyDel(); err != nil {
 		return err
 	}
-	logx.Step("防火墙:已清理自有 iptables 链与策略路由(含残留)")
+	logx.Step("firewall: cleaned own iptables chains and policy routing (including residue)")
 	return nil
 }
 
@@ -56,7 +56,7 @@ func (i *iptBackend) ApplyDnsHijack() error {
 			return err
 		}
 	}
-	logx.Info("防火墙:iptables 后端已加载 DNS 劫持")
+	logx.Info("firewall: iptables backend loaded DNS hijack")
 	return nil
 }
 

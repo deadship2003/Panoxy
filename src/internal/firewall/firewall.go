@@ -37,7 +37,7 @@ func New() (Firewall, error) {
 	if _, err := exec.LookPath("iptables"); err == nil {
 		return &iptBackend{}, nil
 	}
-	return nil, fmt.Errorf("系统既无 nft 也无 iptables,无法管理 DNS 劫持")
+	return nil, fmt.Errorf("system has neither nft nor iptables, cannot manage DNS hijacking")
 }
 
 // ---- nftables 后端 ----
@@ -52,7 +52,7 @@ func runNft(script string) error {
 	out, err := c.CombinedOutput()
 	logx.DebugCmd("nft", []string{"-f", "-"}, string(out), err)
 	if err != nil {
-		return fmt.Errorf("nft 执行失败: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("nft failed: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -63,12 +63,12 @@ func (n *nftBackend) CleanAll() error {
 	out, err := exec.Command("nft", args...).CombinedOutput()
 	logx.DebugCmd("nft", args, string(out), err)
 	if err != nil && !isNotExist(out, err) {
-		return fmt.Errorf("清理旧规则失败: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("failed to clean old rules: %s", strings.TrimSpace(string(out)))
 	}
 	if err := TproxyPolicyDel(); err != nil {
 		return err
 	}
-	logx.Step("防火墙:已清理自有表 %s %s 与策略路由(含 kill -9 残留)", constants.NftFamily, constants.NftTable)
+	logx.Step("firewall: cleaned own table %s %s and policy routing (including kill -9 residue)", constants.NftFamily, constants.NftTable)
 	return nil
 }
 
@@ -79,7 +79,7 @@ func (n *nftBackend) ApplyDnsHijack() error {
 	if err := runNft(BuildNftScript(constants.DnsListenPort, constants.MarkSelf)); err != nil {
 		return err
 	}
-	logx.Info("防火墙:nftables 后端已加载 DNS 劫持")
+	logx.Info("firewall: nftables backend loaded DNS hijack")
 	return nil
 }
 
@@ -94,7 +94,7 @@ func (n *nftBackend) ApplyTproxy() error {
 	if err := TproxyPolicyAdd(); err != nil {
 		return err
 	}
-	logx.Info("防火墙:nftables 后端已加载 TPROXY 完整规则")
+	logx.Info("firewall: nftables backend loaded full TPROXY rules")
 	return nil
 }
 
@@ -108,7 +108,7 @@ func (n *nftBackend) HasStaleRules() (bool, error) {
 		if isNotExist(out, err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("nft list 失败: %s", strings.TrimSpace(string(out)))
+		return false, fmt.Errorf("nft list failed: %s", strings.TrimSpace(string(out)))
 	}
 	return true, nil
 }

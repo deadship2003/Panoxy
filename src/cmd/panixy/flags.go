@@ -6,28 +6,28 @@ import (
 	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
-// 订阅与部署参数的统一注册:init/deploy/try/sub import 共享同一套 flag,
-// 保证默认值与描述一致,避免日后只改一处造成漂移(单一事实源)。
+// Unified registration of subscription and deployment parameters: init/deploy/try/sub import share the same
+// flag set, keeping defaults and descriptions consistent to avoid drift from changing only one place (single source of truth).
 
-// addSubSourceFlags 订阅来源:--name/--file。
+// addSubSourceFlags is the subscription source: --name/--file.
 func addSubSourceFlags(c *cobra.Command) {
-	c.Flags().String("name", "SUB", "订阅 provider 名称(仅 [a-zA-Z0-9_-])")
-	c.Flags().String("file", "", "本地订阅 YAML 文件(跳过联网拉取)")
+	c.Flags().String("name", "SUB", "subscription provider name (only [a-zA-Z0-9_-])")
+	c.Flags().String("file", "", "local subscription YAML file (skip the network fetch)")
 }
 
-// addDeployFlags 部署参数:--proxy-mode/--secret。
+// addDeployFlags is the deployment parameters: --proxy-mode/--secret.
 func addDeployFlags(c *cobra.Command) {
-	c.Flags().String("proxy-mode", "tun", "透明代理模式: tun | tproxy")
-	c.Flags().String("secret", constants.DefSecret, "面板/API 密钥")
+	c.Flags().String("proxy-mode", "tun", "transparent proxy mode: tun | tproxy")
+	c.Flags().String("secret", constants.DefSecret, "web UI/API secret")
 }
 
-// addDownloadFlags 下载兜底参数:--mirror/--boot-bin(init/try 需联网下载共用)。
+// addDownloadFlags is the download fallback parameters: --mirror/--boot-bin (shared by init/try which download over the network).
 func addDownloadFlags(c *cobra.Command) {
-	c.Flags().StringSlice("mirror", nil, "gh 镜像前缀(可多个;第三方源,内核经试运行校验)")
-	c.Flags().String("boot-bin", "", "订阅引导代理所用内核(默认取安装目录下 bin/mihomo)")
+	c.Flags().StringSlice("mirror", nil, "gh mirror prefixes (multiple allowed; third-party source, the kernel is verified by a trial run)")
+	c.Flags().String("boot-bin", "", "kernel used by the subscription bootstrap proxy (defaults to bin/mihomo in the install dir)")
 }
 
-// addDryRunFlag 试运行参数(各命令语义略异,由 desc 描述)。
+// addDryRunFlag is the dry-run parameter (each command's semantics differ slightly, described by desc).
 func addDryRunFlag(c *cobra.Command, desc string) {
 	c.Flags().Bool("dry-run", false, desc)
 }

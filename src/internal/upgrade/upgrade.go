@@ -34,7 +34,7 @@ func Latest(repo, proxy string) (string, error) {
 			TagName string `json:"tag_name"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil || rel.TagName == "" {
-			return "", fmt.Errorf("release 响应异常")
+			return "", fmt.Errorf("unexpected release response")
 		}
 		return rel.TagName, nil
 	}
@@ -67,7 +67,7 @@ func Download(urlStr, proxy, dst string) error {
 	if err := try(proxy); err == nil {
 		return nil
 	}
-	logx.Step("经代理下载失败,改直连: %s", urlStr)
+	logx.Step("download via proxy failed, retrying direct: %s", urlStr)
 	return try("")
 }
 
@@ -79,11 +79,11 @@ func VerifyCore(bin, wantVer string) error {
 	out, err := exec.Command(bin, "-v").CombinedOutput()
 	logx.DebugCmd(bin, []string{"-v"}, string(out), err)
 	if err != nil || !strings.Contains(string(out), "Mihomo") {
-		return fmt.Errorf("新内核无法运行(指令集不兼容?)")
+		return fmt.Errorf("new core cannot run (instruction set incompatible?)")
 	}
 	got := verRe.FindString(string(out))
 	if wantVer != "" && got != wantVer {
-		return fmt.Errorf("版本不符:期望 %s 得到 %s", wantVer, got)
+		return fmt.Errorf("version mismatch: expected %s got %s", wantVer, got)
 	}
 	return nil
 }
@@ -97,7 +97,7 @@ func GunzipFile(src, dst string) error {
 	defer f.Close()
 	zr, err := gzip.NewReader(f)
 	if err != nil {
-		return fmt.Errorf("压缩包损坏: %w", err)
+		return fmt.Errorf("corrupt archive: %w", err)
 	}
 	defer zr.Close()
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
