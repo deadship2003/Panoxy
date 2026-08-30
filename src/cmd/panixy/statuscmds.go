@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/statemode"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/statemode"
 )
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -42,11 +42,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("== panixy v%s  (%s) ==\n", constants.Version, p.Root)
+	fmt.Printf("== %s v%s  (%s) ==\n", constants.ProgName, constants.Version, p.Root)
 	fmt.Printf("服务:     %s\n", r.Service)
 	fmt.Printf("模式:     %s   防火墙: %s", r.Mode, r.FwBackend)
 	if r.Stale {
-		fmt.Print("  ⚠️ 检测到残留规则(restart panixy 自愈)")
+		fmt.Printf("  ⚠️ 检测到残留规则(restart %s 自愈)", constants.ProgName)
 	}
 	fmt.Println()
 	for _, st := range r.Providers {
@@ -79,7 +79,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		if b, err := os.ReadFile(p.State); err == nil {
 			fmt.Printf("状态文件: %s\n%s", p.State, indentLines(string(b)))
 		}
-		fmt.Println("数据面(节点/组选择)请在 Web 面板操作;传输面(tun/tproxy)用 panixy mode")
+		fmt.Printf("数据面(节点/组选择)请在 Web 面板操作;传输面(tun/tproxy)用 %s mode\n", constants.ProgName)
 	}
 	return nil
 }

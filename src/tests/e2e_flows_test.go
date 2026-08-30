@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 // e2e 主线:deploy(预置无tun配置)→ sub import 成功/失败/离线 → sub del → mode 配置级切换。
@@ -29,10 +31,10 @@ func TestE2EDeployWithPresetConf(t *testing.T) {
 		}
 	}
 	checkFile(t, filepath.Join(e.root, "bin", "mihomo"))
-	checkFile(t, filepath.Join(e.root, "rule_provider", "AWAvenue-Ads.yaml"))
+	checkFile(t, filepath.Join(e.root, "rule_provider", "HyperADRules-Ads.yaml"))
 	checkFile(t, filepath.Join(e.root, "ui", "official", "index.html"))
-	checkFile(t, filepath.Join(e.dir, "cli", "panixy"))
-	checkFile(t, filepath.Join(e.dir, "man", "panixy.1.gz"))
+	checkFile(t, filepath.Join(e.dir, "cli", constants.ProgName))
+	checkFile(t, filepath.Join(e.dir, "man", constants.ProgName+".1.gz"))
 	if b, _ := os.ReadFile(filepath.Join(e.dir, "state.yaml")); !strings.Contains(string(b), "tun") {
 		t.Errorf("状态文件未写 proxy-mode=tun: %s", b)
 	}
@@ -137,7 +139,7 @@ func bootSandbox(t *testing.T, e *env) {
 		}
 	}
 	os.MkdirAll(filepath.Join(e.root, "ui", "official"), 0o755)
-	e.shim(t, "enable", "--now", "panixy.service")
+	e.shim(t, "enable", "--now", constants.ProgName+".service")
 	e.waitAPI(t)
 }
 
@@ -159,7 +161,7 @@ func buildAssets(t *testing.T, pkg string) {
 		}
 	}
 	os.WriteFile(filepath.Join(pkg, "assets/ui/official/index.html"), []byte("<html>e2e</html>"), 0o644)
-	os.WriteFile(filepath.Join(pkg, "assets/rule/AWAvenue-Ads.yaml"), []byte("payload:\n  - '+.ad.example'\n"), 0o644)
+	os.WriteFile(filepath.Join(pkg, "assets/rule/HyperADRules-Ads.yaml"), []byte("payload:\n  - '+.ad.example'\n"), 0o644)
 }
 
 func checkFile(t *testing.T, p string) {
@@ -174,7 +176,11 @@ func geoSrcOr(t *testing.T) string {
 	if g := os.Getenv("GEO_SRC"); g != "" {
 		return g
 	}
-	for _, c := range []string{"/opt/panixy", homeDir() + "/panixy-e2e"} {
+	for _, c := range []string{
+		filepath.Join("/opt", constants.ProgName),
+		"/opt/panixy", // 旧版残留
+		homeDir() + "/panixy-e2e",
+	} {
 		if _, err := os.Stat(filepath.Join(c, "GeoSite.dat")); err == nil {
 			return c
 		}

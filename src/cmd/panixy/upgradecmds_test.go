@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deadship2003/panixy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/paths"
 )
 
 // TestPruneCoreBackups 回归测试:曾因 matches[keep:] 在备份数 < keep 时

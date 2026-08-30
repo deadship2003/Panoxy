@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/logx"
 )
 
 // iptBackend:nft 不可用时的 iptables/ip6tables 兜底。
@@ -76,8 +76,8 @@ func (i *iptBackend) Teardown() error { return i.CleanAll() }
 
 func (i *iptBackend) HasStaleRules() (bool, error) {
 	for _, args := range [][]string{
-		{"-t", "nat", "-nL", "PANIXY_DNS"},
-		{"-t", "mangle", "-nL", "PANIXY_TP"},
+		{"-t", "nat", "-nL", chainDNS},
+		{"-t", "mangle", "-nL", chainTP},
 	} {
 		out, err := exec.Command("iptables", args...).CombinedOutput()
 		if err == nil && !strings.Contains(string(out), "No chain") {

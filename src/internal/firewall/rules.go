@@ -2,12 +2,14 @@ package firewall
 
 import (
 	"fmt"
+
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 // BuildNftScript 生成 TUN 模式的完整 nft 脚本。
 // 原则:不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流);正常访问优先于分流精度。
 func BuildNftScript(dnsPort, markSelf int) string {
-	return fmt.Sprintf(`table inet panixy {
+	return fmt.Sprintf(`table inet %s {
   set keep4 {
     type ipv4_addr
     flags interval
@@ -39,12 +41,12 @@ func BuildNftScript(dnsPort, markSelf int) string {
     ip6 saddr @keep6 th dport %d accept
   }
 }
-`, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort)
+`, constants.NftTable, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
 // BuildNftTproxyScript 生成 TPROXY 模式脚本:在 TUN 版之上增加 tproxy 链。
 func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) string {
-	return fmt.Sprintf(`table inet panixy {
+	return fmt.Sprintf(`table inet %s {
   set keep4 {
     type ipv4_addr
     flags interval
@@ -90,6 +92,6 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
     meta nfproto ipv6 meta l4proto { tcp, udp } tproxy ip6 to :%d meta mark set %d accept
   }
 }
-`, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort,
+`, constants.NftTable, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort,
 		markSelf, tproxyPort, markTproxy, tproxyPort, markTproxy)
 }

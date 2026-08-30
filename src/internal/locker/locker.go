@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"syscall"
+
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 type Locker struct {
@@ -31,12 +33,12 @@ func Lock(path string) (*Locker, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		// 锁文件不可写(如只读环境):降级为无锁,行为与 bash 版一致
-		fmt.Fprintf(os.Stderr, "[panixy] WARN 锁文件不可用(%v),继续无锁运行\n", err)
+		fmt.Fprintf(os.Stderr, "[%s] WARN 锁文件不可用(%v),继续无锁运行\n", constants.ProgName, err)
 		return &Locker{}, nil
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("另一个 panixy 实例正在运行,请稍后再试")
+		return nil, fmt.Errorf("另一个 %s 实例正在运行,请稍后再试", constants.ProgName)
 	}
 	mu.Lock()
 	locked = true

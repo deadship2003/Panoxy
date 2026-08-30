@@ -12,6 +12,7 @@ import (
 type Progress struct {
 	label string
 	total int64
+	n     int64 // 实际已下载字节(total 未知即 Content-Length=-1 时,完成信息以它为准)
 	last  time.Time
 	marks map[int]bool // 非 TTY 里程碑
 	isTTY bool
@@ -28,9 +29,10 @@ func (p *Progress) Update(n int64) {
 	if p == nil {
 		return
 	}
+	p.n = n
 	now := time.Now()
 	if p.isTTY {
-		if now.Sub(p.last) < 100*time.Millisecond && n < p.total {
+		if now.Sub(p.last) < 100*time.Millisecond {
 			return // 节流 100ms
 		}
 		p.last = now
@@ -55,20 +57,21 @@ func (p *Progress) Done(err error) {
 		return
 	}
 	if p.isTTY {
-		fmt.Fprint(os.Stderr, "\r"+p.render(p.total)+"\n")
+		fmt.Fprint(os.Stderr, "\r"+p.render(p.n)+"\n")
 	}
 	if err != nil {
 		Warn("%s 失败: %v", p.label, err)
 	} else {
-		Info("%s 完成(%s)", p.label, humanBytes(p.total, p.total))
+		Info("%s 完成(%s)", p.label, humanBytes(p.n, p.total))
 	}
 }
 
 func (p *Progress) render(n int64) string {
-	pct := 0
-	if p.total > 0 {
-		pct = int(n * 100 / p.total)
+	if p.total <= 0 {
+		// 总量未知(服务器分块传输/代理剥离 Content-Length):只报实际字节,不画假进度条
+		return fmt.Sprintf("  %s %s", p.label, humanBytes(n, p.total))
 	}
+	pct := int(n * 100 / p.total)
 	if pct > 100 {
 		pct = 100
 	}

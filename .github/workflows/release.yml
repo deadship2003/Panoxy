@@ -30,14 +30,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          notes="全离线安装包(双架构):mihomo 内核、geo(含 Country.mmdb)、广告规则、metacubexd 面板、Go 版 panixy 单二进制。
-          完整性校验:sha256sum -c Panixy-${TAG}-<arch>.tar.gz.sha256
-          快速开始:tar xzf Panixy-${TAG}-<arch>.tar.gz && cd Panixy-${TAG}-<arch> && sudo ./panixy deploy
-          随后导入订阅:sudo panixy sub import(回车进入粘贴模式,URL 无需引号)"
+          notes="全离线安装包(双架构):mihomo 内核、geo(含 Country.mmdb)、广告规则、metacubexd 面板、Go 版 Panoxy 单二进制。
+          另附纯二进制(单文件,可直接拷贝到目标机运行):Panoxy-linux-{amd64,arm64}。
+          完整性校验:sha256sum -c Panoxy-${TAG}-<arch>.tar.gz.sha256
+          快速开始:tar xzf Panoxy-${TAG}-<arch>.tar.gz && cd Panoxy-${TAG}-<arch> && sudo ./Panoxy deploy
+          随后导入订阅:sudo Panoxy sub import(回车进入粘贴模式,URL 无需引号)"
           # 幂等:Release 已存在则补传/覆盖资产
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" Panixy-${TAG}-*.tar.gz Panixy-${TAG}-*.tar.gz.sha256 --clobber
+            gh release upload "$TAG" dist/Panoxy-${TAG}-*.tar.gz dist/Panoxy-${TAG}-*.tar.gz.sha256 \
+              dist/Panoxy-linux-amd64 dist/Panoxy-linux-arm64 --clobber
           else
-            gh release create "$TAG" --title "Panixy ${TAG}" --notes "$notes" \
-              Panixy-${TAG}-*.tar.gz Panixy-${TAG}-*.tar.gz.sha256
+            gh release create "$TAG" --title "Panoxy ${TAG}" --notes "$notes" \
+              dist/Panoxy-${TAG}-*.tar.gz dist/Panoxy-${TAG}-*.tar.gz.sha256 \
+              dist/Panoxy-linux-amd64 dist/Panoxy-linux-arm64
           fi

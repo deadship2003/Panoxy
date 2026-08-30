@@ -18,7 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deadship2003/panixy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 var (
@@ -37,17 +38,28 @@ func TestMain(m *testing.M) {
 	}
 	mihomo = os.Getenv("MIHOMO_BIN")
 	if mihomo == "" {
-		if _, err := os.Stat("/opt/panixy/bin/mihomo"); err == nil {
-			mihomo = "/opt/panixy/bin/mihomo"
+		for _, c := range []string{
+			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
+			"/opt/panixy/bin/mihomo", // 旧版残留
+		} {
+			if _, err := os.Stat(c); err == nil {
+				mihomo = c
+				break
+			}
 		}
 	}
 	if mihomo == "" {
 		fmt.Println("SKIP: 无 mihomo 内核(MIHOMO_BIN 可指定)")
 		os.Exit(0)
 	}
-	// geo 来源:GEO_SRC > /opt/panixy > 离线包资产(机器清理过 /opt 后仍可测)
+	// geo 来源:GEO_SRC > /opt/<ProgName> > /opt/panixy > 离线包资产(机器清理过 /opt 后仍可测)
 	if os.Getenv("GEO_SRC") == "" {
-		for _, c := range []string{"/opt/panixy", homeDir() + "/panixy-e2e", "Panixy-V0.1.0-local-amd64/assets/geo"} {
+		for _, c := range []string{
+			filepath.Join("/opt", constants.ProgName),
+			"/opt/panixy",
+			homeDir() + "/panixy-e2e",
+			constants.ProgName + "-V0.0.1-local-amd64/assets/geo",
+		} {
 			if _, err := os.Stat(filepath.Join(c, "GeoSite.dat")); err == nil {
 				os.Setenv("GEO_SRC", c)
 				break
@@ -58,7 +70,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		os.Exit(1)
 	}
-	bin = filepath.Join(dir, "panixy")
+	bin = filepath.Join(dir, constants.ProgName)
 	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/panixy").CombinedOutput()
 	if err != nil {
 		fmt.Printf("SKIP: 构建 panixy 失败(依赖未拉取?): %s\n%s", err, out)
@@ -104,21 +116,22 @@ func newEnv(t *testing.T) *env {
 	// 假 systemctl:restart/enable 启动沙箱内核(pid 按 ROOT 区分),is-active 按 pid 判断
 	shim := filepath.Join(dir, "bin", "systemctl")
 	pidf := filepath.Join(dir, "pid")
+	pfx := constants.EnvPrefix()
 	os.WriteFile(shim, []byte(fmt.Sprintf(`#!/bin/sh
 PIDF=%s
 start_mh() {
-  nohup "$PANIXY_ROOT/bin/mihomo" -f "$PANIXY_CONF" -d "$PANIXY_ROOT" >> "$PANIXY_ROOT/run.log" 2>&1 9>&- &
+  nohup "$%s_ROOT/bin/mihomo" -f "$%s_CONF" -d "$%s_ROOT" >> "$%s_ROOT/run.log" 2>&1 9>&- &
   echo $! >> "$PIDF"
 }
 case "$1" in
   restart) while read p; do kill "$p" 2>/dev/null; done < "$PIDF" 2>/dev/null; : > "$PIDF"; sleep 1; start_mh ;;
-  enable)  [ "$2" = "--now" ] && [ "$3" = panixy.service ] && start_mh ;;
+  enable)  [ "$2" = "--now" ] && [ "$3" = %s.service ] && start_mh ;;
   disable) while read p; do kill "$p" 2>/dev/null; done < "$PIDF" 2>/dev/null; : > "$PIDF" ;;
   is-active) alive=0; while read p; do kill -0 "$p" 2>/dev/null && alive=1; done < "$PIDF" 2>/dev/null;
              [ "$alive" = 1 ] && echo active || { echo inactive; exit 3; } ;;
 esac
 exit 0
-`, pidf)), 0o755)
+`, pidf, pfx, pfx, pfx, pfx, constants.ProgName)), 0o755)
 	for _, name := range []string{"ip", "sysctl"} {
 		os.WriteFile(filepath.Join(dir, "bin", name), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	}
@@ -147,21 +160,23 @@ func atoi(s string) int {
 }
 
 func (e *env) envOf() []string {
+	pfx := constants.EnvPrefix()
+	prog := constants.ProgName
 	return append(os.Environ(),
 		"PATH="+filepath.Join(e.dir, "bin")+":"+os.Getenv("PATH"),
-		"PANIXY_ROOT="+e.root,
-		"PANIXY_CONF="+e.conf,
-		"PANIXY_UNIT_DIR="+filepath.Join(e.dir, "units"),
-		"PANIXY_CLI="+filepath.Join(e.dir, "cli", "panixy"),
-		"PANIXY_MAN="+filepath.Join(e.dir, "man", "panixy.1.gz"),
-		"PANIXY_STATE="+filepath.Join(e.dir, "state.yaml"),
-		"PANIXY_SYSCTL="+filepath.Join(e.dir, "99.conf"),
-		"PANIXY_LOCK="+filepath.Join(e.dir, "lock"),
-		fmt.Sprintf("PANIXY_API_PORT=%d", e.apiPort),
-		fmt.Sprintf("PANIXY_PROXY_PORT=%d", e.mixPort),
-		"PANIXY_SECRET=e2esecret",
-		"PANIXY_ALLOW_NONROOT=1",
-		"PANIXY_SKIP_TPROXY_PROBE=1",
+		pfx+"_ROOT="+e.root,
+		pfx+"_CONF="+e.conf,
+		pfx+"_UNIT_DIR="+filepath.Join(e.dir, "units"),
+		pfx+"_CLI="+filepath.Join(e.dir, "cli", prog),
+		pfx+"_MAN="+filepath.Join(e.dir, "man", prog+".1.gz"),
+		pfx+"_STATE="+filepath.Join(e.dir, "state.yaml"),
+		pfx+"_SYSCTL="+filepath.Join(e.dir, "99.conf"),
+		pfx+"_LOCK="+filepath.Join(e.dir, "lock"),
+		fmt.Sprintf(pfx+"_API_PORT=%d", e.apiPort),
+		fmt.Sprintf(pfx+"_PROXY_PORT=%d", e.mixPort),
+		pfx+"_SECRET=e2esecret",
+		pfx+"_ALLOW_NONROOT=1",
+		pfx+"_SKIP_TPROXY_PROBE=1",
 	)
 }
 
@@ -230,8 +245,8 @@ func noTunConf(t *testing.T, api, mix, dns int, tproxy bool) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 随机化模板写死的 http/socks 监听端口(本机若已装 panixy,固定 6666/6699 会撞真实网关)
-	out = strings.Replace(out, "port: 6666", fmt.Sprintf("port: %d", freePort(t)), 1)
+	// 随机化模板写死的 http/socks 监听端口(本机若已装 panixy,固定 9966/6699 会撞真实网关)
+	out = strings.Replace(out, "port: 9966", fmt.Sprintf("port: %d", freePort(t)), 1)
 	out = strings.Replace(out, "socks-port: 6699", fmt.Sprintf("socks-port: %d", freePort(t)), 1)
 	// 去 tun 段(tun: 到下一个顶层键)
 	var b strings.Builder

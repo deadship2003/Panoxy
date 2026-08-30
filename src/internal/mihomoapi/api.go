@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deadship2003/panixy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/constants"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,16 +43,16 @@ func NewFromConf(confPath string) *Client {
 	}
 	c.Mixed = raw.MixedPort
 	api := "http://127.0.0.1:" + portOf(raw.ExternalController, 9999)
-	if p := os.Getenv("PANIXY_API_PORT"); p != "" {
+	if p := os.Getenv(constants.EnvPrefix() + "_API_PORT"); p != "" {
 		api = "http://127.0.0.1:" + p
 	}
-	if u := os.Getenv("PANIXY_API"); u != "" {
+	if u := os.Getenv(constants.EnvPrefix() + "_API"); u != "" {
 		api = u
 	}
-	if s := os.Getenv("PANIXY_SECRET"); s != "" {
+	if s := os.Getenv(constants.EnvPrefix() + "_SECRET"); s != "" {
 		c.Secret = s
 	}
-	if p := os.Getenv("PANIXY_PROXY_PORT"); p != "" && c.Mixed == 0 {
+	if p := os.Getenv(constants.EnvPrefix() + "_PROXY_PORT"); p != "" && c.Mixed == 0 {
 		fmt.Sscanf(p, "%d", &c.Mixed)
 	}
 	c.Base = strings.TrimRight(api, "/")

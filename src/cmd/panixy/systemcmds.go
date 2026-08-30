@@ -9,16 +9,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/asset"
-	"github.com/deadship2003/panixy/internal/config"
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/firewall"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/statemode"
-	"github.com/deadship2003/panixy/internal/systemdunit"
-	"github.com/deadship2003/panixy/internal/upgrade"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/config"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/firewall"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/statemode"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
 // runInstall 仅部署服务与系统设置(文件已就位;deploy 的内部步骤)。
@@ -88,14 +88,14 @@ func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	assets := filepath.Join(pkgDir, "assets")
 	if _, err := os.Stat(assets); err != nil {
-		return fmt.Errorf("当前目录无离线资产(%s)—— deploy 需在解压的 Panixy 离线包内运行", assets)
+		return fmt.Errorf("当前目录无离线资产(%s)—— deploy 需在解压的 %s 离线包内运行", assets, constants.ProgName)
 	}
 	// bash 旧版残留检测:中止并给手动清理指引(Q7 决议:不做自动迁移)
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
 		return fmt.Errorf(`检测到 bash 旧版部署残留:%s
 请先手动清理后重试:
-  sudo panixy uninstall && sudo systemctl revert ...
-  详见 README「从 bash 版迁移」一节`, legacy)
+  sudo %s uninstall && sudo systemctl revert ...
+  详见 README「从 bash 版迁移」一节`, legacy, constants.ProgName)
 	}
 
 	mode, _ := cmd.Flags().GetString("proxy-mode")
@@ -120,11 +120,11 @@ func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	confNew := false
 	if _, err := os.Stat(p.Conf); err == nil {
 		logx.Info("检测到现有配置,保留不动: %s", p.Conf)
-	} else if b, err := os.ReadFile(filepath.Join(pkgDir, "clash.yaml")); err == nil {
+	} else if b, err := os.ReadFile(filepath.Join(pkgDir, constants.ProgName+".yaml")); err == nil {
 		if err := os.WriteFile(p.Conf, b, 0o644); err != nil {
 			return err
 		}
-		logx.Info("采用包内手工配置: clash.yaml")
+		logx.Info("采用包内手工配置: %s.yaml", constants.ProgName)
 	} else {
 		d := asset.DefaultConfigData()
 		d.TProxy = mode == "tproxy"
@@ -163,10 +163,11 @@ func runDeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(args) > 0 {
+	// 订阅导入(与 init 对齐):给了订阅 URL 或显式 --name/--file 时导入;仅 deploy 不导订阅。
+	if len(args) > 0 || cmd.Flags().Changed("name") || cmd.Flags().Changed("file") {
 		return runSubImport(cmd, args)
 	}
-	logx.Info("deploy 完成。提示: sudo panixy sub import 设置订阅(回车进入粘贴模式);panixy status 查看健康")
+	logx.Info("deploy 完成。提示: sudo %s sub import 设置订阅(回车进入粘贴模式);%s status 查看健康", constants.ProgName, constants.ProgName)
 	return nil
 }
 
@@ -209,7 +210,7 @@ func modeSwitchBody(p paths.Paths, want string) error {
 		logx.Info("当前已是 %s 模式", want)
 		return nil
 	}
-	if want == "tproxy" && os.Getenv("PANIXY_SKIP_TPROXY_PROBE") == "" {
+	if want == "tproxy" && os.Getenv(constants.EnvPrefix()+"_SKIP_TPROXY_PROBE") == "" {
 		if err := checkTproxySupport(); err != nil {
 			return fmt.Errorf("TPROXY 前置条件不满足:%v", err)
 		}
@@ -298,7 +299,7 @@ func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func checkBinary(p paths.Paths) error {
 	if !exists(p.Bin) {
-		return fmt.Errorf("内核不存在: %s(在离线包内用 panixy deploy,或手动放置)", p.Bin)
+		return fmt.Errorf("内核不存在: %s(在离线包内用 %s deploy,或手动放置)", p.Bin, constants.ProgName)
 	}
 	// 教训:空/损坏内核经 ENOEXEC 会被当空脚本执行,-v 假通过 —— 必须校验输出内容
 	if out := runCmd(p.Bin, "-v"); !strings.Contains(out, "Mihomo") {
@@ -367,8 +368,8 @@ func placeGeoAndRules(p paths.Paths, assets string) {
 		}
 	}
 	os.MkdirAll(p.RuleProv, 0o755)
-	src := filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")
-	dst := filepath.Join(p.RuleProv, "AWAvenue-Ads.yaml")
+	src := filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")
+	dst := filepath.Join(p.RuleProv, "HyperADRules-Ads.yaml")
 	if !exists(dst) {
 		if exists(src) {
 			copyFile(src, dst)
@@ -388,10 +389,10 @@ func placeGeoAndRulesForce(p paths.Paths, assets string) {
 		}
 	}
 	os.MkdirAll(p.RuleProv, 0o755)
-	src := filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")
+	src := filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")
 	if exists(src) {
-		copyFile(src, filepath.Join(p.RuleProv, "AWAvenue-Ads.yaml"))
-		logx.Info("刷新: 广告规则 AWAvenue-Ads.yaml")
+		copyFile(src, filepath.Join(p.RuleProv, "HyperADRules-Ads.yaml"))
+		logx.Info("刷新: 广告规则 HyperADRules-Ads.yaml")
 	} else {
 		logx.Warn("包内未带广告规则文件,保留现有(首启由内核联网拉取)")
 	}
@@ -440,7 +441,7 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 	assets := filepath.Join(pkgDir, "assets")
 	logx.Step("[预检] 离线包资产(%s)", assets)
 	if _, err := os.Stat(assets); err != nil {
-		return fmt.Errorf("当前目录无离线资产 —— deploy 需在解压的离线包内运行(裸机直装用 panixy init)")
+		return fmt.Errorf("当前目录无离线资产 —— deploy 需在解压的离线包内运行(裸机直装用 %s init)", constants.ProgName)
 	}
 	arch := runtimeArch()
 	for _, item := range []struct{ name, path string }{
@@ -448,7 +449,7 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
 		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
 		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
-		{"广告规则", filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")},
+		{"广告规则", filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")},
 		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
 	} {
 		if exists(item.path) {
@@ -464,12 +465,12 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 	switch {
 	case exists(p.Conf):
 		logx.Info("  现有 %s 存在 → 原样继承", p.Conf)
-	case exists(filepath.Join(pkgDir, "clash.yaml")):
-		logx.Info("  包内手工 clash.yaml → 采用")
+	case exists(filepath.Join(pkgDir, constants.ProgName+".yaml")):
+		logx.Info("  包内手工 %s.yaml → 采用", constants.ProgName)
 	default:
 		logx.Info("  渲染默认模板(密钥 %s)", drySecret(cmd))
 	}
 	logx.Step("[计划] 落位:%s(内核/geo/规则/面板 → 服务 → 可选订阅导入)", p.Root)
-	logx.Info("== 试运行结束。真装: sudo ./panixy deploy ...")
+	logx.Info("== 试运行结束。真装: sudo ./%s deploy ...", constants.ProgName)
 	return nil
 }

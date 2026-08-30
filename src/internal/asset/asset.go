@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/deadship2003/panixy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 //go:embed service.tpl upgrade-service.tpl upgrade-timer.tpl config.tpl
@@ -16,6 +16,7 @@ var files embed.FS
 // UnitData 渲染主服务单元所需字段。
 type UnitData struct {
 	Mode                        string // tun / tproxy(仅用于 Description)
+	Prog, EnvPrefix             string // 程序名 / env 前缀(随编译期 ProgName 注入)
 	Bin, Conf, Root, UiDir, Cli string
 }
 
@@ -35,18 +36,26 @@ func render(name string, data any) (string, error) {
 	return b.String(), nil
 }
 
-// RenderService 渲染 panixy.service(无任何 resolvectl 逻辑;
+// RenderService 渲染 <Prog>.service(即 Panoxy.service;无任何 resolvectl 逻辑;
 // fw apply 内部先无条件 CleanAll,kill -9 残留随 restart 自愈)。
 func RenderService(d UnitData) (string, error) { return render("service.tpl", d) }
 
 // RenderUpgradeService / RenderUpgradeTimer 渲染每日自动升级单元。
 func RenderUpgradeService(cli, root string) (string, error) {
-	return render("upgrade-service.tpl", map[string]string{"Cli": cli, "Root": root})
+	return render("upgrade-service.tpl", map[string]string{
+		"Cli": cli, "Root": root,
+		"Prog": constants.ProgName, "EnvPrefix": constants.EnvPrefix(),
+	})
 }
-func RenderUpgradeTimer() (string, error) { return render("upgrade-timer.tpl", nil) }
+func RenderUpgradeTimer() (string, error) {
+	return render("upgrade-timer.tpl", map[string]string{
+		"Prog": constants.ProgName, "EnvPrefix": constants.EnvPrefix(),
+	})
+}
 
 // ConfigData 渲染 mihomo 配置所需字段。
 type ConfigData struct {
+	Prog        string // 程序名(渲染到配置头部注释,随编译期 ProgName 注入)
 	MixedPort   int
 	ApiPort     int
 	Secret      string
@@ -59,6 +68,7 @@ type ConfigData struct {
 // DefaultConfigData 常用默认值。
 func DefaultConfigData() ConfigData {
 	return ConfigData{
+		Prog:        constants.ProgName,
 		Secret:      constants.DefSecret,
 		MixedPort:   constants.MixedPortDef,
 		ApiPort:     constants.ApiPortDef,

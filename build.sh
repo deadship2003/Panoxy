@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
 # panixy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
 # 用法: build.sh [命令]
-#   编译(默认)   build.sh [--arch amd64|arm64|all] [--ver V0.1.0]
+#   编译(默认)   build.sh [--arch amd64|arm64|all] [--ver V0.0.1] [--prog 程序名]
 #                 默认只编当前 CPU 架构;amd64 自带检测 AVX2(有→v3,无→v1)
-#   打包         build.sh package [all|amd64|arm64] [--arch ...] [--ver ...] [--sub-url 订阅URL]
+#   打包         build.sh package [all|amd64|arm64] [--arch ...] [--ver ...] [--prog 程序名] [--sub-url 订阅URL]
 #                 默认只打包当前 CPU 架构;加 all(或 --arch all)打全部目标平台
 #   清理         build.sh clean
 #   帮助         build.sh -h|-?|--help
 # 选项:
 #   --arch <amd64|arm64|all>   目标架构。编译/打包默认当前平台;--arch all 打全部
-#   --ver  <V0.1.0>            版本号(默认 git describe;无 git 时 V0.1.0-dev)
+#   --ver  <V0.0.1>            版本号(默认 git describe;无 git 时 V0.0.1-dev)
+#   --prog <Panoxy>            程序名(默认 Panoxy;编译期注入,决定二进制/包名与运行期路径)
 #   --sub-url <订阅URL>        打包时直连下载失败,经订阅节点建本地代理再下载
 # 环境变量:
+#   PROG             程序名(与 --prog 等价,默认 Panoxy)
 #   GOAMD64          amd64 CLI 编译档(默认自动检测 AVX2;可 GOAMD64=v1/v3/v4 强制)
-#   ASSETS_SRC       本地资产目录(默认 /opt/panixy,存在即优先复制,断网可打包)
+#   ASSETS_SRC       本地资产目录(默认 /opt/$PROG,存在即优先复制,断网可打包)
 #   MIHOMO_VERSION   内核版本(默认运行时探测上游最新;显式指定可固定/复现)
-#   MIHOMO_BOOT_BIN  引导代理内核(默认 /opt/panixy/bin/mihomo)
+#   MIHOMO_BOOT_BIN  引导代理内核(默认 /opt/$PROG/bin/mihomo)
 #   PROXY_PORT       引导代理端口(默认 33999)
 # 打包流程:编译 CLI → 资产获取(本地优先/直连/订阅代理兜底)→ 订阅泄露扫描
-#   → 组装 Panixy-V<ver>-<arch>.tar.gz + sha256(订阅 URL 永不进包)→ 清旧产物
+#   → 组装 <Prog>-V<ver>-<arch>.tar.gz + sha256(订阅 URL 永不进包)→ 清旧产物
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 ROOT="$(cd "$(dirname "$SELF")" && pwd)"
@@ -28,6 +30,7 @@ usage() { sed -n '2,/^set -euo/p' "$SELF" | sed '$d; s/^# \{0,1\}//'; exit 0; }
 
 # ---- 全局状态(供 package 与 EXIT trap 使用) ----
 SUB_URL=""; PROXYX=""; BOOT_DIRF=""; TMP=""
+PROG="${PROG:-Panoxy}"
 PROXY_PORT="${PROXY_PORT:-33999}"
 trap 'boot_proxy_stop; rm -rf "$TMP"' EXIT
 
@@ -49,6 +52,7 @@ build_cmd() {
     case "$1" in
       --arch) ARCH="$2"; shift 2 ;;
       --ver)  VER="$2"; shift 2 ;;
+      --prog) PROG="$2"; shift 2 ;;
       -h|-\?|--help) usage ;;
       *) echo "未知参数: $1(查看用法: $0 -h)"; exit 1 ;;
     esac
@@ -56,44 +60,44 @@ build_cmd() {
   [ -n "$ARCH" ] || ARCH="$(host_arch)"
   [ -n "$ARCH" ] || { echo "无法识别当前架构,请 --arch amd64|arm64|all 指定"; exit 1; }
   [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "")"
-  [ -n "$VER" ] || VER="V0.1.0-dev"
+  [ -n "$VER" ] || VER="V0.0.1-dev"
   local commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  local ldflags="-s -w -X main.version=$VER -buildid="
+  local ldflags="-s -w -X main.version=$VER -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$PROG -buildid="
   local targets="$ARCH"
   [ "$ARCH" = all ] && targets="amd64 arm64"
   mkdir -p dist
-  echo "== 构建 panixy $VER (commit $commit, 架构: $targets) =="
+  echo "== 构建 $PROG $VER (commit $commit, 架构: $targets) =="
   local arch
   for arch in $targets; do
     case "$arch" in
       amd64)
         local lvl="${GOAMD64:-$(goamd64)}"
         echo "  amd64(GOAMD64=$lvl)"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/panixy-linux-amd64 ./cmd/panixy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/panixy)
         ;;
       arm64)
         echo "  arm64"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/panixy-linux-arm64 ./cmd/panixy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/panixy)
         ;;
     esac
   done
-  for b in dist/panixy-linux-amd64 dist/panixy-linux-arm64; do
+  for b in dist/$PROG-linux-amd64 dist/$PROG-linux-arm64; do
     [ -x "$b" ] && "$b" --version 2>/dev/null || true
   done
-  (cd dist && sha256sum panixy-linux-* > sha256sums.txt)
+  (cd dist && sha256sum $PROG-linux-* > sha256sums.txt)
   ls -la dist
-  echo "== 完成: dist/panixy-linux-{amd64,arm64}(按需) =="
+  echo "== 完成: dist/$PROG-linux-{amd64,arm64}(按需) =="
 }
 
 clean() {
-  rm -rf dist/ Panixy-V*/
-  echo "== 已清理 dist/ 与暂存目录 Panixy-*/ =="
+  rm -rf dist/ ${PROG}-V*/
+  echo "== 已清理 dist/ 与暂存目录 ${PROG}-*/ =="
 }
 
 # ---- 订阅引导代理:直连下载不了 GitHub 时,用订阅节点建本地代理再下 ----
 boot_proxy() {
   [ -n "$SUB_URL" ] || return 1
-  local BOOT_BIN="${MIHOMO_BOOT_BIN:-/opt/panixy/bin/mihomo}"
+  local BOOT_BIN="${MIHOMO_BOOT_BIN:-/opt/$PROG/bin/mihomo}"
   [ -x "$BOOT_BIN" ] || { echo "      ⚠️ 无引导内核($BOOT_BIN),无法经订阅下载"; return 1; }
   local d; d="$(mktemp -d)"
   cat > "$d/boot.yaml" <<YEOF
@@ -154,14 +158,14 @@ leak_scan() {
 
 build_one() {
   local arch="$1"
-  local pkg="Panixy-${VER}-${arch}"
+  local pkg="${PROG}-${VER}-${arch}"
   rm -rf "$pkg"; mkdir -p "$pkg/assets/core" "$pkg/assets/geo" "$pkg/assets/ui/official" "$pkg/assets/rule"
-  cp "dist/panixy-linux-$arch" "$pkg/panixy"; chmod +x "$pkg/panixy"
+  cp "dist/$PROG-linux-$arch" "$pkg/$PROG"; chmod +x "$pkg/$PROG"
   cp "$TMP/mihomo-linux-$arch.gz" "$pkg/assets/core/mihomo-linux-$arch-$MIHOMO_VER.gz"
   cp "$TMP"/GeoIP.dat "$TMP"/GeoSite.dat "$TMP"/Country.mmdb "$pkg/assets/geo/"
   tar xzf "$TMP/ui.tgz" -C "$pkg/assets/ui/official"
   test -f "$pkg/assets/ui/official/index.html" || { echo "UI 包异常"; exit 1; }
-  cp "$TMP/AWAvenue-Ads.yaml" "$pkg/assets/rule/"
+  cp "$TMP/HyperADRules-Ads.yaml" "$pkg/assets/rule/"
   cp README.md "$pkg/"
   leak_scan "$pkg"
   mkdir -p dist && tar -czf "dist/$pkg.tar.gz" "$pkg"
@@ -174,14 +178,14 @@ build_one() {
 # 旧版本可经 git 重编,无需在 dist/ 堆积;运行时的内核回滚由 panixy rollback 负责。
 cleanup_old() {
   local f d
-  for f in dist/Panixy-*.tar.gz dist/Panixy-*.tar.gz.sha256; do
+  for f in dist/${PROG}-*.tar.gz dist/${PROG}-*.tar.gz.sha256; do
     [ -e "$f" ] || continue
-    [[ "$f" == dist/Panixy-"$VER"-*.tar.gz* ]] && continue
+    [[ "$f" == dist/${PROG}-"$VER"-*.tar.gz* ]] && continue
     rm -f "$f"
   done
-  for d in Panixy-*; do
+  for d in ${PROG}-*; do
     [ -d "$d" ] || continue
-    [[ "$d" == Panixy-"$VER"-* ]] && continue
+    [[ "$d" == ${PROG}-"$VER"-* ]] && continue
     rm -rf "$d"
   done
 }
@@ -195,6 +199,7 @@ package_cmd() {
     case "$1" in
       --arch) ARCH="$2"; shift 2 ;;
       --ver)  VER="$2"; shift 2 ;;
+      --prog) PROG="$2"; shift 2 ;;
       --sub-url) SUB_URL="$2"; shift 2 ;;
       all|amd64|arm64) [ -n "$ARCH" ] && { echo "位置参数与 --arch 冲突: $1"; exit 1; }; ARCH="$1"; shift ;;
       -h|-\?|--help) usage ;;
@@ -203,10 +208,10 @@ package_cmd() {
   done
   [ -n "$ARCH" ] || ARCH="$(host_arch)"          # 打包默认当前 CPU 架构
   [ -n "$ARCH" ] || { echo "无法识别当前架构,请 --arch amd64|arm64|all 或位置参数 all 指定"; exit 1; }
-  [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "V0.1.0-dev")"
+  [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "V0.0.1-dev")"
   MIHOMO_VER="${MIHOMO_VERSION:-$(latest_gh_release MetaCubeX/mihomo)}"
   # 本地资产源(断网打包):存在则优先复制,缺失才联网下载
-  local SRC="${ASSETS_SRC:-/opt/panixy}"
+  local SRC="${ASSETS_SRC:-/opt/$PROG}"
   # 联网探测失败时兜底:本地内核版本 > 明确报错(绝不静默写死)
   if [ -z "$MIHOMO_VER" ] && [ -x "$SRC/bin/mihomo" ]; then
     MIHOMO_VER="$("$SRC/bin/mihomo" -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
@@ -216,7 +221,7 @@ package_cmd() {
   BOOT_DIRF="$(mktemp -d)/panixy-boot-proxy.dir"; : > "$BOOT_DIRF" 2>/dev/null || BOOT_DIRF=/tmp/panixy-boot-proxy.$$.dir
 
   echo "== [1/5] 编译(CLI, --arch $ARCH) =="
-  build_cmd --arch "$ARCH" --ver "$VER"
+  build_cmd --arch "$ARCH" --ver "$VER" --prog "$PROG"
 
   echo "== [2/5] 资产获取(本地优先: $SRC;缺失才下载) =="
   TMP="$(mktemp -d)"
@@ -228,8 +233,8 @@ package_cmd() {
     else dl "$TMP/$f" "$geo/$(echo $f | tr 'A-Z' 'a-z' | sed 's/\.dat$/.dat/;s/country\.mmdb/country.mmdb/')" || true; fi
   done
   # 广告规则
-  if [ -f "$SRC/rule_provider/AWAvenue-Ads.yaml" ]; then cp "$SRC/rule_provider/AWAvenue-Ads.yaml" "$TMP/"; echo "      本地: AWAvenue-Ads.yaml"
-  else dl "$TMP/AWAvenue-Ads.yaml" "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml" || true; fi
+  if [ -f "$SRC/rule_provider/HyperADRules-Ads.yaml" ]; then cp "$SRC/rule_provider/HyperADRules-Ads.yaml" "$TMP/"; echo "      本地: HyperADRules-Ads.yaml"
+  else dl "$TMP/HyperADRules-Ads.yaml" "https://github.com/Lynricsy/HyperADRules/releases/latest/download/hyper_adrules_ads_clash.yaml" || true; fi
   # 面板
   if [ -d "$SRC/ui/official" ] && [ -f "$SRC/ui/official/index.html" ]; then
     (cd "$SRC/ui/official" && tar czf "$TMP/ui.tgz" .); echo "      本地: metacubexd UI"
@@ -253,7 +258,7 @@ package_cmd() {
       echo "      下载: mihomo 内核(arm64)"; dl "$TMP/mihomo-linux-arm64.gz" "$base/mihomo-linux-arm64-$MIHOMO_VER.gz" || true
     fi
   done
-  [ -s "$TMP/Country.mmdb" ] && [ -s "$TMP/AWAvenue-Ads.yaml" ] && [ -s "$TMP/ui.tgz" ] || { echo "geo/规则/UI 资产不完整(本地与网络均不可得)"; exit 1; }
+  [ -s "$TMP/Country.mmdb" ] && [ -s "$TMP/HyperADRules-Ads.yaml" ] && [ -s "$TMP/ui.tgz" ] || { echo "geo/规则/UI 资产不完整(本地与网络均不可得)"; exit 1; }
 
   echo "== [3/5] 订阅泄露扫描 =="
   leak_scan .
@@ -267,7 +272,7 @@ package_cmd() {
 
   echo "== [5/5] 完成 =="
   cleanup_old
-  ls -la dist/Panixy-*.tar.gz* 2>/dev/null | tail -4
+  ls -la dist/${PROG}-*.tar.gz* 2>/dev/null | tail -4
 }
 
 case "${1:-}" in

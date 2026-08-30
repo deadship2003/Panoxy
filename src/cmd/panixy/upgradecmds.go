@@ -3,21 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/mihomoapi"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/systemdunit"
-	"github.com/deadship2003/panixy/internal/upgrade"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/mihomoapi"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
 // runUpgrade 参数化升级:默认 core+ui;--core/--ui 二选一;--check dry-run;
@@ -33,7 +33,8 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	check, _ := cmd.Flags().GetBool("check")
 	coreVer, _ := cmd.Flags().GetString("core-version")
 	uiVer, _ := cmd.Flags().GetString("ui-version")
-	// 默认升 core+ui;--cli 需显式指定(CLI 走 GitHub 自升级,不进默认全升/每日定时器)
+	srcDir, _ := cmd.Flags().GetString("src")
+	// 默认升 core+ui;--cli 需显式指定(CLI 走本地自编译,不进默认全升/每日定时器)
 	anyOnly := coreOnly || uiOnly || cliOnly
 	doCore := !anyOnly || coreOnly
 	doUI := !anyOnly || uiOnly
@@ -52,7 +53,7 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		curUI = strings.TrimSpace(string(b))
 	}
 
-	var latestCore, latestUI, latestCLI string
+	var latestCore, latestUI string
 	if doCore {
 		want := coreVer
 		if want == "" {
@@ -97,22 +98,11 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	if doCLI {
 		cur := version
-		want := ""
-		if latestCLI, err = upgrade.Latest("deadship2003/Panixy", proxy); err != nil {
-			if !check {
-				logx.Warn("CLI 版本查询失败,本次跳过:%v", err)
-			}
-		} else {
-			want = latestCLI
-		}
+		srcVer := cliSrcVersion(srcDir)
 		if check {
-			fmt.Printf("CLI:  当前 %s 最新 %s → %s\n", orQ(cur), orQ(want), action(cur, want))
-		} else if want != "" && want != cur {
-			if err := cliUpgrade(p, proxy, want); err != nil {
-				return err
-			}
-		} else {
-			logx.Info("CLI 已是最新 %s", cur)
+			fmt.Printf("CLI:  当前 %s 源码 %s → %s\n", orQ(cur), orQ(srcVer), action(cur, srcVer))
+		} else if err := cliUpgrade(p, srcDir); err != nil {
+			return err
 		}
 	}
 	if check {
@@ -194,7 +184,7 @@ func restoreCore(p paths.Paths, bak, cur string) {
 	os.Chmod(p.Bin, 0o755)
 	systemdunit.Restart()
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		logx.Warn("回滚后健康检查仍未通过,请 panixy log 排查")
+		logx.Warn("回滚后健康检查仍未通过,请 %s log 排查", constants.ProgName)
 	}
 }
 
@@ -284,27 +274,59 @@ func firstVer(s string) string {
 	return s
 }
 
-// cliUpgrade 升级 panixy CLI 自身:从 GitHub Release 下载新版本替换 /usr/local/bin/panixy。
-func cliUpgrade(p paths.Paths, proxy, want string) error {
-	logx.Info("CLI 升级: → %s", want)
-	tmp, _ := os.MkdirTemp("", "panixy-cli-up-")
-	defer os.RemoveAll(tmp)
-	arch := runtime.GOARCH
-	url := fmt.Sprintf("https://github.com/deadship2003/Panixy/releases/download/%s/panixy-linux-%s", want, arch)
-	dst := filepath.Join(tmp, "panixy.new")
-	if err := upgrade.DownloadProgress(url, proxy, dst, "CLI"); err != nil {
-		return fmt.Errorf("CLI 下载失败: %w", err)
+// cliUpgrade 升级 Panoxy CLI 自身:在源码树内本地自编译(go build)→ 替换已装二进制。
+// 不下载预编译产物 —— git clone 只含源码(手工编译很快);--src 指向仓库根,缺省当前目录。
+func cliUpgrade(p paths.Paths, srcDir string) error {
+	logx.Info("CLI 升级:本地自编译")
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		return fmt.Errorf("未找到 go 工具链,请先安装 Go 1.23+(或 cd 到仓库根手工 go build)")
 	}
-	os.Chmod(dst, 0o755)
+	if srcDir == "" {
+		srcDir, _ = os.Getwd()
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, "go.mod")); err != nil {
+		return fmt.Errorf("源码根无效(缺 go.mod): %s;请 cd 到仓库根或 --src 指定", srcDir)
+	}
+	newVer := cliSrcVersion(srcDir)
+	if newVer == "" {
+		newVer = version
+	}
+	tmp, _ := os.MkdirTemp("", constants.ProgName+"-cli-up-")
+	defer os.RemoveAll(tmp)
+	newBin := filepath.Join(tmp, constants.ProgName)
+	ldflags := fmt.Sprintf("-s -w -X main.version=%s -X github.com/deadship2003/Panoxy/internal/constants.ProgName=%s -buildid=",
+		newVer, constants.ProgName)
+	cmd := exec.Command(goBin, "build", "-trimpath", "-ldflags", ldflags, "-o", newBin, "./cmd/panixy")
+	cmd.Dir = srcDir
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("自编译失败: %v\n%s", err, out)
+	}
+	if out, err := exec.Command(newBin, "--version").CombinedOutput(); err != nil {
+		return fmt.Errorf("新二进制无法运行: %v\n%s", err, out)
+	}
 
 	// 备份旧版 → 替换
 	bak := p.Cli + ".bak-" + strings.TrimPrefix(version, "v")
 	copyFile(p.Cli, bak)
-	if err := copyFile(dst, p.Cli); err != nil {
+	if err := copyFile(newBin, p.Cli); err != nil {
 		copyFile(bak, p.Cli) // 回滚
 		return fmt.Errorf("CLI 替换失败: %w", err)
 	}
 	os.Chmod(p.Cli, 0o755)
-	logx.Info("CLI 升级成功 → %s(备份 %s)", want, bak)
+	logx.Info("CLI 自编译成功 → %s(备份 %s)", newVer, bak)
 	return nil
+}
+
+// cliSrcVersion 取源码树的 git describe(与 build.sh 同源);非 git 目录返回空。
+func cliSrcVersion(srcDir string) string {
+	if srcDir == "" {
+		srcDir, _ = os.Getwd()
+	}
+	out, err := exec.Command("git", "-C", srcDir, "describe", "--tags").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

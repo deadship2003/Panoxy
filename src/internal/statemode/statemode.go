@@ -1,4 +1,4 @@
-// Package statemode 读写 panixy 自身状态文件(/opt/panixy/panixy.yaml):
+// Package statemode 读写 Panoxy 自身状态文件(/opt/Panoxy/Panoxy.yaml):
 // proxy-mode 等由 CLI 程序化管理的设置。用户不需要手编;缺省 tun。
 package statemode
 

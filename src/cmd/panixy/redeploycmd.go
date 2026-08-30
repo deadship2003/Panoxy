@@ -8,14 +8,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/firewall"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/mihomoapi"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/statemode"
-	"github.com/deadship2003/panixy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/firewall"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/mihomoapi"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/statemode"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
 // applyFW 按当前模式显式加载防火墙规则(fw apply 的复用)。
@@ -63,7 +63,7 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// 预检:必须已安装(全新装用 deploy);离线包资产齐全;无 bash 旧版残留
 	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
-		return fmt.Errorf("未检测到已安装的 panixy(内核/配置/CLI 缺失)—— 全新安装请用 sudo ./panixy deploy")
+		return fmt.Errorf("未检测到已安装的 %s(内核/配置/CLI 缺失)—— 全新安装请用 sudo ./%s deploy", constants.ProgName, constants.ProgName)
 	}
 	pkgDir, err := os.Getwd() // redeploy 须在解压的离线包根目录运行
 	if err != nil {
@@ -71,7 +71,7 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	assets := filepath.Join(pkgDir, "assets")
 	if _, err := os.Stat(assets); err != nil {
-		return fmt.Errorf("当前目录无离线资产(%s)—— redeploy 需在解压的 Panixy 离线包内运行", assets)
+		return fmt.Errorf("当前目录无离线资产(%s)—— redeploy 需在解压的 %s 离线包内运行", assets, constants.ProgName)
 	}
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
 		return fmt.Errorf("检测到 bash 旧版部署残留:%s\n请先手动清理(详见 README「从 bash 版迁移」)", legacy)
@@ -197,7 +197,7 @@ func redeployDryRun(cmd *cobra.Command) error {
 	p := paths.Get()
 	logx.Info("== redeploy --dry-run(试运行,不执行)==")
 	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
-		logx.Warn("未检测到已安装的 panixy;全新安装请用 sudo ./panixy deploy")
+		logx.Warn("未检测到已安装的 %s;全新安装请用 sudo ./%s deploy", constants.ProgName, constants.ProgName)
 	}
 	pkgDir, _ := os.Getwd()
 	assets := filepath.Join(pkgDir, "assets")
@@ -207,7 +207,7 @@ func redeployDryRun(cmd *cobra.Command) error {
 		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
 		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
 		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
-		{"广告规则", filepath.Join(assets, "rule", "AWAvenue-Ads.yaml")},
+		{"广告规则", filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")},
 		{"面板", filepath.Join(assets, "ui", "official", "index.html")},
 	} {
 		if exists(item.path) {
@@ -222,6 +222,6 @@ func redeployDryRun(cmd *cobra.Command) error {
 	}
 	logx.Step("[计划] 强制替换:内核/geo/规则/UI/CLI/手册/单元 → 清FW → 重启 → 重挂FW(模式 %s)", mode)
 	logx.Info("保留不动: %s(订阅/节点选择/分组)与 %s", p.Conf, p.Proxies)
-	logx.Info("== 试运行结束。真装: sudo ./panixy redeploy")
+	logx.Info("== 试运行结束。真装: sudo ./%s redeploy", constants.ProgName)
 	return nil
 }

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 func TestRenderConfigVariants(t *testing.T) {
@@ -57,19 +59,29 @@ func TestRenderConfigVariants(t *testing.T) {
 func TestConfigPassesMihomoCheck(t *testing.T) {
 	bin := os.Getenv("MIHOMO_BIN")
 	if bin == "" {
-		if _, err := os.Stat("/opt/panixy/bin/mihomo"); err == nil {
-			bin = "/opt/panixy/bin/mihomo"
-		} else {
+		for _, c := range []string{
+			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
+			"/opt/panixy/bin/mihomo", // 旧版残留
+		} {
+			if _, err := os.Stat(c); err == nil {
+				bin = c
+				break
+			}
+		}
+		if bin == "" {
 			t.Skip("本机无 mihomo 内核,跳过 -t 实测")
 		}
 	}
 	geoSrc := os.Getenv("GEO_SRC")
 	if geoSrc == "" {
-		geoSrc = "/opt/panixy"
+		geoSrc = filepath.Join("/opt", constants.ProgName)
 		if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
-			h, _ := os.UserHomeDir()
-			if _, err2 := os.Stat(h + "/panixy-e2e/GeoSite.dat"); err2 == nil {
-				geoSrc = h + "/panixy-e2e"
+			geoSrc = "/opt/panixy" // 旧版残留
+			if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
+				h, _ := os.UserHomeDir()
+				if _, err2 := os.Stat(h + "/panixy-e2e/GeoSite.dat"); err2 == nil {
+					geoSrc = h + "/panixy-e2e"
+				}
 			}
 		}
 	}

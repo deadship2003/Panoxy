@@ -2,7 +2,7 @@
 dist/
 
 # 离线包产物
-Panixy-V*/
+Panoxy-V*/
 *.tar.gz
 *.sha256
 

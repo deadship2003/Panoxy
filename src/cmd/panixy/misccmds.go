@@ -9,14 +9,14 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/deadship2003/panixy/internal/asset"
-	"github.com/deadship2003/panixy/internal/config"
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/mihomoapi"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/config"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/mihomoapi"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
 // runCheck 用内核 -t 校验配置(只读,免 root)。
@@ -41,7 +41,7 @@ func runApplyConf(cmd *cobra.Command, args []string) error {
 
 func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("用法: panixy apply-conf <yaml>")
+		return fmt.Errorf("用法: %s apply-conf <yaml>", constants.ProgName)
 	}
 	src := args[0]
 	if _, err := os.Stat(src); err != nil {
@@ -90,7 +90,7 @@ func runUnits(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"panixy.service", "panixy-upgrade.service", "panixy-upgrade.timer"} {
+	for _, name := range []string{constants.ProgName + ".service", constants.ProgName + "-upgrade.service", constants.ProgName + "-upgrade.timer"} {
 		fmt.Printf("===== %s =====\n%s\n", name, units[name])
 	}
 	return nil

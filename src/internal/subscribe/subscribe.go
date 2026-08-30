@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deadship2003/panixy/internal/httpx"
-	"github.com/deadship2003/panixy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/httpx"
+	"github.com/deadship2003/Panoxy/internal/logx"
 )
 
 // UA 返回拉取订阅的 User-Agent。
@@ -95,7 +96,7 @@ func CheckName(name string) error {
 // CheckURL 校验订阅 URL。
 func CheckURL(u string) error {
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		return fmt.Errorf("URL 需以 http(s):// 开头(命令行传参记得整体加单引号,或直接 panixy sub import 回车粘贴)")
+		return fmt.Errorf("URL 需以 http(s):// 开头(命令行传参记得整体加单引号,或直接 %s sub import 回车粘贴)", constants.ProgName)
 	}
 	return nil
 }

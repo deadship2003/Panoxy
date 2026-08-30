@@ -1,5 +1,5 @@
 [Unit]
-Description=panixy mihomo transparent proxy ({{.Mode}})
+Description={{.Prog}} mihomo transparent proxy ({{.Mode}})
 After=network-online.target
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=root
 # 自定义安装目录时,fw apply/upgrade 子进程据此找到状态与数据(与 --root 一致)
-Environment=PANIXY_ROOT={{.Root}}
+Environment={{.EnvPrefix}}_ROOT={{.Root}}
 # 启动前配置校验(mihomo -t;其日志走 stdout,由 journald 收)
 ExecStartPre={{.Bin}} -t -f {{.Conf}} -d {{.Root}}
 ExecStart={{.Bin}} -f {{.Conf}} -d {{.Root}} -ext-ui {{.UiDir}}

@@ -9,20 +9,30 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deadship2003/panixy/internal/asset"
-	"github.com/deadship2003/panixy/internal/execx"
-	"github.com/deadship2003/panixy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/execx"
+	"github.com/deadship2003/Panoxy/internal/paths"
+)
+
+// 单元名随程序名派生(编译注入 ProgName 后自动跟随)。
+var (
+	unitMain    = constants.ProgName + ".service"
+	unitUpgrade = constants.ProgName + "-upgrade.service"
+	unitTimer   = constants.ProgName + "-upgrade.timer"
 )
 
 // Render 生成三份单元内容(service 依赖当前模式)。
 func Render(p paths.Paths, mode string) (map[string]string, error) {
 	svc, err := asset.RenderService(asset.UnitData{
-		Mode:  mode,
-		Bin:   p.Bin,
-		Conf:  p.Conf,
-		Root:  p.Root,
-		UiDir: p.UiDir,
-		Cli:   p.Cli,
+		Mode:      mode,
+		Prog:      constants.ProgName,
+		EnvPrefix: constants.EnvPrefix(),
+		Bin:       p.Bin,
+		Conf:      p.Conf,
+		Root:      p.Root,
+		UiDir:     p.UiDir,
+		Cli:       p.Cli,
 	})
 	if err != nil {
 		return nil, err
@@ -36,9 +46,9 @@ func Render(p paths.Paths, mode string) (map[string]string, error) {
 		return nil, err
 	}
 	return map[string]string{
-		"panixy.service":         svc,
-		"panixy-upgrade.service": us,
-		"panixy-upgrade.timer":   ut,
+		unitMain:    svc,
+		unitUpgrade: us,
+		unitTimer:   ut,
 	}, nil
 }
 
@@ -63,7 +73,7 @@ func Write(p paths.Paths, mode string) error {
 
 // Remove 删除单元并 daemon-reload(幂等)。
 func Remove(p paths.Paths) {
-	for _, name := range []string{"panixy.service", "panixy-upgrade.service", "panixy-upgrade.timer"} {
+	for _, name := range []string{unitMain, unitUpgrade, unitTimer} {
 		os.Remove(filepath.Join(p.UnitDir, name))
 	}
 	_, _ = execx.Run("systemctl", "daemon-reload")
@@ -74,16 +84,16 @@ func IsActive() bool { return Active() == "active" }
 
 // Active 返回服务状态字符串(active/inactive/failed...)。
 func Active() string {
-	out, _ := execx.Run("systemctl", "is-active", "panixy.service")
+	out, _ := execx.Run("systemctl", "is-active", unitMain)
 	return strings.TrimSpace(out)
 }
 
 // EnableNow 启用并拉起服务;失败时附带 journal 尾部(真机排障的关键线索)。
 func EnableNow() error {
-	out, err := execx.Run("systemctl", "enable", "--now", "panixy.service")
+	out, err := execx.Run("systemctl", "enable", "--now", unitMain)
 	if err != nil {
 		detail := ""
-		if j, jerr := execx.Run("journalctl", "-u", "panixy.service", "-n", "15", "--no-pager"); jerr == nil && j != "" {
+		if j, jerr := execx.Run("journalctl", "-u", unitMain, "-n", "15", "--no-pager"); jerr == nil && j != "" {
 			detail = "\n── journalctl 尾部 ──\n" + j
 		}
 		return fmt.Errorf("启用服务失败: %s%s", strings.TrimSpace(out), detail)
@@ -91,21 +101,21 @@ func EnableNow() error {
 	return nil
 }
 func EnableTimer() error {
-	_, err := execx.RunOK("启用升级 timer", "systemctl", "enable", "--now", "panixy-upgrade.timer")
+	_, err := execx.RunOK("启用升级 timer", "systemctl", "enable", "--now", unitTimer)
 	return err
 }
 func Restart() error {
-	_, err := execx.RunOK("重启服务", "systemctl", "restart", "panixy.service")
+	_, err := execx.RunOK("重启服务", "systemctl", "restart", unitMain)
 	return err
 }
 func Stop() {
-	_, _ = execx.Run("systemctl", "disable", "--now", "panixy.service", "panixy-upgrade.timer")
+	_, _ = execx.Run("systemctl", "disable", "--now", unitMain, unitTimer)
 }
 
 // DetectLegacy 检测 bash 旧版部署残留:旧 unit 含 resolvectl、或配置含 tun dns-hijack。
 // 返回非空字符串即检测到的残留描述(deploy 据此中止并给手动清理指引)。
 func DetectLegacy(p paths.Paths) string {
-	if b, err := os.ReadFile(filepath.Join(p.UnitDir, "panixy.service")); err == nil {
+	if b, err := os.ReadFile(filepath.Join(p.UnitDir, unitMain)); err == nil {
 		if strings.Contains(string(b), "resolvectl") {
 			return "systemd 单元含 resolvectl(bash 旧版部署)"
 		}
@@ -160,7 +170,7 @@ func PortCheck(confPath string) error {
 	if len(list) > 0 {
 		hint := ""
 		if pout, _ := execx.Run("sh", "-c", "pgrep -af 'bin/mihomo' | head -3"); strings.TrimSpace(pout) != "" {
-			hint = "\n检测到在运行的 mihomo:\n" + pout + "→ 旧部署未清理:先 sudo panixy uninstall(旧版)/停掉旧实例再 deploy\n"
+			hint = "\n检测到在运行的 mihomo:\n" + pout + "→ 旧部署未清理:先 sudo " + constants.ProgName + " uninstall(旧版)/停掉旧实例再 deploy\n"
 		}
 		return fmt.Errorf("端口已被占用: %s%s", strings.Join(list, "、"), hint)
 	}

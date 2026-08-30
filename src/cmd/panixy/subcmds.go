@@ -12,19 +12,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/config"
-	"github.com/deadship2003/panixy/internal/execx"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/locker"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/mihomoapi"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/subscribe"
-	"github.com/deadship2003/panixy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/config"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/execx"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/locker"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/mihomoapi"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/subscribe"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
 func needRoot() error {
-	if os.Getenv("PANIXY_ALLOW_NONROOT") != "" {
+	if os.Getenv(constants.EnvPrefix()+"_ALLOW_NONROOT") != "" {
 		return nil // 测试沙箱钩子:e2e 用,生产勿设
 	}
 	if os.Geteuid() != 0 {
@@ -72,7 +73,7 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		url = args[0]
 	} else {
-		if url, err = promptSubURL("panixy sub import [订阅URL] [--file 本地文件](或无参数进入粘贴模式)"); err != nil {
+		if url, err = promptSubURL(constants.ProgName + " sub import [订阅URL] [--file 本地文件](或无参数进入粘贴模式)"); err != nil {
 			return err
 		}
 	}
@@ -91,8 +92,8 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if body, err = fetchSubBody(url, mihomoapi.NewFromConf(p.Conf)); err != nil {
 			return fmt.Errorf(`订阅拉取或校验失败: %v
   提示:命令行传 URL 须整体加单引号(含 & ? 等字符会被 shell 拆掉),或直接
-  sudo panixy sub import 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
-  sudo panixy sub import --file <订阅文件>),或指定可用代理 PANIXY_PROXY`, err)
+  sudo %s sub import 回车进入粘贴模式;无外网环境可离线导入(任意设备下载好订阅后
+  sudo %s sub import --file <订阅文件>),或指定可用代理 %s_PROXY`, err, constants.ProgName, constants.ProgName, constants.EnvPrefix())
 		}
 	}
 
@@ -119,14 +120,14 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	cache := filepath.Join(p.Proxies, name+".yaml")
 	if b, err := os.ReadFile(cache); err == nil {
-		os.WriteFile(cache+".panixy-bak", b, 0o644)
+		os.WriteFile(cache+constants.BackupSuffix(), b, 0o644)
 	}
 	recoverAll := func(restart bool) {
 		config.Restore(p.Conf)
-		if b, err := os.ReadFile(cache + ".panixy-bak"); err == nil {
+		if b, err := os.ReadFile(cache + constants.BackupSuffix()); err == nil {
 			os.WriteFile(cache, b, 0o644)
 		}
-		os.Remove(cache + ".panixy-bak")
+		os.Remove(cache + constants.BackupSuffix())
 		if restart {
 			systemdunit.Restart()
 		}
@@ -194,11 +195,11 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	if nodes == 0 {
 		recoverAll(true)
-		return fmt.Errorf("订阅 %s 未加载(节点数为 0),已恢复原订阅;排查: panixy log / panixy check", name)
+		return fmt.Errorf("订阅 %s 未加载(节点数为 0),已恢复原订阅;排查: %s log / %s check", name, constants.ProgName, constants.ProgName)
 	}
 	logx.Info("订阅(%s)加载成功:%d 个节点(测速选优由 🔃 自动选择 组负责,默认走最快节点)", name, nodes)
 	config.ClearBackup(p.Conf)
-	os.Remove(cache + ".panixy-bak")
+	os.Remove(cache + constants.BackupSuffix())
 	logx.Info("订阅导入完成: %s", url)
 	return nil
 }

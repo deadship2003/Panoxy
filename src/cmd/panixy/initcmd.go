@@ -16,15 +16,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/asset"
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/mihomoapi"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/statemode"
-	"github.com/deadship2003/panixy/internal/subscribe"
-	"github.com/deadship2003/panixy/internal/systemdunit"
-	"github.com/deadship2003/panixy/internal/upgrade"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/mihomoapi"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/statemode"
+	"github.com/deadship2003/Panoxy/internal/subscribe"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
 // runInit:不打包、单二进制裸机初始化 —— 自己下载全部资产并部署,随后导入订阅。
@@ -62,7 +62,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("需要 systemd")
 	}
 	if legacy := systemdunit.DetectLegacy(p); legacy != "" {
-		return fmt.Errorf("检测到 bash 旧版部署残留:%s(先 sudo panixy uninstall 并删除 /etc/clash.yaml,详见 README 迁移一节)", legacy)
+		return fmt.Errorf("检测到 bash 旧版部署残留:%s(先 sudo %s uninstall 并删除 %s,详见 README 迁移一节)", legacy, constants.ProgName, constants.DefConfPath)
 	}
 
 	stepf(2, "获取订阅内容(%s)", orURL(url, file))
@@ -73,7 +73,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		if url == "" {
-			if url, err = promptSubURL("panixy init [订阅URL] [--file 本地订阅文件]"); err != nil {
+			if url, err = promptSubURL(constants.ProgName + " init [订阅URL] [--file 本地订阅文件]"); err != nil {
 				return err
 			}
 		}
@@ -113,7 +113,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	stepf(4, "下载 mihomo 内核(%s)", runtimeArch())
 	coreVer, err := detectCoreVer(proxyFn)
 	if err != nil {
-		return fmt.Errorf("无法探测 mihomo 最新内核版本:%v(请用离线包 sudo ./panixy deploy,或手工复制内核到 %s 并 chmod +x 后重试)", err, p.Bin)
+		return fmt.Errorf("无法探测 mihomo 最新内核版本:%v(请用离线包 sudo ./%s deploy,或手工复制内核到 %s 并 chmod +x 后重试)", err, constants.ProgName, p.Bin)
 	}
 	logx.Info("运行时探测到上游最新内核 %s", coreVer)
 	kernel := ""
@@ -134,7 +134,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 	}
 	if kernel == "" {
-		return fmt.Errorf("内核下载失败(直连/代理/镜像均不可得);请用离线包 sudo ./panixy deploy,或手工复制 mihomo 内核到 %s 并 chmod +x 后重试", p.Bin)
+		return fmt.Errorf("内核下载失败(直连/代理/镜像均不可得);请用离线包 sudo ./%s deploy,或手工复制 mihomo 内核到 %s 并 chmod +x 后重试", constants.ProgName, p.Bin)
 	}
 
 	stepf(5, "下载 geo 数据与广告规则")
@@ -150,8 +150,8 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 			geoOK++
 		}
 	}
-	ruleURL := "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/refs/heads/main/Filters/AWAvenue-Ads-Rule-Clash-Classical.yaml"
-	haveRule := downloadAny(ruleURL, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "AWAvenue-Ads.yaml"), "广告规则")
+	ruleURL := "https://github.com/Lynricsy/HyperADRules/releases/latest/download/hyper_adrules_ads_clash.yaml"
+	haveRule := downloadAny(ruleURL, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "HyperADRules-Ads.yaml"), "广告规则")
 	if geoOK < 3 {
 		return fmt.Errorf("geo 数据下载不完整(%d/3)", geoOK)
 	}
@@ -162,7 +162,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 
 	// ---- 至此资产齐备,以下与 deploy 同构 ----
 	snap := snapshot(p)
-	stepf(7, "资产就位 /opt/panixy + 渲染配置(密钥 %s)", secret)
+	stepf(7, "资产就位 %s + 渲染配置(密钥 %s)", constants.DefRootDir, secret)
 	os.MkdirAll(filepath.Join(p.Root, "bin"), 0o755)
 	if err := copyFile(kernel, p.Bin); err != nil {
 		return err
@@ -176,7 +176,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 	os.MkdirAll(p.RuleProv, 0o755)
 	if haveRule {
-		copyFile(filepath.Join(tmp, "AWAvenue-Ads.yaml"), filepath.Join(p.RuleProv, "AWAvenue-Ads.yaml"))
+		copyFile(filepath.Join(tmp, "HyperADRules-Ads.yaml"), filepath.Join(p.RuleProv, "HyperADRules-Ads.yaml"))
 	}
 	if uiOK {
 		os.MkdirAll(p.UiDir, 0o755)
@@ -232,13 +232,13 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	setCmd.Flags().String("file", subFile, "")
 	setCmd.Flags().StringSlice("group", nil, "")
 	if err := runSubImport(setCmd, []string{url}); err != nil {
-		return fmt.Errorf("订阅导入失败:%v(资产与服务已就绪,可稍后 sudo panixy sub import 重试)", err)
+		return fmt.Errorf("订阅导入失败:%v(资产与服务已就绪,可稍后 sudo %s sub import 重试)", err, constants.ProgName)
 	}
 	if bp := bootProxyAddr(); bp != "" {
 		bootProxyStop()
 		logx.Info("引导代理已清理")
 	}
-	logx.Info("init 完成:panixy status 查看健康;面板 http://<本机IP>:%d/ui/(密钥 %s)", constants.ApiPortDef, secret)
+	logx.Info("init 完成:%s status 查看健康;面板 http://<本机IP>:%d/ui/(密钥 %s)", constants.ProgName, constants.ApiPortDef, secret)
 	return nil
 }
 
@@ -351,7 +351,7 @@ func bootProxyFromSub(body []byte, cmd *cobra.Command) string {
 	if _, err := os.Stat(bootBin); err != nil {
 		// 裸机无内核:无法经订阅节点起引导代理。打印清晰指引后跳过,交给镜像/离线包兜底。
 		logx.Step("无引导内核(%s),无法经订阅节点下载资产", bootBin)
-		logx.Step("  方案1(推荐):在能上网的机器 make package 打离线包 → 目标机 sudo ./panixy deploy")
+		logx.Step("  方案1(推荐):在能上网的机器 make package 打离线包 → 目标机 sudo ./%s deploy", constants.ProgName)
 		logx.Step("  方案2:手工复制 mihomo 内核到 %s 并 chmod +x,再重跑 init", bootBin)
 		return ""
 	}
@@ -446,7 +446,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 	if _, err := os.Stat(p.Conf); err == nil {
 		logx.Info("  现有配置: 存在,将原样继承(分组/自定义参数不动)")
 	} else {
-		logx.Info("  现有配置: 无,将渲染默认模板(密钥 %s,端口 33833/6666/6699/9999)", drySecret(cmd))
+		logx.Info("  现有配置: 无,将渲染默认模板(密钥 %s,端口 33833/9966/6699/9999)", drySecret(cmd))
 	}
 
 	logx.Step("[预检] 下载策略(探测真实资产域,15s 硬顶)")
@@ -461,7 +461,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 	logx.Step("[计划] 下载清单")
 	logx.Info("  内核: mihomo-linux-%s-<运行时自动探测上游最新>.gz(候选降级 v3→标准→compatible)", arch)
 	logx.Info("  geo:  GeoIP.dat / GeoSite.dat / Country.mmdb")
-	logx.Info("  规则: AWAvenue-Ads.yaml   面板: metacubexd compressed-dist.tgz")
+	logx.Info("  规则: HyperADRules-Ads.yaml   面板: metacubexd compressed-dist.tgz")
 
 	logx.Step("[计划] 配置渲染预览(stdout)")
 	d := asset.DefaultConfigData()
@@ -472,7 +472,7 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Print(out)
-	logx.Info("== 试运行结束。真装: sudo panixy init ...;完整沙箱实测: panixy try ...")
+	logx.Info("== 试运行结束。真装: sudo %s init ...;完整沙箱实测: %s try ...", constants.ProgName, constants.ProgName)
 	return nil
 }
 

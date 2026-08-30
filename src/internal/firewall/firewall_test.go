@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deadship2003/panixy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 // 黄金断言:规则文本的关键行必须存在 —— 这些行就是 DNS 劫持/防回环/853 拒绝的全部骨架。
 func TestBuildNftScriptGolden(t *testing.T) {
 	s := BuildNftScript(1053, 6666)
 	for _, want := range []string{
-		"table inet panixy {",
+		"table inet " + constants.NftTable + " {",
 		`elements = { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, 100.64.0.0/10 }`,
 		"iifname != \"lo\" meta l4proto { tcp, udp } th dport 53 redirect to :1053",
 		"ip daddr @keep4 return",
@@ -52,13 +52,15 @@ func TestBuildNftTproxyScriptGolden(t *testing.T) {
 }
 
 func TestBuildIptCmdsGolden(t *testing.T) {
+	dnsChain := constants.EnvPrefix() + "_DNS"
+	tpChain := constants.EnvPrefix() + "_TP"
 	dns := strings.Join(BuildIptDnsCmds(1053, 6666), "\n")
 	for _, want := range []string{
-		"iptables -t nat -N PANIXY_DNS",
-		"iptables -t nat -A PANIXY_DNS -m mark --mark 6666 -j RETURN",
-		"iptables -t nat -A PANIXY_DNS -p udp --dport 53 -j REDIRECT --to-ports 1053",
-		"ip6tables -t nat -A PREROUTING -j PANIXY_DNS",
-		"iptables -t nat -I PANIXY_DNS 1 -d 10.0.0.0/8 -j RETURN",
+		"iptables -t nat -N " + dnsChain,
+		"iptables -t nat -A " + dnsChain + " -m mark --mark 6666 -j RETURN",
+		"iptables -t nat -A " + dnsChain + " -p udp --dport 53 -j REDIRECT --to-ports 1053",
+		"ip6tables -t nat -A PREROUTING -j " + dnsChain,
+		"iptables -t nat -I " + dnsChain + " 1 -d 10.0.0.0/8 -j RETURN",
 	} {
 		if !strings.Contains(dns, want) {
 			t.Errorf("iptables DNS 命令缺少: %q", want)
@@ -66,9 +68,9 @@ func TestBuildIptCmdsGolden(t *testing.T) {
 	}
 	tp := strings.Join(BuildIptTproxyCmds(6666, 1, 7893), "\n")
 	for _, want := range []string{
-		"iptables -t mangle -N PANIXY_TP",
+		"iptables -t mangle -N " + tpChain,
 		"-j TPROXY --on-port 7893 --tproxy-mark 1",
-		"ip6tables -t mangle -C PREROUTING -j PANIXY_TP || ip6tables -t mangle -A PREROUTING -j PANIXY_TP",
+		"ip6tables -t mangle -C PREROUTING -j " + tpChain + " || ip6tables -t mangle -A PREROUTING -j " + tpChain,
 	} {
 		if !strings.Contains(tp, want) {
 			t.Errorf("iptables tproxy 命令缺少: %q", want)
@@ -76,8 +78,8 @@ func TestBuildIptCmdsGolden(t *testing.T) {
 	}
 	clean := strings.Join(BuildIptCleanCmds(), "\n")
 	for _, want := range []string{
-		"iptables -t nat -X PANIXY_DNS",
-		"ip6tables -t mangle -X PANIXY_TP",
+		"iptables -t nat -X " + dnsChain,
+		"ip6tables -t mangle -X " + tpChain,
 	} {
 		if !strings.Contains(clean, want) {
 			t.Errorf("清理命令缺少: %q", want)

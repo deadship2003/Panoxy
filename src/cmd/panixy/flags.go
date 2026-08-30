@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 // 订阅与部署参数的统一注册:init/deploy/try/sub import 共享同一套 flag,

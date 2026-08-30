@@ -9,7 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/deadship2003/panixy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/constants"
 
 	"gopkg.in/yaml.v3"
 )
@@ -343,7 +344,7 @@ func (e *Editor) WireProvider(name string, add bool, groups []string) int {
 }
 
 // PruneDerived 根据实际节点名剔除无匹配的派生组(带 filter 的地区/类型组),只保留有效分组。
-// 被剔除的组名同步从锚点持有者(pr/prd)与 dns 组的 proxies 列表中移除,避免悬空引用。
+// 被剔除的组名同步从锚点持有者(pr/prd)与 DNS 组的 proxies 列表中移除,避免悬空引用。
 // 返回剔除的组数。nodeNames 应覆盖全部 provider(含新导入订阅),避免误删仍被其他订阅命中的组。
 func (e *Editor) PruneDerived(nodeNames []string) int {
 	tm := e.topMap()
@@ -381,7 +382,7 @@ func (e *Editor) PruneDerived(nodeNames []string) int {
 		return 0
 	}
 	gl.Content = keep
-	// 从锚点持有者与 dns 组的 proxies 移除被剔除的组名
+	// 从锚点持有者与 DNS 组的 proxies 移除被剔除的组名
 	for _, holder := range []string{"pr", "prd"} {
 		if hm := mapGet(tm, holder); hm != nil {
 			if px := mapGet(hm, "proxies"); px != nil && px.Kind == yaml.SequenceNode {
@@ -392,7 +393,7 @@ func (e *Editor) PruneDerived(nodeNames []string) int {
 		}
 	}
 	for _, g := range gl.Content {
-		if name := mapGet(g, "name"); name != nil && name.Value == "dns" {
+		if name := mapGet(g, "name"); name != nil && name.Value == "DNS" {
 			if px := mapGet(g, "proxies"); px != nil && px.Kind == yaml.SequenceNode {
 				for _, p := range prune {
 					seqRemove(px, p)
@@ -404,12 +405,12 @@ func (e *Editor) PruneDerived(nodeNames []string) int {
 }
 
 // Backup / Restore / ClearBackup 事务配套:修改前备份,失败恢复。
-// .panixy-bak 与 merge 的 .panixy-premerge 共用 backupFile/restoreFile 实现。
-func Backup(path string) error  { return backupFile(path, ".panixy-bak") }
-func Restore(path string) error { return restoreFile(path, ".panixy-bak") }
-func ClearBackup(path string)   { os.Remove(path + ".panixy-bak") }
+// 后缀随程序名派生(constants.BackupSuffix),与 merge 的 premerge 共用 backupFile/restoreFile 实现。
+func Backup(path string) error  { return backupFile(path, constants.BackupSuffix()) }
+func Restore(path string) error { return restoreFile(path, constants.BackupSuffix()) }
+func ClearBackup(path string)   { os.Remove(path + constants.BackupSuffix()) }
 
-// backupFile / restoreFile 是 .panixy-bak 与 .panixy-premerge 的共享实现(仅后缀不同)。
+// backupFile / restoreFile 是 bak 与 premerge 的共享实现(仅后缀不同)。
 func backupFile(path, suffix string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -433,7 +434,7 @@ func (e *Editor) SetMode(tproxy bool, tproxyPort int) {
 		mapDel(tm, "tun")
 		mapSet(tm, "tproxy-port", &yaml.Node{
 			Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprint(tproxyPort),
-			LineComment: "TPROXY 模式(mark/策略路由由 panixy 防火墙管理)",
+			LineComment: "TPROXY 模式(mark/策略路由由 " + constants.ProgName + " 防火墙管理)",
 		})
 		return
 	}

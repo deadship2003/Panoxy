@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 const (
@@ -25,14 +27,14 @@ var level = LevelInfo
 func SetLevel(l int) { level = l }
 
 func stamp(lv string, msg string) string {
-	return fmt.Sprintf("[panixy] %s %-7s %s", time.Now().Format("2006-01-02 15:04:05"), lv, msg)
+	return fmt.Sprintf("[%s] %s %-7s %s", constants.ProgName, time.Now().Format("2006-01-02 15:04:05"), lv, msg)
 }
 
 func Info(format string, a ...any) {
 	fmt.Fprintln(os.Stderr, stamp("INFO", fmt.Sprintf(format, a...)))
 }
 
-// Step 是 --verbose 级:事务分步(如 "[3/7] 写入配置(备份→.panixy-bak)")。
+// Step 是 --verbose 级:事务分步(如 "[3/7] 写入配置(备份→.Panoxy-bak,即 BackupSuffix 派生)")。
 func Step(format string, a ...any) {
 	if level >= LevelVerbose {
 		fmt.Fprintln(os.Stderr, stamp("STEP", fmt.Sprintf(format, a...)))

@@ -1,7 +1,7 @@
 // Package firewall 管理 panixy 自有防火墙规则(DNS 劫持;TPROXY 模式另含打标/策略路由)。
 //
 // 设计要点:
-//   - 独立表 inet panixy,绝不复用系统 nat/filter 表 → CleanAll = 删整表,幂等
+//   - 独立表 inet <程序名>(= constants.NftTable,随编译期 ProgName 注入),绝不复用系统 nat/filter 表 → CleanAll = 删整表,幂等
 //   - 启动无条件 CleanAll 再 Apply → kill -9/OOM 残留随 systemctl restart 自愈
 //   - 本机 OUTPUT 劫持排除:保留网段/回环(防内网 DNS 异常)+ mark 6666(mihomo 自身
 //     上游查询,防 DNS 回环死锁 —— 与配置模板 routing-mark 联动)
@@ -15,8 +15,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/logx"
 )
 
 // Firewall 是防火墙后端抽象(spec 六 核心接口,加 ApplyTproxy/Name)。

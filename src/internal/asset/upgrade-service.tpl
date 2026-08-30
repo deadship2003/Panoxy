@@ -1,8 +1,8 @@
 [Unit]
-Description=panixy core & UI auto-upgrade (oneshot)
+Description={{.Prog}} core & UI auto-upgrade (oneshot)
 After=network-online.target
 
 [Service]
 Type=oneshot
-Environment=PANIXY_ROOT={{.Root}}
+Environment={{.EnvPrefix}}_ROOT={{.Root}}
 ExecStart={{.Cli}} upgrade

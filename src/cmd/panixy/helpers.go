@@ -10,13 +10,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/cobra/doc"
 
-	"github.com/deadship2003/panixy/internal/asset"
-	"github.com/deadship2003/panixy/internal/execx"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/mihomoapi"
-	"github.com/deadship2003/panixy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/execx"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/mihomoapi"
+	"github.com/deadship2003/Panoxy/internal/paths"
 )
 
 // runCmd 是 execx.Run 的简写。
@@ -89,17 +89,17 @@ func copyDir(src, dst string) error {
 // installMan 生成并安装全部 man 手册(根页 + 每个子命令页,与 --help 同源):
 // man panixy / man panixy-init / man panixy-sub-import ...
 func installMan(manGz, self string) {
-	dir, err := os.MkdirTemp("", "panixy-man-")
+	dir, err := os.MkdirTemp("", constants.ProgName+"-man-")
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir)
-	hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册"}
+	hdr := manHeader()
 	if err := genAllMan(newRootForMan(), hdr, dir); err != nil {
 		logx.Debug("man 生成失败(跳过): %v", err)
 		return
 	}
-	files, _ := filepath.Glob(dir + "/panixy*.1")
+	files, _ := filepath.Glob(dir + "/" + constants.ProgName + "*.1")
 	dstDir := filepath.Dir(manGz)
 	os.MkdirAll(dstDir, 0o755)
 	for _, f := range files {
@@ -118,7 +118,7 @@ func installMan(manGz, self string) {
 }
 
 func journal(n string) (string, error) {
-	return execx.Run("journalctl", "-u", "panixy.service", "-u", "panixy-upgrade.service", "-n", n, "--no-pager")
+	return execx.Run("journalctl", "-u", constants.ProgName+".service", "-u", constants.ProgName+"-upgrade.service", "-n", n, "--no-pager")
 }
 
 func upgradeVerRe(s string) string {

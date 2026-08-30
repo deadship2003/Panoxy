@@ -6,12 +6,14 @@
 //	新增组:  追加到末尾
 //	基底组:  保留(不被删除,引用不断链)
 //	规则:    个人前置(优先匹配)+ 基底兜底(MATCH 排最后,去重)
-//	备份:    融合前 → .panixy-premerge;失败自动恢复;--rollback 手动回滚
+//	备份:    融合前 → <prog>-premerge 后缀;失败自动恢复;--rollback 手动回滚
 package config
 
 import (
 	"fmt"
 	"os"
+
+	"github.com/deadship2003/Panoxy/internal/constants"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,8 +46,8 @@ type MergeReport struct {
 
 // PremergeBackup 融合前备份(供 --rollback 恢复)。
 func PremergeBackup(confPath string) (string, error) {
-	dst := confPath + ".panixy-premerge"
-	if err := backupFile(confPath, ".panixy-premerge"); err != nil {
+	dst := confPath + constants.PremergeSuffix()
+	if err := backupFile(confPath, constants.PremergeSuffix()); err != nil {
 		return "", err
 	}
 	return dst, nil
@@ -53,7 +55,7 @@ func PremergeBackup(confPath string) (string, error) {
 
 // PremergeRestore 从 premerge 备份恢复。
 func PremergeRestore(confPath string) error {
-	if err := restoreFile(confPath, ".panixy-premerge"); err != nil {
+	if err := restoreFile(confPath, constants.PremergeSuffix()); err != nil {
 		return fmt.Errorf("无 premerge 备份: %w", err)
 	}
 	return nil
@@ -61,7 +63,7 @@ func PremergeRestore(confPath string) error {
 
 // PremergeExists 判断 premerge 备份是否存在。
 func PremergeExists(confPath string) bool {
-	_, err := os.Stat(confPath + ".panixy-premerge")
+	_, err := os.Stat(confPath + constants.PremergeSuffix())
 	return err == nil
 }
 

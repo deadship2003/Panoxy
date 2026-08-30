@@ -12,12 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+	"github.com/spf13/pflag"
 
-	"github.com/deadship2003/panixy/internal/constants"
-	"github.com/deadship2003/panixy/internal/firewall"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/statemode"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/firewall"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/statemode"
 )
 
 // version 由构建脚本经 -ldflags -X 注入;缺省用常量。
@@ -86,7 +87,7 @@ func NewRootCmd() *cobra.Command {
 				logx.Error("--root 需要绝对路径: %s", r)
 				os.Exit(1)
 			}
-			os.Setenv("PANIXY_ROOT", r) // 所有 paths.Get() 即时生效;服务单元亦会注入
+			os.Setenv(constants.EnvPrefix()+"_ROOT", r) // 所有 paths.Get() 即时生效;服务单元亦会注入
 		}
 		if d, _ := cmd.Flags().GetBool("debug"); d {
 			logx.SetLevel(logx.LevelDebug)
@@ -100,7 +101,49 @@ func NewRootCmd() *cobra.Command {
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(), cmdConfig(),
 		cmdFw(), cmdMan(),
 	)
+	rebrand(root) // 把硬编码的 "panixy"/"/etc/clash.yaml" 替换为编译期注入的 ProgName/DefConfPath
 	return root
+}
+
+// rebrand 把命令树中硬编码的 "panixy" 与 "/etc/clash.yaml" 替换为编译期注入的
+// ProgName / DefConfPath,使 --help/man 示例、flag 说明与改名后的程序一致。
+func rebrand(cmd *cobra.Command) {
+	rep := func(s string) string {
+		s = strings.ReplaceAll(s, "panixy", constants.ProgName)
+		s = strings.ReplaceAll(s, "/etc/clash.yaml", constants.DefConfPath)
+		return s
+	}
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		c.Use = rep(c.Use)
+		c.Short = rep(c.Short)
+		c.Long = rep(c.Long)
+		c.Example = rep(c.Example)
+		c.Flags().VisitAll(func(f *pflag.Flag) { f.Usage = rep(f.Usage) })
+		c.PersistentFlags().VisitAll(func(f *pflag.Flag) { f.Usage = rep(f.Usage) })
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(cmd)
+}
+
+// upperFirst 首字母大写(程序名为 ASCII 二进制/文件名,安全)。
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// manHeader 生成 man 页头:标题/手册名/来源均随程序名派生。
+func manHeader() *doc.GenManHeader {
+	return &doc.GenManHeader{
+		Title:   strings.ToUpper(constants.ProgName),
+		Section: "1",
+		Manual:  upperFirst(constants.ProgName) + " 手册",
+		Source:  constants.ProgName + " " + version,
+	}
 }
 
 func cmdTry() *cobra.Command {
@@ -196,6 +239,7 @@ func cmdDeploy() *cobra.Command {
 安装 CLI 与 man 手册 → 写入 systemd 单元 → 开启 ip_forward → 拉起服务(含防火墙)。
 任一步失败全量回滚。检测到 bash 旧版部署残留(unit 含 resolvectl/配置含 dns-hijack)时中止并给出手动清理指引。`,
 		Example: `  sudo ./panixy deploy 'https://example.com/sub?token=x&sid=y'   # 部署并导入订阅
+  sudo ./panixy deploy --name Nano                              # 部署,回车粘贴订阅
   sudo ./panixy deploy --proxy-mode tproxy                      # 以 TPROXY 模式部署`,
 		RunE: runDeploy,
 	}
@@ -349,7 +393,7 @@ func cmdUpgrade() *cobra.Command {
 		Use:   "upgrade [--core|--ui|--cli] [--core-version vX] [--ui-version vX] [--check]",
 		Short: "升级内核/面板/CLI 自身(timer 每日自动调用)",
 		Long: `升级 mihomo 内核、metacubexd 面板(默认两者都升;--cli 显式升 CLI 自身)。全成功才更新 .last-upgrade。
-CLI 升级(--cli):查 GitHub Release 最新版 → 下载对应架构 → 备份旧版 → 替换 /usr/local/bin/panixy。
+CLI 升级(--cli):在源码树内本地自编译(go build)→ 备份旧版 → 替换已装二进制;不下载预编译产物(--src 指仓库根,缺省当前目录)。
 
 内核流程:查最新 release(经本机代理,失败直连)→ 下载(amd64 按 avx2 优选 v3,失败降级
 compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", constants.CoreKeep) + ` 份)→ 原子替换 → 重启 →
@@ -362,7 +406,8 @@ compatible)→ 试运行校验 → 备份旧内核(保留 ` + fmt.Sprintf("%d", 
 	c.Flags().String("core-version", "", "指定内核版本(如 v1.19.31)")
 	c.Flags().String("ui-version", "", "指定面板版本")
 	c.Flags().Bool("check", false, "dry-run:显示当前/最新版本与将执行动作")
-	c.Flags().Bool("cli", false, "仅升级 CLI(panixy 自身)")
+	c.Flags().Bool("cli", false, "仅升级 CLI(panixy 自身;本地自编译)")
+	c.Flags().String("src", "", "源码根目录(--cli 自编译用;默认当前目录)")
 	return c
 }
 
@@ -449,7 +494,7 @@ func cmdConfig() *cobra.Command {
 		Long: `渲染内嵌默认模板(config.tpl)并打印到 stdout —— 与 init/deploy 首次落盘的 /etc/clash.yaml
 同源,保留 SUB_URL_PLACEHOLDER、不含任何订阅。
 
-默认密钥/端口:secret=deadship、mixed-port=33833、HTTP 6666、SOCKS 6699、API 9999。
+默认密钥/端口:secret=deadship、mixed-port=33833、HTTP 9966、SOCKS 6699、API 9999。
 --mode tun|tproxy 决定 tun/tproxy 变体;--secret 覆盖面板密钥。
 
 --write 额外把渲染结果写回 /opt/panixy/config.default.yaml(纯净默认副本,供
@@ -514,25 +559,25 @@ man sub)。优先交给系统 man 渲染,无 man 环境时降级为纯文本。
 部署后同样可用系统 man:man panixy / man panixy-<命令>。--raw 输出原始 roff 供部署安装手册用。`,
 		Example: "  panixy man          # 根页\n  panixy man init     # init 命令页\n  panixy man sub       # sub 命令页",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := os.MkdirTemp("", "panixy-man-")
+			dir, err := os.MkdirTemp("", constants.ProgName+"-man-")
 			if err != nil {
 				return err
 			}
 			defer os.RemoveAll(dir)
-			hdr := &doc.GenManHeader{Title: "PANIXY", Section: "1", Manual: "Panixy 手册", Source: "panixy " + version}
+			hdr := manHeader()
 			if err := genAllMan(cmd.Root(), hdr, dir); err != nil {
 				return fmt.Errorf("生成手册失败: %w", err)
 			}
-			page := "panixy.1"
-			if len(args) > 0 { // 子命令页:panixy man init → panixy-init.1
-				page = "panixy-" + args[0] + ".1"
+			page := constants.ProgName + ".1"
+			if len(args) > 0 { // 子命令页:<prog> man init → <prog>-init.1
+				page = constants.ProgName + "-" + args[0] + ".1"
 			}
 			b, err := os.ReadFile(dir + "/" + page)
 			if err != nil {
-				pages, _ := filepath.Glob(dir + "/panixy*.1")
+				pages, _ := filepath.Glob(dir + "/" + constants.ProgName + "*.1")
 				names := []string{}
 				for _, f := range pages {
-					n := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "panixy"), ".1")
+					n := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), constants.ProgName), ".1")
 					if n == "" {
 						names = append(names, "(root)")
 					} else {

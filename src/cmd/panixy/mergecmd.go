@@ -8,11 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/panixy/internal/config"
-	"github.com/deadship2003/panixy/internal/health"
-	"github.com/deadship2003/panixy/internal/logx"
-	"github.com/deadship2003/panixy/internal/paths"
-	"github.com/deadship2003/panixy/internal/systemdunit"
+	"github.com/deadship2003/Panoxy/internal/config"
+	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/health"
+	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
 // runMergeConf 叠加式融合:同名组合并 + 新增追加 + 基底保留 + 备份回滚。
@@ -26,7 +27,7 @@ func runMergeConf(cmd *cobra.Command, args []string) error {
 
 func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("用法: panixy merge-conf <个人配置.yaml>(叠加融合;--dry-run 试运行;--rollback 回滚)")
+		return fmt.Errorf("用法: %s merge-conf <个人配置.yaml>(叠加融合;--dry-run 试运行;--rollback 回滚)", constants.ProgName)
 	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -37,7 +38,7 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// 保证融合结果可复现:个人配置叠加到干净基线上,占位订阅(SUB_URL_PLACEHOLDER)由 MergePersonal 自动退场。
 	base, err := config.Load(p.DefaultConf)
 	if err != nil {
-		return fmt.Errorf("读取默认基底配置失败: %w(%s 不存在,先 sudo panixy redeploy 生成)", err, p.DefaultConf)
+		return fmt.Errorf("读取默认基底配置失败: %w(%s 不存在,先 sudo %s redeploy 生成)", err, p.DefaultConf, constants.ProgName)
 	}
 	personal, err := config.Load(args[0])
 	if err != nil {
@@ -61,7 +62,7 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	}
 
 	// 备份(premerge)→ 融合 → -t → 应用 → 健康 → 失败恢复
-	logx.Step("备份当前配置 → %s", p.Conf+".panixy-premerge")
+	logx.Step("备份当前配置 → %s", p.Conf+constants.PremergeSuffix())
 	bakPath, err := config.PremergeBackup(p.Conf)
 	if err != nil {
 		return fmt.Errorf("premerge 备份失败: %w", err)
@@ -90,15 +91,15 @@ func runMergeConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		systemdunit.Restart()
 		return fmt.Errorf("融合后健康检查超时,已从 premerge 恢复:%w", err)
 	}
-	logx.Info("融合完成:panixy sub list 查看订阅;分组/节点选择在 Web 面板操作")
-	logx.Info("回滚: sudo panixy merge-conf --rollback(恢复到融合前)")
+	logx.Info("融合完成:%s sub list 查看订阅;分组/节点选择在 Web 面板操作", constants.ProgName)
+	logx.Info("回滚: sudo %s merge-conf --rollback(恢复到融合前)", constants.ProgName)
 	return nil
 }
 
 func mergeRollback() error {
 	return withRootLock(func(p paths.Paths) error {
 		if !config.PremergeExists(p.Conf) {
-			return fmt.Errorf("无 premerge 备份(%s.panixy-premerge 不存在)", p.Conf)
+			return fmt.Errorf("无 premerge 备份(%s%s 不存在)", p.Conf, constants.PremergeSuffix())
 		}
 		if err := config.PremergeRestore(p.Conf); err != nil {
 			return fmt.Errorf("恢复失败: %w", err)

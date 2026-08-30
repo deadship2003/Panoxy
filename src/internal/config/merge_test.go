@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deadship2003/panixy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/asset"
+	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 // personalSample 模拟个人配置:自定义分组(进程/地理分流)、自建节点、端口密钥、
@@ -149,8 +150,8 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 		t.Errorf("个人组 proxies 列表被破坏(应原样保留,追加不重复)")
 	}
 	// 叠加融合验证:基底组保留 + 同名融合 + 新增追加
-	if !strings.Contains(s, "name: dns") {
-		t.Error("基底 dns 组应保留(叠加融合不删基底组)")
+	if !strings.Contains(s, "name: DNS") {
+		t.Error("基底 DNS 组应保留(叠加融合不删基底组)")
 	}
 	if !strings.Contains(s, "🚀 节点选择") {
 		t.Error("基底 🚀 节点选择 组应保留(叠加融合)")
@@ -162,12 +163,12 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 	if !strings.Contains(s, "PROCESS-NAME,ssh,DIRECT") {
 		t.Error("个人进程规则应在前置")
 	}
-	if !strings.Contains(s, "GEOSITE,TikTok,TikTok") {
+	if !strings.Contains(s, "GEOSITE,TikTok,🎵 TikTok") {
 		t.Error("基底规则应保留为兜底")
 	}
 	// MATCH 应在最后
 	rulesStart := strings.Index(s, "rules:")
-	matchIdx := strings.LastIndex(s, "MATCH,其他")
+	matchIdx := strings.LastIndex(s, "MATCH,🌐 其他")
 	if rulesStart < 0 || matchIdx < rulesStart {
 		t.Error("MATCH 规则应存在")
 	}
@@ -190,9 +191,16 @@ func subSnippet(s string) string {
 func TestMergedConfigPassesMihomoCheck(t *testing.T) {
 	bin := os.Getenv("MIHOMO_BIN")
 	if bin == "" {
-		if _, err := os.Stat("/opt/panixy/bin/mihomo"); err == nil {
-			bin = "/opt/panixy/bin/mihomo"
-		} else {
+		for _, c := range []string{
+			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
+			"/opt/panixy/bin/mihomo", // 旧版残留
+		} {
+			if _, err := os.Stat(c); err == nil {
+				bin = c
+				break
+			}
+		}
+		if bin == "" {
 			if h, _ := os.UserHomeDir(); h != "" {
 				if _, err := os.Stat(h + "/panixy-e2e/mihomo"); err == nil {
 					bin = h + "/panixy-e2e/mihomo"
@@ -226,7 +234,11 @@ func TestMergedConfigPassesMihomoCheck(t *testing.T) {
 
 func geoFallback(t *testing.T) string {
 	t.Helper()
-	for _, c := range []string{"/opt/panixy", os.Getenv("GEO_SRC")} {
+	for _, c := range []string{
+		filepath.Join("/opt", constants.ProgName),
+		"/opt/panixy", // 旧版残留
+		os.Getenv("GEO_SRC"),
+	} {
 		if c == "" {
 			continue
 		}
