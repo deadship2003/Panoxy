@@ -70,14 +70,9 @@ sudo Panoxy merge-conf --dry-run ~/my.yaml   # preview the merge decision first
 
 ## 📐 Architecture
 
-```
-     DNS(53/853)                                            Data traffic (non-53)
-   ┌─────────────┐   nft redirect → :1053   ┌────┐   routing table → TUN device → kernel
-   │  TUN mode   │ ───────────────────────► │same│
-   ├─────────────┤                          │core│   nft mark 1 + policy routing
-   │ TPROXY mode │   nft redirect → :1053   │    │   + tproxy → :7893 (preserves source IP)
-   └─────────────┘ ───────────────────────► └────┘
-```
+- **DNS (53/853)** — nft redirect → `:1053` → kernel
+- **Data traffic (non-53)** — routing table → TUN device → kernel; TPROXY mode adds `nft mark 1` + policy routing + `tproxy → :7893` (preserves source IP)
+- TUN and TPROXY share the same kernel — only the traffic path differs
 
 - Data plane (node/group selection) lives in the **web panel**; transport plane (tun/tproxy) lives in the **CLI**
 - the kernel's own outbound traffic is allowed via `routing-mark: 6666` → prevents DNS loop deadlock
