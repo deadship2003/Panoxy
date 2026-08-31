@@ -133,6 +133,12 @@ clean it up manually first, then retry:
 	}
 	_ = confNew
 
+	// Always write the clean default-template copy (config.default.yaml, merge-conf's baseline)
+	// to the data dir, regardless of which config source was chosen above.
+	if err := writeDefaultConf(p, mode, secret); err != nil {
+		return err
+	}
+
 	logx.Step("[4/5] place CLI and man pages; write proxy-mode=%s to the state file", mode)
 	self, err := os.Executable()
 	if err != nil {
@@ -170,7 +176,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 func runUninstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	systemdunit.Stop()
-	if err := firewall.Teardown(); err != nil {
+	if err := firewall.CleanAll(); err != nil {
 		logx.Warn("firewall cleanup failed: %v (retry uninstall after restart)", err)
 	}
 	systemdunit.Remove(p)
@@ -206,7 +212,7 @@ func modeSwitchBody(p paths.Paths, want string) error {
 		}
 	} // PANIXY_SKIP_TPROXY_PROBE=1 is for the test sandbox only
 	logx.Step("switch %s → %s: unload old firewall", old, want)
-	if err := firewall.Teardown(); err != nil {
+	if err := firewall.CleanAll(); err != nil {
 		logx.Warn("firewall teardown before switch failed: %v", err)
 	}
 	logx.Step("render config variant and validate")
@@ -328,25 +334,6 @@ func placeGeoAndRules(p paths.Paths, assets string) {
 	}
 }
 
-// placeGeoAndRulesForce unconditionally overwrites geo and ad rules (redeploy uses it; static data needs no rollback).
-func placeGeoAndRulesForce(p paths.Paths, assets string) {
-	for _, f := range geoFiles {
-		src := filepath.Join(assets, "geo", f)
-		if exists(src) {
-			copyFile(src, filepath.Join(p.Root, f))
-			logx.Info("refreshed: %s", f)
-		}
-	}
-	os.MkdirAll(p.RuleProv, 0o755)
-	src := filepath.Join(assets, "rule", "HyperADRules-Ads.yaml")
-	if exists(src) {
-		copyFile(src, filepath.Join(p.RuleProv, "HyperADRules-Ads.yaml"))
-		logx.Info("refreshed: ad rules HyperADRules-Ads.yaml")
-	} else {
-		logx.Warn("package has no ad rules file, keeping the existing one (first start fetches it from the network via the kernel)")
-	}
-}
-
 func placeUI(p paths.Paths, assets string) {
 	if exists(p.UiDir) {
 		return
@@ -356,20 +343,6 @@ func placeUI(p paths.Paths, assets string) {
 		copyDir(src, p.UiDir)
 		os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
 	}
-}
-
-// placeUIForce unconditionally overwrites the UI (redeploy uses it; the old dir was already backed up as .old, here we only place the new one).
-func placeUIForce(p paths.Paths, assets string) error {
-	src := filepath.Join(assets, "ui", "official")
-	if !exists(src) {
-		return fmt.Errorf("assets missing UI")
-	}
-	if err := copyDir(src, p.UiDir); err != nil {
-		return err
-	}
-	os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
-	logx.Info("refreshed: web UI (metacubexd)")
-	return nil
 }
 
 func firstLineOf(s string) string {

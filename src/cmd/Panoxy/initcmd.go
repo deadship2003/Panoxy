@@ -162,14 +162,15 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		// The clean default-template copy (for merge-conf to rebuild its baseline) and the actual config are written at the same time.
-		if err := os.WriteFile(p.DefaultConf, []byte(out), 0o644); err != nil {
-			return err
-		}
 		if err := os.WriteFile(p.Conf, []byte(out), 0o644); err != nil {
 			return err
 		}
 		confNew = true
+	}
+	// Always write the clean default-template copy (config.default.yaml, merge-conf's baseline)
+	// to the data dir, whether or not a config already existed.
+	if err := writeDefaultConf(p, mode, secret); err != nil {
+		return err
 	}
 	_ = confNew
 	self, _ := os.Executable()

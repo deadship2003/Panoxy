@@ -96,7 +96,7 @@ func runUnits(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runConfig renders the default template to stdout; --write additionally writes config.default.yaml back (no deploy, does not touch the system).
+// runConfig renders the default template to stdout (read-only, no deploy, no writes).
 func runConfig(cmd *cobra.Command, args []string) error {
 	mode, _ := cmd.Flags().GetString("mode")
 	if mode != "tun" && mode != "tproxy" {
@@ -111,13 +111,6 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Print(out)
-	if write, _ := cmd.Flags().GetBool("write"); write {
-		p := paths.Get()
-		if err := writeDefaultConf(p, mode, secret); err != nil {
-			return err
-		}
-		logx.Info("default config written back to %s (mode %s, secret %s)", p.DefaultConf, mode, secret)
-	}
 	return nil
 }
 

@@ -14,7 +14,7 @@ ExecStartPre={{.Cli}} check
 ExecStart={{.Cli}} run
 # DNS 劫持规则:apply 内部先无条件 CleanAll 再加载 —— kill -9/OOM 残留随 restart 自愈
 ExecStartPost={{.Cli}} fw apply
-ExecStop={{.Cli}} fw teardown
+ExecStop={{.Cli}} fw clean
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s

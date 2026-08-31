@@ -17,8 +17,8 @@ import (
 
 // runUpgrade upgrades the metacubexd web UI; --check is a dry-run, --ui-version pins a version.
 // The mihomo kernel is fused into the CLI, so there is no separate kernel/CLI to upgrade here —
-// a new CLI version is installed by compiling a new binary and replacing the installed one
-// (offline package + redeploy, or a plain copy to the CLI path). .last-upgrade is updated only on success.
+// a new CLI version is installed by compiling a new binary and running `sudo <prog> redeploy`
+// (or a plain copy to the CLI path). .last-upgrade is updated only on success.
 func runUpgrade(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runUpgradeBody(p, cmd, args) })
 }
@@ -26,6 +26,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	check, _ := cmd.Flags().GetBool("check")
 	uiVer, _ := cmd.Flags().GetString("ui-version")
+	forceUI, _ := cmd.Flags().GetBool("ui") // --ui: manual (re)upgrade even when already latest
 
 	var err error
 	api := mihomoapi.NewFromConf(p.Conf)
@@ -51,7 +52,7 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		fmt.Printf("UI:    current %s latest %s → %s\n", orQ(curUI), orQ(want), action(curUI, want))
 		return nil
 	}
-	if want != "" && want != curUI {
+	if want != "" && (want != curUI || forceUI) {
 		if err := uiUpgrade(p, proxy, want); err != nil {
 			return err
 		}

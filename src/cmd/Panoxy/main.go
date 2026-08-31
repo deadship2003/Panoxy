@@ -76,8 +76,23 @@ Daily use:
   sudo panixy upgrade --check            # show what can be upgraded
 
 Operations:
-  sudo panixy redeploy                   # force-refresh all program files in place (keep config)
+  sudo panixy redeploy                   # refresh the CLI in place (keep config/data)
   sudo panixy uninstall                  # uninstall (keep data and config)
+
+Commands (all accept --root/--verbose/--debug):
+  init [URL]       --name --file --proxy-mode --secret --mirror --boot-bin --dry-run    bare-metal network install + sub import
+  deploy [URL]     --name --file --proxy-mode --secret --dry-run                        offline-package install
+  redeploy         --dry-run                                                            refresh CLI/units in place (config kept)
+  try [URL]        (init flags) --dir                                                    rootless sandboxed full-install trial
+  sub              import [URL] --name --file --group | del --name | list --json        subscription management
+  status           --detail -q --json                                                   health overview (service/firewall/sub/egress)
+  start | stop | restart                                                              service lifecycle (enable/disable/self-heal)
+  mode [tun|tproxy]                                                                     view/switch transparent-proxy mode (atomic)
+  upgrade          --ui --ui-version vX --check                                         web-UI upgrade (--ui = manual re-upgrade)
+  merge-conf <yaml> --dry-run --dns keep|mine --no-wire --rollback                      overlay-merge a personal config
+  config           --mode tun|tproxy --secret                                           print the default config template
+  check [yaml] | apply-conf <yaml>                                                    validate / apply a config
+  uninstall | units | log [n] | man [cmd] --raw | upstream | fw <apply|clean>           ops, info & advanced
 
 Details: panixy man, or man panixy-<command> (after deployment)`,
 		Version: version,
@@ -405,17 +420,22 @@ current mode.`,
 
 func cmdUpgrade() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "upgrade [--ui-version vX] [--check]",
+		Use:   "upgrade [--ui] [--ui-version vX] [--check]",
 		Short: "upgrade the web UI (auto-invoked daily by the timer)",
 		Long: `Upgrade the metacubexd web UI. Only when the upgrade succeeds is .last-upgrade updated.
 
 The mihomo kernel is fused into the CLI, so there is no separate kernel to upgrade here; a new
-CLI version is shipped by compiling a new binary and replacing the installed one (offline package
-+ redeploy, or simply copy the freshly built binary over the CLI path).`,
-		Example: "  panixy upgrade --check             # show current/latest UI version\n  sudo panixy upgrade                 # upgrade the UI (daily-timer default)\n  sudo panixy upgrade --ui-version vX # pin a UI version",
+CLI version is shipped by compiling a new binary and running sudo panixy redeploy (or simply
+copying the freshly built binary over the CLI path).
+
+  upgrade (bare)             upgrade the UI to the latest (the daily-timer default)
+  upgrade --ui               manually (re)upgrade the UI, even if already at the latest
+  upgrade --ui-version vX    pin a UI version
+  upgrade --check            show current/latest version and the action to take (no change)`,
+		Example: "  panixy upgrade --check             # show current/latest UI version\n  sudo panixy upgrade                 # upgrade the UI (daily-timer default)\n  sudo panixy upgrade --ui             # manual UI upgrade (re-applies even if latest)\n  sudo panixy upgrade --ui-version vX  # pin a UI version",
 		RunE:    runUpgrade,
 	}
-	c.Flags().Bool("ui", false, "upgrade the web UI (default action)")
+	c.Flags().Bool("ui", false, "manually (re)upgrade the web UI now, even if already at the latest")
 	c.Flags().String("ui-version", "", "pin a UI version")
 	c.Flags().Bool("check", false, "dry-run: show current/latest UI version and the action to take")
 	return c
@@ -490,41 +510,36 @@ restart to take effect.`,
 func cmdConfig() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "config",
-		Short: "render/print the default config template (no root; --write writes config.default.yaml)",
+		Short: "render/print the default config template (read-only, no root)",
 		Long: `Render the embedded default template (config.tpl) and print to stdout — same source as the
 /etc/clash.yaml written by init/deploy on first install; keeps SUB_URL_PLACEHOLDER, no subscription.
 
 Default secret/ports: secret=deadship, mixed-port=33833, HTTP 9966, SOCKS 6699, API 9999.
 --mode tun|tproxy selects the tun/tproxy variant; --secret overrides the UI secret.
 
---write additionally writes the result back to /opt/panixy/config.default.yaml (a clean default
-copy for merge-conf to rebuild its baseline); needs write access to the install dir (usually sudo).
-
-Read-only, no deploy, no firewall/service changes; no root needed (unless --write).`,
-		Example: `  panixy config                       # print default config (stdout)
-  panixy config > clash.yaml          # export to a file
-  panixy config --mode tproxy         # TPROXY variant
-  sudo panixy config --write          # write back config.default.yaml`,
+Read-only, no deploy, no firewall/service changes; no root needed. The clean default copy
+(config.default.yaml, merge-conf's baseline) is maintained by init/deploy/redeploy.`,
+		Example: `  panixy config               # print default config (stdout)
+  panixy config > clash.yaml  # export to a file
+  panixy config --mode tproxy # TPROXY variant`,
 		RunE: runConfig,
 	}
 	c.Flags().String("mode", "tun", "transparent proxy mode: tun | tproxy")
 	c.Flags().String("secret", constants.DefSecret, "UI/API secret")
-	c.Flags().Bool("write", false, "write back /opt/panixy/config.default.yaml (default: print only)")
 	return c
 }
 
 func cmdFw() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "fw <apply|teardown|clean>",
+		Use:   "fw <apply|clean>",
 		Short: "firewall management (advanced; invoked automatically by service units)",
 		Long: `Firewall DNS-hijack management (auto-invoked by systemd units; normally no need to run manually):
 
-  apply      unconditionally clean own tables, then load the current mode's full rules (idempotent; kill -9 leftovers self-heal on service restart)
-  teardown   remove all own tables/chains/policy routes (invoked on service stop)
-  clean      clean only, no load`,
+  apply    unconditionally clean own tables, then load the current mode's full rules (idempotent; kill -9 leftovers self-heal on service restart)
+  clean    remove all own tables/chains/policy routes (invoked on service stop)`,
 		Args:      cobra.ExactValidArgs(1),
-		ValidArgs: []string{"apply", "teardown", "clean"},
-		Example:   "  sudo panixy fw apply     # idempotently remount current-mode rules\n  sudo panixy fw teardown  # tear rules down\n  sudo panixy fw clean     # clean only, no load",
+		ValidArgs: []string{"apply", "clean"},
+		Example:   "  sudo panixy fw apply   # idempotently remount current-mode rules\n  sudo panixy fw clean   # remove all own rules",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// In tproxy mode, apply must load the full rules (reads the state file; defaults to tun).
 			mode := statemode.Read(paths.Get().State)
@@ -534,8 +549,6 @@ func cmdFw() *cobra.Command {
 					return firewall.ApplyTproxy()
 				}
 				return firewall.ApplyDnsHijack()
-			case "teardown":
-				return firewall.Teardown()
 			case "clean":
 				return firewall.CleanAll()
 			}

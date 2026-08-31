@@ -18,7 +18,7 @@ import (
 // Service lifecycle commands: start/stop/restart the panixy service.
 //
 // The firewall is normally loaded/removed by the unit's ExecStartPost (fw apply) / ExecStop
-// (fw teardown) hooks; these commands additionally do an explicit teardown + health check so a
+// (fw clean) hooks; these commands additionally do an explicit clean + health check so a
 // start/stop is verifiable rather than a blind systemctl pass-through, and so stale firewall
 // rules can never survive a stop.
 
@@ -100,8 +100,8 @@ func runStop(cmd *cobra.Command, args []string) error {
 		systemdunit.Stop()
 		// Explicit teardown in addition to the unit's ExecStop: a failed/crashed unit may not run
 		// ExecStop, and we never want stale rules left behind a "stopped" gateway.
-		if err := firewall.Teardown(); err != nil {
-			logx.Warn("firewall teardown failed: %v (retry %s fw teardown)", err, constants.ProgName)
+		if err := firewall.CleanAll(); err != nil {
+			logx.Warn("firewall cleanup failed: %v (retry %s fw clean)", err, constants.ProgName)
 		}
 		logx.Info("service stopped and disabled; firewall rules removed (%s start to resume)", constants.ProgName)
 		return nil

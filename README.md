@@ -359,34 +359,30 @@ git tag V0.0.1 && git push origin V0.0.1
 
 ## 📋 Command reference
 
-| Command | Effect |
+Global flags (every command): `--root <dir>` custom install dir · `--verbose` step-by-step detail · `--debug` full transparency
+
+| Command (parameters) | Effect |
 |---|---|
-| `Panoxy try [URL]` | pre-install (rootless sandboxed trial) |
-| `Panoxy init/deploy --dry-run` | dry-run mode (rootless) |
-| `sudo Panoxy init [URL]` | bare-metal init (nine steps with progress) |
-| `sudo Panoxy deploy [URL]` | deploy from the offline package |
-| `sudo Panoxy redeploy` | in-place reinstall: force-refresh all program files (config preserved), re-apply firewall and restart |
-| `sudo Panoxy merge-conf <yaml>` | overlay-merge a personal config (`--dry-run`/`--dns`/`--no-wire`) |
-| `Panoxy config [--mode tun\|tproxy] [--write]` | print the default config template (rootless; `--write` writes config.default.yaml) |
-| `sudo Panoxy sub import [URL]` | import a subscription (paste mode, no quotes) |
+| `Panoxy try [URL] [--dir] [--name] [--file] [--proxy-mode] [--secret] [--mirror] [--boot-bin]` | rootless sandboxed trial of the full install flow |
+| `sudo Panoxy init [URL] [--name] [--file] [--proxy-mode] [--secret] [--mirror] [--boot-bin] [--dry-run]` | bare-metal init (downloads assets → deploy → import subscription) |
+| `sudo Panoxy deploy [URL] [--name] [--file] [--proxy-mode] [--secret] [--dry-run]` | deploy from the offline package |
+| `sudo Panoxy redeploy [--dry-run]` | refresh the CLI/systemd units in place (config & data preserved), re-mount firewall + restart |
+| `sudo Panoxy sub import [URL] [--name] [--file] [--group]` | import/replace a subscription |
 | `sudo Panoxy sub del --name N` | delete a subscription |
 | `Panoxy sub list [--json]` | per-subscription status / node count |
-| `Panoxy status [-q\|--json\|--detail]` | health overview (`-q` exit code for monitoring) |
-| `sudo Panoxy start` | start the service (enable on boot), load firewall, verify health |
-| `sudo Panoxy stop` | stop the service (disable on boot) and clear the firewall |
-| `sudo Panoxy restart` | restart the service (self-heals the firewall) |
-| `sudo Panoxy mode [tun\|tproxy]` | view/switch mode |
-| `sudo Panoxy upgrade [--check] [--ui-version vX]` | upgrade the web UI (parameterized) |
-| `Panoxy check [yaml]` | validate a config |
-| `sudo Panoxy apply-conf <yaml>` | apply a config (hot-reload first) |
-| `sudo Panoxy uninstall` | uninstall (data preserved) |
-| `Panoxy man [command]` | view manual (root page or subcommand page) |
-| `sudo Panoxy fw <apply\|teardown\|clean>` | firewall management |
-| `Panoxy units` | print the rendered systemd unit text (offline review) |
-| `Panoxy log` | view service logs (journalctl) |
+| `Panoxy status [--detail] [-q] [--json]` | health overview (service/firewall/subscription/egress) |
+| `sudo Panoxy merge-conf <yaml> [--dry-run] [--dns keep\|mine] [--no-wire] [--rollback]` | overlay-merge a personal config onto the default template |
+| `Panoxy config [--mode tun\|tproxy] [--secret]` | print the default config template (rootless) |
+| `Panoxy check [yaml]` | validate a config with the embedded kernel (read-only) |
+| `sudo Panoxy apply-conf <yaml>` | apply a config (hot-reload first, then restart) |
+| `sudo Panoxy start` / `stop` / `restart` | start (enable on boot) / stop (disable + clear firewall) / restart (self-heal) |
+| `sudo Panoxy mode [tun\|tproxy]` | view/switch transparent-proxy mode (atomic switch) |
+| `sudo Panoxy upgrade [--ui] [--ui-version vX] [--check]` | upgrade the web UI (`--ui` forces a manual re-upgrade) |
+| `sudo Panoxy uninstall` | uninstall (data & config preserved) |
+| `sudo Panoxy fw <apply\|clean>` | firewall management (advanced; auto-invoked by units) |
+| `Panoxy units` / `log [n]` | print rendered unit text / view service logs |
+| `Panoxy man [command] [--raw]` | view manual (root page or subcommand page) |
 | `Panoxy upstream` | check mihomo Alpha upstream for newer commits (hint only) |
-
-**Global flags**: `--root <dir>` custom install dir · `--verbose` step-by-step detail · `--debug` full transparency
 
 ## 🧪 Testing
 
