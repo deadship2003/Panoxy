@@ -53,6 +53,8 @@ func TestBuildNftTproxyScriptGolden(t *testing.T) {
 		"meta mark 6666 return",
 		"th dport 53 return", // DNS 交给 nat 链,不进 tproxy
 		"meta l4proto { tcp, udp } tproxy to :7893 meta mark set 1 accept",
+		// DIVERT 优化(内核 tproxy.txt 标准):已建立透明连接回环重入的后续包直接打标放行
+		"meta l4proto { tcp, udp } socket transparent 1 meta mark set 1 accept",
 		// 本机输出打标链(与 TUN 等价的关键):
 		"chain local_output {",
 		"type route hook output priority mangle", // 必须 type route,才触发 fwmark 重路由
