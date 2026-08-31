@@ -95,11 +95,11 @@ The first goal of transparent proxying is **normal access**; routing is only an 
 | DoQ (UDP 853) | **normal routing** | same as above |
 | DoH (TCP 443) | **normal routing** | same port as HTTPS, cannot and should not be blocked |
 
-### Direct-connect base services (32 rules, no proxy)
+### Direct-connect base services (31 rules, no proxy)
 
 | Category | Ports | Services |
 |---|---|---|
-| **Remote management** | 22, 23 | SSH/SFTP, Telnet |
+| **Remote management** | 23 | Telnet |
 | **Remote desktop** | 3389, 5900 | RDP, VNC |
 | **VPN/overlay** | 41641, 3478, 51820, 1194, 500, 4500, 1701, 1723 | Tailscale, STUN/TURN, WireGuard, OpenVPN, IPSec (IKE/NAT-T), L2TP, PPTP |
 | **VoIP** | 5060, 5061 | SIP, SIPS |
@@ -108,6 +108,8 @@ The first goal of transparent proxying is **normal access**; routing is only an 
 | **IoT** | 1883, 8883, 5683 | MQTT, MQTT/TLS, CoAP |
 | **Storage/database** | 3260, 3306, 5432, 6379, 27017, 873 | iSCSI, MySQL, PostgreSQL, Redis, MongoDB, Rsync |
 | **Tailscale-specific** | 100.100.100.100, 100.64.0.0/10 | MagicDNS, CGNAT subnet |
+
+> **Note:** SSH (port 22) is **not** in the direct-connect list — it now follows split-tunneling. Foreign SSH goes through the proxy, and GitHub SSH is routed via proxy to avoid pollution (see the commented `DST-PORT,22,DIRECT` rule in `src/internal/asset/config.tpl`).
 
 ## 📂 Repository layout
 

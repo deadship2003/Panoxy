@@ -24,13 +24,14 @@
 | CGNAT 子网 | 100.64.0.0/10 | keep4 集合 + 模板 IP-CIDR |
 | 接口 | tailscale0 | 防火墙 DNS 链 + tproxy 链 iifname 排除 |
 
-## 基础服务直连(32 条)
+## 基础服务直连(31 条)
 
 ### 远程管理
 | 端口 | 服务 | 原因 |
 |---|---|---|
-| 22 | SSH/SFTP | 延迟敏感,走代理增加延迟 |
-| 23 | Telnet | 同上 |
+| 23 | Telnet | 延迟敏感,走代理增加延迟 |
+
+> **注:** SSH(22)不在直连列表 —— 现走分流(境外 SSH 走代理,GitHub SSH 规避污染),见 `src/internal/asset/config.tpl` 中被注释的 `DST-PORT,22,DIRECT`。
 
 ### 远程桌面
 | 端口 | 服务 | 原因 |
