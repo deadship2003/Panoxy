@@ -12,7 +12,7 @@ func TestBuildNftScriptGolden(t *testing.T) {
 	s := BuildNftScript(1053, 6666)
 	for _, want := range []string{
 		"table inet " + constants.NftTable + " {",
-		`elements = { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, 100.64.0.0/10 }`,
+		"elements = {",
 		"iifname != \"lo\" meta l4proto { tcp, udp } th dport 53 redirect to :1053",
 		"ip daddr @keep4 return",
 		"ip6 daddr @keep6 return",
@@ -25,6 +25,16 @@ func TestBuildNftScriptGolden(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("nft 脚本缺少关键规则: %q", want)
 		}
+	}
+	// 单一事实源:keep 集由常量注入,脚本须完整包含;且不得误含 fake-ip 段。
+	if !strings.Contains(s, keep4Elements) {
+		t.Errorf("keep4 缺少保留网段: %s", keep4Elements)
+	}
+	if !strings.Contains(s, keep6Elements) {
+		t.Errorf("keep6 缺少保留网段: %s", keep6Elements)
+	}
+	if strings.Contains(keep4Elements, "198.18.0.0/16") {
+		t.Errorf("keep4 不得包含 fake-ip 段 198.18.0.0/16(否则无法进 mihomo 还原域名)")
 	}
 	// 不阻断任何协议(DoT/DoQ 已移除阻断,纳入正常分流)
 	if strings.Contains(s, "853 reject") {
@@ -43,10 +53,19 @@ func TestBuildNftTproxyScriptGolden(t *testing.T) {
 		"meta mark 6666 return",
 		"th dport 53 return", // DNS 交给 nat 链,不进 tproxy
 		"meta l4proto { tcp, udp } tproxy to :7893 meta mark set 1 accept",
+		// 本机输出打标链(与 TUN 等价的关键):
+		"chain local_output {",
+		"type route hook output priority mangle", // 必须 type route,才触发 fwmark 重路由
+		"meta mark != 0 return",                  // mihomo 自身(6666)与已打标(1)都不再碰
+		"meta l4proto { tcp, udp } meta mark set 1 accept",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("tproxy 脚本缺少关键规则: %q", want)
 		}
+	}
+	// 回环重入的本机流量必须能到达 tproxy,故不能再有 `iifname "lo" return`(会被 keep4/keep6 兜住)。
+	if strings.Contains(s, `iifname "lo" return`) {
+		t.Errorf("tproxy_prerouting 不应再有 iifname lo return(会吞掉回环重入的本机流量)")
 	}
 }
 
