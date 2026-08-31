@@ -42,12 +42,12 @@ build: $(addprefix _build-,$(BUILD_ARCHS)) _checksums ## 编译目标二进制(�
 _build-amd64:
 	@mkdir -p dist
 	@echo "  → 编译 amd64 (GOAMD64=$(GOAMD64))"
-	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=$(GOAMD64) go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-amd64 ./cmd/panixy
+	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=$(GOAMD64) go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-amd64 ./cmd/Panoxy
 
 _build-arm64:
 	@mkdir -p dist
 	@echo "  → 编译 arm64"
-	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-arm64 ./cmd/panixy
+	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-arm64 ./cmd/Panoxy
 
 _checksums:
 	$(Q)(cd dist && sha256sum $(PROG)-linux-* > sha256sums.txt 2>/dev/null || true)

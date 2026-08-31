@@ -162,13 +162,13 @@ cd src
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v3 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-amd64 \
-  ./cmd/panixy
+  ./cmd/Panoxy
 
 # cross-compile ARM64 (no ARM machine needed)
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-arm64 \
-  ./cmd/panixy
+  ./cmd/Panoxy
 
 # generate checksums
 cd ../dist && sha256sum Panoxy-linux-* > sha256sums.txt
@@ -199,7 +199,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath \
   -ldflags "-s -w -X main.version=V0.0.1 -X github.com/deadship2003/Panoxy/internal/constants.ProgName=myproxy" \
   -o ../dist/myproxy-linux-amd64 \
-  ./cmd/panixy
+  ./cmd/Panoxy
 ```
 
 The easy way is to hand it to the build entry:
@@ -281,7 +281,7 @@ mkdir -p dist
 cd src
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
-  -o ../dist/Panoxy-linux-amd64 ./cmd/panixy
+  -o ../dist/Panoxy-linux-amd64 ./cmd/Panoxy
 cd ..
 
 # ===== Step 2: download assets =====

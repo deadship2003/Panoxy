@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	bin = filepath.Join(dir, constants.ProgName)
-	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/panixy").CombinedOutput()
+	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/Panoxy").CombinedOutput()
 	if err != nil {
 		fmt.Printf("SKIP: 构建 panixy 失败(依赖未拉取?): %s\n%s", err, out)
 		os.Exit(0)

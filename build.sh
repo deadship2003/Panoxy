@@ -66,11 +66,11 @@ build_cmd() {
       amd64)
         local lvl="${GOAMD64:-$(goamd64)}"
         echo "  amd64(GOAMD64=$lvl)"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/panixy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/Panoxy)
         ;;
       arm64)
         echo "  arm64"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/panixy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/Panoxy)
         ;;
     esac
   done

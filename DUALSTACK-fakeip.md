@@ -32,7 +32,7 @@
 - `--dns mine` 时强制写回 listen 的字面量 `0.0.0.0:1053` → `[::]:1053`（**否则会被 merge 覆盖回 v4**）。
 - 相关注释同步。
 
-### 2.4 `cmd/panixy/misccmds.go`
+### 2.4 `cmd/Panoxy/misccmds.go`
 - `warnCompat` 的 `dns.listen` 一致性告警文案 `0.0.0.0:1053` → `[::]:1053`。判定逻辑仍是 `Contains(":1053")`，不受影响。
 
 ### 2.5 `internal/firewall/firewall.go`
