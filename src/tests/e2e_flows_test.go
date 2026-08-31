@@ -2,7 +2,6 @@ package tests
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,12 +24,11 @@ func TestE2EDeployWithPresetConf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deploy 失败:\n%s", out)
 	}
-	for _, want := range []string{"kernel", "geo and ad rules", "web UI", "existing config detected"} {
+	for _, want := range []string{"geo and ad rules", "web UI", "existing config detected"} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("deploy 输出缺少 %q:\n%s", want, out)
 		}
 	}
-	checkFile(t, filepath.Join(e.root, "bin", "mihomo"))
 	checkFile(t, filepath.Join(e.root, "rule_provider", "HyperADRules-Ads.yaml"))
 	checkFile(t, filepath.Join(e.root, "ui", "official", "index.html"))
 	checkFile(t, filepath.Join(e.dir, "cli", constants.ProgName))
@@ -165,35 +163,30 @@ func TestE2EServiceLifecycle(t *testing.T) {
 // bootSandbox 直接经 shim 启动内核(等价 enable --now)。
 func bootSandbox(t *testing.T, e *env) {
 	t.Helper()
-	// 内核就位(deploy 的 placeCore 逻辑这里手动做)
-	os.MkdirAll(filepath.Join(e.root, "bin"), 0o755)
-	if b, err := os.ReadFile(mihomo); err != nil {
+	// CLI 就位(内核内嵌于 panixy,shim 直接 `panixy run`)
+	os.MkdirAll(filepath.Join(e.dir, "cli"), 0o755)
+	if b, err := os.ReadFile(bin); err != nil {
 		t.Fatal(err)
-	} else if err := os.WriteFile(filepath.Join(e.root, "bin", "mihomo"), b, 0o755); err != nil {
+	} else if err := os.WriteFile(filepath.Join(e.dir, "cli", constants.ProgName), b, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// geo + ui(-t 与启动需要)
+	// geo + ui(-t 与启动需要);先建 ui 目录(顺带创建 e.root),否则 geo 写入会因父目录缺失而失败
+	os.MkdirAll(filepath.Join(e.root, "ui", "official"), 0o755)
 	geoSrc := geoSrcOr(t)
 	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
 		if b, err := os.ReadFile(filepath.Join(geoSrc, f)); err == nil {
 			os.WriteFile(filepath.Join(e.root, f), b, 0o644)
 		}
 	}
-	os.MkdirAll(filepath.Join(e.root, "ui", "official"), 0o755)
 	e.shim(t, "enable", "--now", constants.ProgName+".service")
 	e.waitAPI(t)
 }
 
-// buildAssets 组装迷你离线包(内核 gz/geo/UI/规则)。
+// buildAssets 组装迷你离线包(geo/UI/规则;内核已内嵌于 CLI,不再打包)。
 func buildAssets(t *testing.T, pkg string) {
 	t.Helper()
-	for _, d := range []string{"assets/core", "assets/geo", "assets/ui/official", "assets/rule"} {
+	for _, d := range []string{"assets/geo", "assets/ui/official", "assets/rule"} {
 		os.MkdirAll(filepath.Join(pkg, d), 0o755)
-	}
-	// 内核 gzip
-	gz := filepath.Join(pkg, "assets/core/mihomo-linux-amd64-v0.0.0-e2e.gz")
-	if out, err := exec.Command("sh", "-c", "gzip -c "+mihomo+" > "+gz).CombinedOutput(); err != nil {
-		t.Fatalf("内核打包失败: %s", out)
 	}
 	geoSrc := geoSrcOr(t)
 	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {

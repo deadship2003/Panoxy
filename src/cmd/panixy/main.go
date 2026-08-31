@@ -450,7 +450,7 @@ func cmdUninstall() *cobra.Command {
 		Long: `Stop and remove the panixy service and the scheduled upgrade task; clean up its own firewall
 rules, sysctl, and man pages.
 
-Kept: the /opt/panixy data directory (core/geo/UI/subscription cache) and the /etc/clash.yaml
+Kept: the /opt/panixy data directory (geo/UI/subscription cache) and the /etc/clash.yaml
 config, plus the CLI binary itself — re-running init/deploy afterwards reuses the data.`,
 		Example: "  sudo panixy uninstall",
 		RunE:    runUninstall,
