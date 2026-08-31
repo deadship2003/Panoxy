@@ -133,10 +133,12 @@ sniffer:
 dns:
   enable: true
   ipv6: true
-  # 防火墙 redirect 的落点:必须 0.0.0.0(PREROUTING 的 LAN 客户端也要到达),勿改回 127.0.0.1
-  listen: 0.0.0.0:{{.DnsPort}}
+  # 防火墙 redirect 的落点:[::] 双栈监听——v4 查询以 v4-mapped 形式接受(等价 0.0.0.0),
+  # 同时服务 v6 传输的 DNS 查询;勿改回 127.0.0.1(PREROUTING 的 LAN 客户端也要到达)。
+  listen: "[::]:{{.DnsPort}}"
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
+  fake-ip-range6: 2001:2::1/48 # IPv6 fake-ip 池(RFC 5180 基准段);勿把 2001:2::/48 加进 keep6 白名单
   prefer-h3: false          # DoH 走 H2/TCP
   respect-rules: true
   fake-ip-filter:

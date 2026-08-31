@@ -116,7 +116,7 @@ func TestMergePersonalDecisionTable(t *testing.T) {
 		}
 	}
 	// 保留(基底暗号/基础设施)
-	for _, want := range []string{"routing-mark: 6666", "listen: 0.0.0.0:1053", "stack: system", "ntp.aliyun.com"} {
+	for _, want := range []string{"routing-mark: 6666", `listen: "[::]:1053"`, "stack: system", "ntp.aliyun.com"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("基底未保留: %q", want)
 		}

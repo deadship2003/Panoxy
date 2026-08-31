@@ -19,7 +19,7 @@ import (
 )
 
 type MergeOpts struct {
-	DNSMine     bool // 个人 dns 段接管(listen 仍强制 0.0.0.0:1053)
+	DNSMine     bool // 个人 dns 段接管(listen 仍强制 [::]:1053 双栈)
 	NoWire      bool // 不把基底订阅接线进组
 	NoProxyWire bool // 不把个人 proxies 追加进组
 }
@@ -201,8 +201,8 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 		if d := mapGet(tmS, "dns"); d != nil {
 			dn := deepCopy(d)
 			mapSet(tmB, "dns", dn)
-			mapSet(dn, "listen", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "0.0.0.0:1053"})
-			r.Taken = append(r.Taken, "dns (--dns mine, listen forced to 1053)")
+			mapSet(dn, "listen", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "[::]:1053"})
+			r.Taken = append(r.Taken, "dns (--dns mine, listen forced to [::]:1053)")
 		}
 	}
 
