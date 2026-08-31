@@ -5,7 +5,7 @@
 **A Linux transparent-proxy gateway deploy/management tool built on the [mihomo](https://github.com/MetaCubeX/mihomo) core**
 
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL%203.0-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%7Carm64-lightgrey)]()
 [![Release](https://img.shields.io/badge/Release-V0.0.1-orange)](../../releases)
 
@@ -438,9 +438,12 @@ E2E uses the real compiled binary + real mihomo core + a mock subscription serve
 
 ## 📄 License
 
-Panoxy itself is under a **commercial-rights-reserved** proprietary license: the source is public for audit/evaluation only; commercial use and redistribution require separate authorization, see [LICENSE](LICENSE).
+Panoxy is licensed under the **GNU General Public License v3.0 (GPL-3.0)** — it is a derivative work of the
+embedded [mihomo](https://github.com/MetaCubeX/mihomo) kernel (GPL-3.0). Copyright © 2026 deadship2003.
+See [LICENSE](LICENSE).
 
-Bundled/downloaded third-party components (mihomo, metacubexd, meta-rules-dat, etc.) each carry their own open-source license, see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) and [LICENSES/](LICENSES/).
+Bundled/downloaded third-party components (metacubexd, meta-rules-dat, etc.) each carry their own
+open-source license, see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) and [LICENSES/](LICENSES/).
 
 ---
 

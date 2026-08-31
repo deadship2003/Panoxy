@@ -105,7 +105,7 @@ Details: panixy man, or man panixy-<command> (after deployment)`,
 		cmdTry(), cmdMergeConf(), cmdStatus(), cmdStart(), cmdStop(), cmdRestart(), cmdRun(),
 		cmdMode(), cmdUpgrade(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(), cmdConfig(),
-		cmdFw(), cmdMan(),
+		cmdFw(), cmdMan(), cmdUpstream(),
 	)
 	rebrand(root) // replace hard-coded "panixy"/"/etc/clash.yaml" with the compile-time injected ProgName/DefConfPath
 	return root
