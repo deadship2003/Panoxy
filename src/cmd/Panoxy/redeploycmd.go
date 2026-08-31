@@ -19,7 +19,7 @@ import (
 )
 
 // applyFW explicitly loads firewall rules for the current mode (shared with fw apply).
-// redeploy uses it to explicitly re-mount the firewall — a newly compiled panixy may have
+// redeploy uses it to explicitly re-mount the firewall — a newly compiled Panoxy may have
 // adjusted rules, so it can't rely solely on the service restart's ExecStartPost fallback.
 func applyFW(mode string) error {
 	if mode == "tproxy" {
@@ -64,9 +64,6 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no installed %s detected (config/CLI missing) — for a fresh install use sudo %s init/deploy", constants.ProgName, constants.ProgName)
 	}
 	mode := statemode.Read(p.State)
-	if mode == "" {
-		mode = "tun"
-	}
 	secret := mihomoapi.NewFromConf(p.Conf).Secret
 	logx.Info("redeploy started: in-place CLI/unit refresh (mode %s, %s and subscriptions kept untouched)", mode, p.Conf)
 
@@ -84,12 +81,7 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	self, _ = filepath.EvalSymlinks(self)
-	if self != p.Cli {
-		os.MkdirAll(filepath.Dir(p.Cli), 0o755)
-		if b, err := os.ReadFile(self); err == nil {
-			os.WriteFile(p.Cli, b, 0o755)
-		}
-	}
+	copyBinary(self, p.Cli)
 	installMan(p.ManGz, self)
 	if err := systemdunit.Write(p, mode); err != nil {
 		return err
@@ -136,9 +128,6 @@ func redeployDryRun(cmd *cobra.Command) error {
 		logx.Warn("no installed %s detected; for a fresh install use sudo %s init/deploy", constants.ProgName, constants.ProgName)
 	} else {
 		mode := statemode.Read(p.State)
-		if mode == "" {
-			mode = "tun"
-		}
 		logx.Info("installed: %s + %s (mode %s)", p.Conf, p.Cli, mode)
 	}
 	self, _ := os.Executable()

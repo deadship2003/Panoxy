@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -53,15 +54,49 @@ func runtimeArch() string {
 	return ""
 }
 
-// copyFile copies a file (small files, read at once).
+// copyFile streams a file copy (geo data is tens of MB; buffering it would waste memory for a one-shot copy).
 func copyFile(src, dst string) error {
-	b, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	os.MkdirAll(filepath.Dir(dst), 0o755)
-	return os.WriteFile(dst, b, 0o644)
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
+
+// copyBinary refreshes the installed CLI from the currently running executable (best-effort, mode
+// 0o755), streaming rather than buffering the ~46MB binary. Shared by init/deploy/redeploy.
+func copyBinary(src, dst string) {
+	if src == dst {
+		return
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return
+	}
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return
+	}
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	if err != nil {
+		return
+	}
+	defer out.Close()
+	_, _ = io.Copy(out, in)
+}
+
+// validMode reports whether m is a supported transparent-proxy mode.
+func validMode(m string) bool { return m == "tun" || m == "tproxy" }
 
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
@@ -78,7 +113,7 @@ func copyDir(src, dst string) error {
 }
 
 // installMan generates and installs all man pages (root page + one per subcommand, same source as --help):
-// man panixy / man panixy-init / man panixy-sub-import ...
+// man Panoxy / man Panoxy-init / man Panoxy-sub-import ...
 func installMan(manGz, self string) {
 	dir, err := os.MkdirTemp("", constants.ProgName+"-man-")
 	if err != nil {

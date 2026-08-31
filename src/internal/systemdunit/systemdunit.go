@@ -4,8 +4,6 @@ package systemdunit
 import (
 	"fmt"
 	"os"
-
-	"gopkg.in/yaml.v3"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +11,8 @@ import (
 	"github.com/deadship2003/Panoxy/internal/constants"
 	"github.com/deadship2003/Panoxy/internal/execx"
 	"github.com/deadship2003/Panoxy/internal/paths"
+
+	"gopkg.in/yaml.v3"
 )
 
 // 单元名随程序名派生(编译注入 ProgName 后自动跟随)。

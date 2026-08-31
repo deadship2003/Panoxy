@@ -28,7 +28,7 @@ import (
 )
 
 // runInit: no packaging, single-binary bare-metal init — downloads all assets and deploys by itself, then imports the subscription.
-// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs the panixy CLI on this machine) > gh mirror.
+// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs the Panoxy CLI on this machine) > gh mirror.
 func runInit(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return initDryRun(cmd, args)
@@ -151,7 +151,6 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 			os.WriteFile(p.UiStamp, []byte("unknown\n"), 0o644)
 		}
 	}
-	confNew := false
 	if _, err := os.Stat(p.Conf); err == nil {
 		logx.Info("existing config detected, kept untouched: %s (group rules and custom parameters are all inherited)", p.Conf)
 	} else {
@@ -165,22 +164,15 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		if err := os.WriteFile(p.Conf, []byte(out), 0o644); err != nil {
 			return err
 		}
-		confNew = true
 	}
 	// Always write the clean default-template copy (config.default.yaml, merge-conf's baseline)
 	// to the data dir, whether or not a config already existed.
 	if err := writeDefaultConf(p, mode, secret); err != nil {
 		return err
 	}
-	_ = confNew
 	self, _ := os.Executable()
 	self, _ = filepath.EvalSymlinks(self)
-	if self != p.Cli {
-		os.MkdirAll(filepath.Dir(p.Cli), 0o755)
-		if b, err := os.ReadFile(self); err == nil {
-			os.WriteFile(p.Cli, b, 0o755)
-		}
-	}
+	copyBinary(self, p.Cli)
 	installMan(p.ManGz, self)
 	statemode.Write(p.State, statemode.State{ProxyMode: mode})
 
@@ -289,7 +281,7 @@ func syscallKill(pid string) {
 // bootProxyFromSub starts a temporary bootstrap proxy using the fetched subscription body. After fusion the
 // kernel is embedded in the CLI, so it boots `<prog> run` in a subprocess (temp dir as the data home) rather
 // than a separate mihomo binary.
-func bootProxyFromSub(body []byte) string {
+func bootProxyFromSub(body []byte) {
 	bootBin := paths.Get().Cli // the installed CLI (embedded kernel); follows --root/env
 	if _, err := os.Stat(bootBin); err != nil {
 		bootBin, _ = os.Executable() // fall back to the running binary (bare-metal init)
@@ -299,7 +291,7 @@ func bootProxyFromSub(body []byte) string {
 		logx.Step("no %s CLI (%s), cannot download assets via a subscription node", constants.ProgName, bootBin)
 		logx.Step("  option 1 (recommended): run make package on a machine with internet to build an offline package → then sudo ./%s deploy on the target", constants.ProgName)
 		logx.Step("  option 2: manually place %s at %s and chmod +x, then rerun init", constants.ProgName, bootBin)
-		return ""
+		return
 	}
 	port := freePortStr()
 	dir, _ := os.MkdirTemp("", "panixy-boot-")
@@ -324,7 +316,7 @@ rules:
 		bootBody = body // fall back to the original on normalization failure, letting mihomo report its own error (consistent with the real import path)
 	}
 	os.WriteFile(filepath.Join(dir, "boot.sub.yaml"), bootBody, 0o644)
-	// Boot the embedded kernel via `panixy run`; the temp dir is the data home, the temp config the source.
+	// Boot the embedded kernel via `Panoxy run`; the temp dir is the data home, the temp config the source.
 	c := exec.Command(bootBin, "run")
 	c.Dir = dir
 	c.Env = append(os.Environ(),
@@ -332,7 +324,7 @@ rules:
 		constants.EnvPrefix()+"_CONF="+filepath.Join(dir, "boot.yaml"))
 	if err := c.Start(); err != nil {
 		os.RemoveAll(dir)
-		return ""
+		return
 	}
 	os.WriteFile(filepath.Join(dir, "pid"), []byte(fmt.Sprint(c.Process.Pid)), 0o644)
 	bootProxyDir, bootProxyPort = dir, port
@@ -345,12 +337,11 @@ rules:
 		if resp, err := hc.Do(req); err == nil {
 			resp.Body.Close()
 			logx.Info("subscription bootstrap proxy ready (127.0.0.1:%s, temp kernel pid %d)", port, c.Process.Pid)
-			return "http://127.0.0.1:" + port
+			return
 		}
 		time.Sleep(time.Second)
 	}
 	bootProxyStop()
-	return ""
 }
 
 func freePortStr() string {
@@ -375,7 +366,7 @@ func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 }
 
 // initDryRun is a dry-run: environment checks + download strategy decision + placement list + config render preview.
-// No downloads, no writes, no root needed; for a full sandbox run use panixy try.
+// No downloads, no writes, no root needed; for a full sandbox run use Panoxy try.
 func initDryRun(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
 	logx.Info("== init --dry-run (dry-run mode, does not execute) ==")

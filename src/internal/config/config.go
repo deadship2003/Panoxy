@@ -15,6 +15,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// PlaceholderURL 是默认模板占位订阅的 url 值(SUB_URL_PLACEHOLDER)。
+// 首个真实订阅导入(sub import)或 merge-conf 时该占位订阅自动退场(见 MergePersonal 与 subcmds 的占位清理)。
+const PlaceholderURL = "SUB_URL_PLACEHOLDER"
+
 // Editor 持有解析后的配置树;所有操作仅改内存,Save 落盘。
 type Editor struct {
 	root *yaml.Node // DocumentNode
@@ -37,22 +41,30 @@ func Load(path string) (*Editor, error) {
 	return &Editor{root: &root, path: path}, nil
 }
 
-// Save 编码落盘(缩进 2,与手写风格一致)。
+// Render 编码为字符串(缩进 2,与手写风格一致),不落盘。
 // 归一化:yaml.v3 会把 merge 键显式输出为 "!!merge <<",这里还原为手写的裸 "<<"
 // (下次解析时 resolve 仍会识别为 merge;避免整份配置因一个编辑产生全文件 diff 噪音)。
-func (e *Editor) Save() error {
+func (e *Editor) Render() (string, error) {
 	normalizeMergeKeys(e.root)
 	var buf []byte
 	enc := yaml.NewEncoder(&nopWriter{&buf})
 	enc.SetIndent(2)
 	if err := enc.Encode(e.root); err != nil {
-		return fmt.Errorf("failed to encode YAML: %w", err)
+		return "", fmt.Errorf("failed to encode YAML: %w", err)
 	}
 	enc.Close()
 	// 反转义非 ASCII(yaml.v3 默认把 emoji 等转成 "\U0001F503",功能正确但可读性差;
 	// 仅处理码点 ≥0x80 的 \U/\u 序列,字面反斜杠场景不受影响)
-	out := unescapeNonASCII(string(buf))
-	return os.WriteFile(e.path, []byte(out+"\n"), 0o644)
+	return unescapeNonASCII(string(buf)) + "\n", nil
+}
+
+// Save 编码落盘。
+func (e *Editor) Save() error {
+	out, err := e.Render()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(e.path, []byte(out), 0o644)
 }
 
 func unescapeNonASCII(s string) string {
@@ -362,7 +374,7 @@ func (e *Editor) PruneDerived(nodeNames []string) int {
 		}
 		re, err := regexp.Compile(f.Value)
 		if err != nil {
-			keep = append(keep, g) // 无效 filter 保留,交由 mihomo -t 报错
+			keep = append(keep, g) // 无效 filter 保留,交由内嵌内核校验报错
 			continue
 		}
 		hit := false

@@ -4,7 +4,7 @@
 //   - mihomo 的 proxy-provider(无论 type: http / file)原生只解析 Clash YAML,
 //     以及 base64/明文 URI 列表(vless/vmess/trojan/ss/ssr/hysteria2/tuic ...)。
 //   - mihomo 不能原生解析:sing-box JSON、Surge 配置、base64 编码的 Clash YAML。
-//     这三类必须由 panixy 在缓存前归一化成 Clash YAML,并把 provider 切成 type: file
+//     这三类必须由 Panoxy 在缓存前归一化成 Clash YAML,并把 provider 切成 type: file
 //     (否则 mihomo 重启刷新时会重新拉原始 URL 再解析失败)。
 //
 // 因此这里的职责不是为某个机场写专用解析,而是覆盖所有标准订阅格式的通用识别与转换。
@@ -535,10 +535,15 @@ func applySurgeWS(p map[string]any, params map[string]string) {
 
 // ---- 通用工具 ----
 
-// nodeCount 统计订阅中的节点数(不要求节点有名):URI 列表按行计数,其余按条目计数。
-// 供 Validate 判断"是否有节点",避免 URI 列表缺 #name 时被误判为 0。
+// nodeCount 统计订阅中的节点数(识别格式后;供 Validate 判断"是否有节点")。
+// 不要求节点有名:URI 列表按行计数,其余按条目计数,避免 URI 列表缺 #name 时被误判为 0。
 func nodeCount(b []byte) int {
-	switch Detect(b) {
+	return nodeCountDetected(b, Detect(b))
+}
+
+// nodeCountDetected 在已知格式下计数,避免 Validate 与 nodeCount 各自再做一次 Detect(重复解析)。
+func nodeCountDetected(b []byte, f Format) int {
+	switch f {
 	case FormatClash:
 		var doc struct {
 			Proxies []map[string]any `yaml:"proxies"`
@@ -550,7 +555,7 @@ func nodeCount(b []byte) int {
 		return countURILines(string(b))
 	case FormatBase64URI, FormatBase64Clash:
 		if dec, err := decodeBase64Line(strings.TrimSpace(string(b))); err == nil {
-			return nodeCount([]byte(dec))
+			return nodeCount([]byte(dec)) // 解码后是新内容,重新识别
 		}
 	case FormatSingBox:
 		var doc struct {

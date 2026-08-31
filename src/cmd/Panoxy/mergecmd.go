@@ -156,14 +156,9 @@ func printMergeReport(r *config.MergeReport, _ []string) {
 }
 
 func mustRender(e *config.Editor) string {
-	tmp := filepath.Join(os.TempDir(), "panixy-render.yaml")
-	old := e.Path()
-	e.SetPath(tmp)
-	defer e.SetPath(old)
-	if err := e.Save(); err != nil {
+	out, err := e.Render()
+	if err != nil {
 		return fmt.Sprintf("# render failed: %v\n", err)
 	}
-	b, _ := os.ReadFile(tmp)
-	os.Remove(tmp)
-	return string(b)
+	return out
 }

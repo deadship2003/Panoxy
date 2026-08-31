@@ -62,10 +62,11 @@ func Validate(b []byte) error {
 	if len(strings.TrimSpace(string(b))) == 0 {
 		return fmt.Errorf("subscription content is empty")
 	}
-	if Detect(b) == FormatUnknown {
+	f := Detect(b)
+	if f == FormatUnknown {
 		return fmt.Errorf("subscription is not in a recognizable format (supported: Clash YAML / base64 or plaintext URI list / sing-box JSON / Surge; airports often return a web page for an invalid token)")
 	}
-	if nodeCount(b) == 0 {
+	if nodeCountDetected(b, f) == 0 {
 		return fmt.Errorf("no nodes parsed from the subscription (check the link/token; airports may return a web page for invalid requests)")
 	}
 	return nil

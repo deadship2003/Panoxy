@@ -42,7 +42,7 @@ func NewFromConf(confPath string) *Client {
 		c.Secret = constants.DefSecret
 	}
 	c.Mixed = raw.MixedPort
-	api := "http://127.0.0.1:" + portOf(raw.ExternalController, 9999)
+	api := "http://127.0.0.1:" + portOf(raw.ExternalController, constants.ApiPortDef)
 	if p := os.Getenv(constants.EnvPrefix() + "_API_PORT"); p != "" {
 		api = "http://127.0.0.1:" + p
 	}

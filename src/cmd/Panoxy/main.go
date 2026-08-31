@@ -1,4 +1,4 @@
-// panixy — a mihomo-based Linux transparent proxy gateway deploy/management tool (single-binary, Go).
+// Panoxy — a mihomo-based Linux transparent proxy gateway deploy/management tool (single-binary, Go).
 // Responsibility boundary: template rendering, file/unit management, firewall DNS hijack, subscription
 // management, upgrade, and health checks; traffic forwarding and DNS resolution are all done by
 // the mihomo kernel.

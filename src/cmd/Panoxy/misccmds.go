@@ -99,7 +99,7 @@ func runUnits(cmd *cobra.Command, args []string) error {
 // runConfig renders the default template to stdout (read-only, no deploy, no writes).
 func runConfig(cmd *cobra.Command, args []string) error {
 	mode, _ := cmd.Flags().GetString("mode")
-	if mode != "tun" && mode != "tproxy" {
+	if !validMode(mode) {
 		return fmt.Errorf("--mode must be tun or tproxy")
 	}
 	secret, _ := cmd.Flags().GetString("secret")
