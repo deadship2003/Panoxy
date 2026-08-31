@@ -70,6 +70,14 @@ func TestBuildNftTproxyScriptGolden(t *testing.T) {
 	if strings.Contains(s, `iifname "lo" return`) {
 		t.Errorf("tproxy_prerouting 不应再有 iifname lo return(会吞掉回环重入的本机流量)")
 	}
+	// 回归:SSH(22)不得被内核级放行 —— config.tpl 已注释 DST-PORT,22,DIRECT(境外 SSH 走代理)。
+	// 若内核级仍放行 22,TPROXY 模式下 SSH 永不进 mihomo、GitHub SSH 直连被墙,与 TUN 行为不一致。
+	if strings.Contains(keepPortsTCP, "22") {
+		t.Errorf("keepPortsTCP 不得包含 22(SSH):应进 mihomo 分流,与 config.tpl 注释 DST-PORT,22,DIRECT 同步")
+	}
+	if strings.Contains(s, "dport { 22") {
+		t.Errorf("TPROXY 脚本不应内核级放行 22 端口(SSH 应进 mihomo 分流)")
+	}
 }
 
 func TestTproxyPolicyCmds(t *testing.T) {
