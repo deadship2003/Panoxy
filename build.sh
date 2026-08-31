@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# panixy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
+# Panoxy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
 # 用法: build.sh [命令]
 #   编译(默认)   build.sh [--arch amd64|arm64|all] [--ver V0.0.1] [--prog 程序名]
 #                 默认只编当前 CPU 架构;amd64 自带检测 AVX2(有→v3,无→v1)
@@ -16,7 +16,7 @@
 #   PROG             程序名(与 --prog 等价,默认 Panoxy)
 #   GOAMD64          amd64 CLI 编译档(默认自动检测 AVX2;可 GOAMD64=v1/v3/v4 强制)
 #   ASSETS_SRC       本地资产目录(默认 /opt/$PROG,存在即优先复制,断网可打包)
-#   PANIXY_BOOT_BIN  引导代理 CLI(默认 dist/$PROG-linux-<host_arch>;内核已内嵌,无外部 mihomo)
+#   PANOXY_BOOT_BIN  引导代理 CLI(默认 dist/$PROG-linux-<host_arch>;内核已内嵌,无外部 mihomo)
 #   PROXY_PORT       引导代理端口(默认 33999)
 # 打包流程:编译 CLI(内核内嵌)→ 资产获取(本地优先/直连/订阅代理兜底)→ 订阅泄露扫描
 #   → 组装 <Prog>-V<ver>-<arch>.tar.gz + sha256(订阅 URL 永不进包)→ 清旧产物
@@ -88,11 +88,11 @@ clean() {
 }
 
 # ---- 订阅引导代理:直连下载不了 GitHub 时,用订阅节点建本地代理再下 ----
-# 内核已内嵌于 CLI,引导代理直接 `panixy run`(不再依赖外部 mihomo 二进制)。
+# 内核已内嵌于 CLI,引导代理直接 `$PROG run`(不再依赖外部 mihomo 二进制)。
 boot_proxy() {
   [ -n "$SUB_URL" ] || return 1
   local HA; HA="$(host_arch)"
-  local BOOT_BIN="${PANIXY_BOOT_BIN:-$ROOT/dist/$PROG-linux-$HA}"
+  local BOOT_BIN="${PANOXY_BOOT_BIN:-$ROOT/dist/$PROG-linux-$HA}"
   [ -x "$BOOT_BIN" ] || BOOT_BIN="$(command -v "$PROG" 2>/dev/null || true)"
   [ -x "$BOOT_BIN" ] || { echo "      ⚠️ 无引导 CLI($BOOT_BIN),无法经订阅下载"; return 1; }
   local d; d="$(mktemp -d)"
@@ -207,7 +207,7 @@ package_cmd() {
   # 本地资产源(断网打包):存在则优先复制,缺失才联网下载
   local SRC="${ASSETS_SRC:-/opt/$PROG}"
 
-  BOOT_DIRF="$(mktemp -d)/panixy-boot-proxy.dir"; : > "$BOOT_DIRF" 2>/dev/null || BOOT_DIRF=/tmp/panixy-boot-proxy.$$.dir
+  BOOT_DIRF="$(mktemp -d)/panoxy-boot-proxy.dir"; : > "$BOOT_DIRF" 2>/dev/null || BOOT_DIRF=/tmp/panoxy-boot-proxy.$$.dir
 
   echo "== [1/5] 编译(CLI, --arch $ARCH) =="
   build_cmd --arch "$ARCH" --ver "$VER" --prog "$PROG"

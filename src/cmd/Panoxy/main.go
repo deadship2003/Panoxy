@@ -80,7 +80,7 @@ Operations:
   sudo panixy uninstall                  # uninstall (keep data and config)
 
 Commands (all accept --root/--verbose/--debug):
-  init [URL]       --name --file --proxy-mode --secret --mirror --boot-bin --dry-run    bare-metal network install + sub import
+  init [URL]       --name --file --proxy-mode --secret --mirror --dry-run    bare-metal network install + sub import
   deploy [URL]     --name --file --proxy-mode --secret --dry-run                        offline-package install
   redeploy         --dry-run                                                            refresh CLI/units in place (config kept)
   try [URL]        (init flags) --dir                                                    rootless sandboxed full-install trial
@@ -232,8 +232,8 @@ func cmdInit() *cobra.Command {
 
 Three-tier download strategy (each step shows a progress bar; --verbose for steps, --debug for full detail):
   direct (hard-fail after 15s) > subscription-bootstrap proxy (start a local proxy via a
-  subscription node; needs a local panixy CLI, --boot-bin to specify, default the installed
-  panixy) > gh mirror (--mirror, third-party source; for friends prefer the offline package deploy)
+  subscription node; needs the local panixy CLI) > gh mirror (--mirror, third-party source; for
+  friends prefer the offline package deploy)
 
 Eight steps: pre-check -> fetch subscription -> network probe -> geo/rules -> UI -> place assets
 + render config -> deploy service (firewall/health) -> import subscription (node count > 0).`,

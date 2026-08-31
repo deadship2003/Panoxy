@@ -41,7 +41,7 @@ Single binary · zero dependencies · transactional deployment · automatic roll
 sudo Panoxy init '<your-subscription-url>'
 ```
 
-Eight steps run automatically: precheck → fetch subscription → network probe → download geo/rules → download panel → place assets → deploy service → import subscription. Each step has a progress bar; when a direct connection fails, downloads are proxied through subscription nodes (a temporary in-process kernel is booted from the panoxy CLI itself); with no panoxy CLI present it suggests the offline package `deploy`.
+Eight steps run automatically: precheck → fetch subscription → network probe → download geo/rules → download panel → place assets → deploy service → import subscription. Each step has a progress bar; when a direct connection fails, downloads are proxied through subscription nodes (a temporary in-process kernel is booted from the Panoxy CLI itself); with no Panoxy CLI present it suggests the offline package `deploy`.
 
 ### Option 2: Offline package (for friends)
 
@@ -363,8 +363,8 @@ Global flags (every command): `--root <dir>` custom install dir · `--verbose` s
 
 | Command (parameters) | Effect |
 |---|---|
-| `Panoxy try [URL] [--dir] [--name] [--file] [--proxy-mode] [--secret] [--mirror] [--boot-bin]` | rootless sandboxed trial of the full install flow |
-| `sudo Panoxy init [URL] [--name] [--file] [--proxy-mode] [--secret] [--mirror] [--boot-bin] [--dry-run]` | bare-metal init (downloads assets → deploy → import subscription) |
+| `Panoxy try [URL] [--dir] [--name] [--file] [--proxy-mode] [--secret] [--mirror]` | rootless sandboxed trial of the full install flow |
+| `sudo Panoxy init [URL] [--name] [--file] [--proxy-mode] [--secret] [--mirror] [--dry-run]` | bare-metal init (downloads assets → deploy → import subscription) |
 | `sudo Panoxy deploy [URL] [--name] [--file] [--proxy-mode] [--secret] [--dry-run]` | deploy from the offline package |
 | `sudo Panoxy redeploy [--dry-run]` | refresh the CLI/systemd units in place (config & data preserved), re-mount firewall + restart |
 | `sudo Panoxy sub import [URL] [--name] [--file] [--group]` | import/replace a subscription |
@@ -399,7 +399,7 @@ make lint          # go vet
 | Layer | Tests what | In Panoxy | Count | Speed |
 |---|---|---|---|---|
 | Unit | single function | YAML merge / firewall-rule generation / template rendering | ~15 | <1s |
-| Integration | component interplay | config through mihomo `-t` | ~5 | 1-2s |
+| Integration | component interplay | config through the embedded kernel (`Panoxy check`) | ~5 | 1-2s |
 | E2E | full flow | deploy → sub import → status end-to-end | 3 | ~50s |
 
 E2E uses the real compiled binary (embedded kernel) + a mock subscription server + fake systemd; business logic is not mocked, so it validates the actual user experience.

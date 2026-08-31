@@ -102,7 +102,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	proxyFn := func() string {
 		if !proxyOnce {
 			proxyOnce = true
-			bootProxyFromSub(body, cmd) // sets bootProxyAddr()
+			bootProxyFromSub(body) // sets bootProxyAddr()
 		}
 		return bootProxyAddr()
 	}
@@ -287,21 +287,18 @@ func syscallKill(pid string) {
 }
 
 // bootProxyFromSub starts a temporary bootstrap proxy using the fetched subscription body. After fusion the
-// kernel is embedded in panixy, so it boots `panixy run` in a subprocess (temp dir as the data home) rather
+// kernel is embedded in the CLI, so it boots `<prog> run` in a subprocess (temp dir as the data home) rather
 // than a separate mihomo binary.
-func bootProxyFromSub(body []byte, cmd *cobra.Command) string {
-	bootBin, _ := cmd.Flags().GetString("boot-bin")
-	if bootBin == "" {
-		bootBin = paths.Get().Cli // the installed panixy (embedded kernel); follows --root/env
-		if _, err := os.Stat(bootBin); err != nil {
-			bootBin, _ = os.Executable() // fall back to the running binary (bare-metal init)
-		}
+func bootProxyFromSub(body []byte) string {
+	bootBin := paths.Get().Cli // the installed CLI (embedded kernel); follows --root/env
+	if _, err := os.Stat(bootBin); err != nil {
+		bootBin, _ = os.Executable() // fall back to the running binary (bare-metal init)
 	}
 	if _, err := os.Stat(bootBin); err != nil {
-		// No panixy CLI: cannot start a bootstrap proxy via a subscription node. Print clear guidance then skip, falling back to mirror/offline package.
-		logx.Step("no panixy CLI (%s), cannot download assets via a subscription node", bootBin)
+		// No CLI binary: cannot start a bootstrap proxy via a subscription node. Print clear guidance then skip, falling back to mirror/offline package.
+		logx.Step("no %s CLI (%s), cannot download assets via a subscription node", constants.ProgName, bootBin)
 		logx.Step("  option 1 (recommended): run make package on a machine with internet to build an offline package → then sudo ./%s deploy on the target", constants.ProgName)
-		logx.Step("  option 2: manually place panixy at %s and chmod +x, then rerun init", bootBin)
+		logx.Step("  option 2: manually place %s at %s and chmod +x, then rerun init", constants.ProgName, bootBin)
 		return ""
 	}
 	port := freePortStr()
@@ -407,8 +404,8 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 	if directAssetReachable(probe, 15*time.Second) {
 		logx.Info("  direct works → download directly")
 	} else {
-		logx.Info("  direct unavailable → subscription bootstrap proxy (needs the panixy CLI on this machine: %s)%s",
-			orOK(exists(bootDefaultBin(cmd))), " → mirror (--mirror)")
+		logx.Info("  direct unavailable → subscription bootstrap proxy (needs the %s CLI on this machine: %s)%s",
+			constants.ProgName, orOK(exists(paths.Get().Cli)), " → mirror (--mirror)")
 	}
 
 	logx.Step("[plan] download list")
@@ -435,13 +432,6 @@ func drySecret(cmd *cobra.Command) string {
 func modeOf(cmd *cobra.Command) string {
 	m, _ := cmd.Flags().GetString("proxy-mode")
 	return m
-}
-func bootDefaultBin(cmd *cobra.Command) string {
-	b, _ := cmd.Flags().GetString("boot-bin")
-	if b == "" {
-		b = paths.Get().Cli
-	}
-	return b
 }
 func orOK(ok bool) string {
 	if ok {

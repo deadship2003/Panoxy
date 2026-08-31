@@ -21,10 +21,9 @@ func addDeployFlags(c *cobra.Command) {
 	c.Flags().String("secret", constants.DefSecret, "web UI/API secret")
 }
 
-// addDownloadFlags is the download fallback parameters: --mirror/--boot-bin (shared by init/try which download over the network).
+// addDownloadFlags is the download fallback parameter: --mirror (shared by init/try which download over the network).
 func addDownloadFlags(c *cobra.Command) {
 	c.Flags().StringSlice("mirror", nil, "gh mirror prefixes (multiple allowed; third-party source)")
-	c.Flags().String("boot-bin", "", "panixy CLI used as the subscription bootstrap proxy (defaults to the installed panixy)")
 }
 
 // addDryRunFlag is the dry-run parameter (each command's semantics differ slightly, described by desc).
