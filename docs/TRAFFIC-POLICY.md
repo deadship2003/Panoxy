@@ -8,7 +8,7 @@
 
 | 协议 | 端口 | 处理 | 效果 |
 |---|---|---|---|
-| 普通 DNS | UDP/TCP 53 | **劫持** → mihomo:1053 | fake-ip 模式,域名级分流精确 |
+| 普通 DNS | UDP/TCP 53 | **劫持** → 内核:1053 | fake-ip 模式,域名级分流精确 |
 | DoT | TCP 853 | 正常分流 | 加密 DNS 走代理(为自定义设备保留访问) |
 | DoQ | UDP 853 | 正常分流 | 同上 |
 | DoH | TCP 443 | 正常分流 | 与 HTTPS 同端口,无法也不应阻断 |
@@ -95,6 +95,6 @@
 
 | 层级 | 文件 | 生效范围 |
 |---|---|---|
-| mihomo 规则引擎 | `src/internal/asset/config.tpl` rules 段 | TUN + TPROXY |
+| 内核规则引擎 | `src/internal/asset/config.tpl` rules 段 | TUN + TPROXY |
 | nftables DNS 劫持 | `src/internal/firewall/rules.go` dns_prerouting/dns_output | TUN + TPROXY |
 | nftables tproxy 链 | `src/internal/firewall/rules.go` tproxy_prerouting | 仅 TPROXY |

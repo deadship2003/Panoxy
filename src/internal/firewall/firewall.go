@@ -1,4 +1,4 @@
-// Package firewall 管理 panixy 自有防火墙规则(DNS 劫持;TPROXY 模式另含打标/策略路由)。
+// Package firewall 管理 Panoxy 自有防火墙规则(DNS 劫持;TPROXY 模式另含打标/策略路由)。
 //
 // 设计要点:
 //   - 独立表 inet <程序名>(= constants.NftTable,随编译期 ProgName 注入),绝不复用系统 nat/filter 表 → CleanAll = 删整表,幂等

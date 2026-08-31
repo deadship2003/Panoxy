@@ -37,7 +37,7 @@ func runTry(cmd *cobra.Command, args []string) error {
 	shim := filepath.Join(dir, "bin", "systemctl")
 	pidf := filepath.Join(dir, "pid")
 	// On exit, stop the sandbox kernel as a last resort: do not leave a background kernel holding
-	// the transparent-proxy ports, otherwise a subsequent sudo panixy init/deploy would be blocked
+	// the transparent-proxy ports, otherwise a subsequent sudo Panoxy init/deploy would be blocked
 	// by our own leftover process (port conflict).
 	defer stopSandboxKernel(pidf)
 	shimScript := fmt.Sprintf(`#!/bin/sh

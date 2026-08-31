@@ -95,7 +95,7 @@ clean it up manually first, then retry:
 	}
 
 	mode, _ := cmd.Flags().GetString("proxy-mode")
-	if mode != "tun" && mode != "tproxy" {
+	if !validMode(mode) {
 		return fmt.Errorf("--proxy-mode must be tun or tproxy")
 	}
 	secret, _ := cmd.Flags().GetString("secret")
@@ -109,7 +109,6 @@ clean it up manually first, then retry:
 	placeUI(p, assets)
 
 	logx.Step("[3/5] config: existing > in-package manual clash.yaml > template render")
-	confNew := false
 	if _, err := os.Stat(p.Conf); err == nil {
 		logx.Info("existing config detected, kept untouched: %s", p.Conf)
 	} else if b, err := os.ReadFile(filepath.Join(pkgDir, constants.ProgName+".yaml")); err == nil {
@@ -128,10 +127,8 @@ clean it up manually first, then retry:
 		if err := os.WriteFile(p.Conf, []byte(out), 0o644); err != nil {
 			return err
 		}
-		confNew = true
 		logx.Info("wrote base config (mode %s); web UI secret: %s (view: grep '^secret' %s)", mode, d.Secret, p.Conf)
 	}
-	_ = confNew
 
 	// Always write the clean default-template copy (config.default.yaml, merge-conf's baseline)
 	// to the data dir, regardless of which config source was chosen above.
@@ -145,12 +142,7 @@ clean it up manually first, then retry:
 		return err
 	}
 	self, _ = filepath.EvalSymlinks(self)
-	if self != p.Cli {
-		os.MkdirAll(filepath.Dir(p.Cli), 0o755)
-		if b, err := os.ReadFile(self); err == nil {
-			os.WriteFile(p.Cli, b, 0o755)
-		}
-	}
+	copyBinary(self, p.Cli)
 	installMan(p.ManGz, self)
 	os.MkdirAll(filepath.Dir(p.State), 0o755)
 	statemode.Write(p.State, statemode.State{ProxyMode: mode})
@@ -188,7 +180,7 @@ func runUninstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 
 // runModeSwitch is an atomic switch: unload old firewall → config variant → -t → restart → new firewall → verify.
 func modeSwitch(want string) error {
-	if want != "tun" && want != "tproxy" {
+	if !validMode(want) {
 		return fmt.Errorf("mode must be tun or tproxy")
 	}
 	return withRootLock(func(p paths.Paths) error { return modeSwitchBody(p, want) })

@@ -1,4 +1,4 @@
-// Package constants 定义 panixy 全局常量:目录布局、防火墙标识、端口。
+// Package constants 定义 Panoxy 全局常量:目录布局、防火墙标识、端口。
 // 布局原则:/opt/<ProgName> 自包含数据家目录;/etc/<ProgName>.yaml 是管理员手编的系统级配置(唯一事实源)。
 package constants
 

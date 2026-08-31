@@ -144,7 +144,7 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// subscription import, avoiding leaving an empty provider that can never be fetched (real entries inherited from the
 	// existing config are unaffected).
 	for _, pn := range e.Providers() {
-		if u, ok := e.ProviderURL(pn); ok && u == "SUB_URL_PLACEHOLDER" && pn != name {
+		if u, ok := e.ProviderURL(pn); ok && u == config.PlaceholderURL && pn != name {
 			e.RemoveProvider(pn)
 			e.WireProvider(pn, false, nil)
 			logx.Step("placeholder subscription %s replaced by the real subscription %s", pn, name)

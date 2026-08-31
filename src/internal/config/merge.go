@@ -250,7 +250,7 @@ func (e *Editor) MergePersonal(src *Editor, opts MergeOpts) (*MergeReport, error
 	if ppNow != nil && ppNow.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(ppNow.Content); i += 2 {
 			pn, pv := ppNow.Content[i].Value, ppNow.Content[i+1]
-			if u := mapGet(pv, "url"); u != nil && u.Value == "SUB_URL_PLACEHOLDER" {
+			if u := mapGet(pv, "url"); u != nil && u.Value == PlaceholderURL {
 				if len(ppNow.Content) > 2 {
 					retired = append(retired, pn)
 				}

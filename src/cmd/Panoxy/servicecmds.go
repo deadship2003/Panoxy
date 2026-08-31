@@ -15,7 +15,7 @@ import (
 	"github.com/deadship2003/Panoxy/internal/systemdunit"
 )
 
-// Service lifecycle commands: start/stop/restart the panixy service.
+// Service lifecycle commands: start/stop/restart the Panoxy service.
 //
 // The firewall is normally loaded/removed by the unit's ExecStartPost (fw apply) / ExecStop
 // (fw clean) hooks; these commands additionally do an explicit clean + health check so a

@@ -40,7 +40,7 @@ Internet ←─ WAN ── Panoxy 机器(LAN 口 192.168.1.1)── LAN 设备
                     │                        ↑
                     │ nftables DNS 劫持       │ DHCP 网关=192.168.1.1
                     │ TPROXY mark+tproxy      │ DNS=公网(53 被劫持)
-                    └─ mihomo :7893          │
+                    └─ 内核 :7893            │
                                               └─ 设备无需任何配置
 ```
 
