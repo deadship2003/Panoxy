@@ -24,12 +24,12 @@ const (
 	// 防火墙:独立表,绝不复用系统 nat/filter 表;启动无条件 CleanAll 实现 restart 自愈
 	NftFamily = "inet"
 
-	MarkSelf    = 6666 // mihomo routing-mark:自身出站流量标记,防火墙据此放行防 DNS 回环(勿改,与配置模板联动)
+	MarkSelf    = 6666 // 内核 routing-mark:自身出站流量标记,防火墙据此放行防 DNS 回环(勿改,与配置模板联动)
 	MarkTproxy  = 1    // TPROXY 模式流量标记
 	TproxyTable = 100  // TPROXY 策略路由表号
-	TproxyPort  = 7893 // mihomo tproxy-port
+	TproxyPort  = 7893 // 内核 tproxy-port
 
-	DnsListenPort = 1053 // mihomo DNS 监听端口(防火墙 redirect 目标)
+	DnsListenPort = 1053 // 内核 DNS 监听端口(防火墙 redirect 目标)
 	MixedPortDef  = 33833
 	ApiPortDef    = 9999
 	DefSecret     = "deadship" // 面板/API 默认密钥(init/deploy --secret 默认值,与 API 客户端回退同源)
