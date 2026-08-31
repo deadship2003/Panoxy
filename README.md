@@ -71,12 +71,12 @@ sudo Panoxy merge-conf --dry-run ~/my.yaml   # preview the merge decision first
 ## 📐 Architecture
 
 ```
-                 DNS(53/853)                        Data traffic (non-53)
-┌──────────┐  nft redirect → :1053  ┌─┐  routing table → TUN device → mihomo
-│ TUN mode │ ─────────────────────► │same│
-├──────────┤                        │core│  nft mark 1 + policy routing
-│TPROXY mode│  nft redirect → :1053 │  │  + tproxy → :7893 (preserves source IP)
-└──────────┘ ─────────────────────► └─┘
+     DNS(53/853)                                            Data traffic (non-53)
+   ┌─────────────┐   nft redirect → :1053   ┌────┐   routing table → TUN device → mihomo
+   │  TUN mode   │ ───────────────────────► │same│
+   ├─────────────┤                          │core│   nft mark 1 + policy routing
+   │ TPROXY mode │   nft redirect → :1053   │    │   + tproxy → :7893 (preserves source IP)
+   └─────────────┘ ───────────────────────► └────┘
 ```
 
 - Data plane (node/group selection) lives in the **web panel**; transport plane (tun/tproxy) lives in the **CLI**
