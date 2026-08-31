@@ -172,7 +172,7 @@ build_one() {
 }
 
 # cleanup_old 移除旧版本产物:dist/ 只保留本次版本,并清掉遗留的暂存目录。
-# 旧版本可经 git 重编,无需在 dist/ 堆积;运行时的内核回滚由 panixy rollback 负责。
+# 旧版本可经 git 重编,无需在 dist/ 堆积。
 cleanup_old() {
   local f d
   for f in dist/${PROG}-*.tar.gz dist/${PROG}-*.tar.gz.sha256; do

@@ -1,6 +1,6 @@
 // panixy — a mihomo-based Linux transparent proxy gateway deploy/management tool (single-binary, Go).
 // Responsibility boundary: template rendering, file/unit management, firewall DNS hijack, subscription
-// management, upgrade/rollback, and health checks; traffic forwarding and DNS resolution are all done by
+// management, upgrade, and health checks; traffic forwarding and DNS resolution are all done by
 // the mihomo kernel.
 package main
 
@@ -77,7 +77,6 @@ Daily use:
 
 Operations:
   sudo panixy redeploy                   # force-refresh all program files in place (keep config)
-  sudo panixy rollback                   # roll the CLI back to the latest backup
   sudo panixy uninstall                  # uninstall (keep data and config)
 
 Details: panixy man, or man panixy-<command> (after deployment)`,
@@ -103,7 +102,7 @@ Details: panixy man, or man panixy-<command> (after deployment)`,
 	root.AddCommand(
 		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdSub(),
 		cmdTry(), cmdMergeConf(), cmdStatus(), cmdStart(), cmdStop(), cmdRestart(), cmdRun(),
-		cmdMode(), cmdUpgrade(), cmdRollback(),
+		cmdMode(), cmdUpgrade(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(), cmdConfig(),
 		cmdFw(), cmdMan(), cmdUpstream(),
 	)
@@ -406,41 +405,20 @@ current mode.`,
 
 func cmdUpgrade() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "upgrade [--ui|--cli] [--ui-version vX] [--check]",
-		Short: "upgrade UI/CLI (auto-invoked daily by the timer)",
-		Long: `Upgrade the metacubexd UI (default) and the Panoxy CLI itself. Only when everything
-succeeds is .last-upgrade updated.
+		Use:   "upgrade [--ui-version vX] [--check]",
+		Short: "upgrade the web UI (auto-invoked daily by the timer)",
+		Long: `Upgrade the metacubexd web UI. Only when the upgrade succeeds is .last-upgrade updated.
 
-CLI upgrade (--cli): self-compile locally inside the source tree (go build) -> back up the old
-binary -> replace the installed one; no prebuilt artifacts are downloaded (--src points at the
-repo root, default is the current directory). After fusion the kernel is embedded in the CLI, so
-this is also how the kernel is upgraded.`,
-		Example: "  panixy upgrade --check            # show upgradeable items only\n  sudo panixy upgrade --ui           # UI only (the daily-timer default)\n  sudo panixy upgrade --cli          # CLI (embedded kernel) only\n  sudo panixy upgrade --ui-version vX",
+The mihomo kernel is fused into the CLI, so there is no separate kernel to upgrade here; a new
+CLI version is shipped by compiling a new binary and replacing the installed one (offline package
++ redeploy, or simply copy the freshly built binary over the CLI path).`,
+		Example: "  panixy upgrade --check             # show current/latest UI version\n  sudo panixy upgrade                 # upgrade the UI (daily-timer default)\n  sudo panixy upgrade --ui-version vX # pin a UI version",
 		RunE:    runUpgrade,
 	}
-	c.Flags().Bool("ui", false, "upgrade the UI only (default: UI)")
+	c.Flags().Bool("ui", false, "upgrade the web UI (default action)")
 	c.Flags().String("ui-version", "", "pin a UI version")
-	c.Flags().Bool("check", false, "dry-run: show current/latest versions and the action to take")
-	c.Flags().Bool("cli", false, "upgrade the CLI only (panixy itself, embedded kernel; local self-compile)")
-	c.Flags().String("src", "", "source tree root (for --cli self-compile; default: current dir)")
+	c.Flags().Bool("check", false, "dry-run: show current/latest UI version and the action to take")
 	return c
-}
-
-func cmdRollback() *cobra.Command {
-	return &cobra.Command{
-		Use:   "rollback [version]",
-		Short: "roll the Panoxy CLI back to a backup (default: latest; can be repeated)",
-		Long: `Roll the Panoxy CLI back to a backup left by a --cli upgrade.
-
-With no argument it rolls back to the latest backup; with a version (e.g. 0.0.1) it rolls back
-to that specific backup. The current CLI is saved as a backup first, so rolling back can be
-repeated; it restarts and health-checks afterwards (failure only warns, does not block).
-
-UI rollback is handled automatically inside the upgrade transaction; this command is CLI-only.`,
-		Example: `  sudo panixy rollback              # roll back to the latest backup
-  sudo panixy rollback 0.0.1         # roll back to a specific version`,
-		RunE: runRollback,
-	}
 }
 
 func cmdUninstall() *cobra.Command {
@@ -483,9 +461,9 @@ No argument shows the last 80 lines; a numeric argument sets the line count.`,
 func cmdCheck() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check [yaml]",
-		Short: "validate config syntax with the embedded kernel (-t; default: current config; read-only, no root)",
-		Long: `Validate the config with the embedded kernel (-t), passing through the kernel's first error. Read-only, changes
-no files, no root needed.
+		Short: "validate config syntax with the embedded kernel in-process (default: current config; read-only, no root)",
+		Long: `Validate the config with the embedded kernel in-process, passing through the kernel's first error. Read-only,
+changes no files, no root needed.
 
 With no argument it validates the current /etc/clash.yaml; with a path it validates that file
 (e.g. before apply-conf).`,

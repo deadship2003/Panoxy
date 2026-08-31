@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall test e2e test-all clean lint help
+.PHONY: all build install uninstall test e2e test-all clean lint help _build-amd64 _build-arm64 _checksums
 
 # panixy Makefile — 本机开发入口(编译/安装/测试/清理)
 # 打包分发用 build.sh(仓库根目录);两者互不引用,各自内联 go build
@@ -13,37 +13,53 @@ HOST_ARCH     := $(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$
 ARCH          ?= $(HOST_ARCH)
 GOAMD64       ?= $(shell grep -qw avx2 /proc/cpuinfo 2>/dev/null && echo v3 || echo v1)
 
-# 命令回显开关:V=1(默认)回显底层命令便于 DEBUG;make V=0 静默。
-V ?= 1
-ifeq ($(V),0)
-  Q := @
-else
+LDFLAGS := -s -w -X main.version=$(PANOXY_VERSION) -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$(PROG) -buildid=
+
+# 命令回显开关(内核/autotools 惯例):默认 V=0 静默,只输出关键状态;
+# make V=1 显示底层命令与详细步骤,便于 DEBUG。
+V ?= 0
+ifeq ($(V),1)
   Q :=
+else
+  Q := @
+endif
+
+# 展开目标平台;ARCH 非法时立即报错(而非在 shell 里二次判断)。
+ifeq ($(ARCH),all)
+  BUILD_ARCHS := amd64 arm64
+else ifeq ($(ARCH),amd64)
+  BUILD_ARCHS := amd64
+else ifeq ($(ARCH),arm64)
+  BUILD_ARCHS := arm64
+else
+  $(error ARCH 只能是 amd64|arm64|all(当前: $(ARCH)))
 endif
 
 all: build ## 默认:编译当前平台二进制
 
-build: ## 编译目标二进制(默认当前平台,amd64 自动检测 AVX2;ARCH=amd64|arm64|all 覆盖)
-	$(Q)mkdir -p dist
-	$(Q)set -e; if [ "$(ARCH)" = all ]; then targets="amd64 arm64"; else targets="$(ARCH)"; fi; \
-	for a in $$targets; do \
-		case "$$a" in \
-			amd64) lvl="$(GOAMD64)"; \
-				(cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$$lvl" go build -trimpath -ldflags "-s -w -X main.version=$(PANOXY_VERSION) -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$(PROG) -buildid=" -o ../dist/$(PROG)-linux-amd64 ./cmd/panixy); \
-				echo "  → dist/$(PROG)-linux-amd64 (amd64 GOAMD64=$$lvl)" ;; \
-			arm64) (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$(PANOXY_VERSION) -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$(PROG) -buildid=" -o ../dist/$(PROG)-linux-arm64 ./cmd/panixy); \
-				echo "  → dist/$(PROG)-linux-arm64 (arm64)" ;; \
-			*) echo "ARCH 只能是 amd64|arm64|all(当前: $(ARCH))" >&2; exit 1 ;; \
-		esac; \
-	done
+build: $(addprefix _build-,$(BUILD_ARCHS)) _checksums ## 编译目标二进制(默认当前平台;ARCH=amd64|arm64|all 覆盖;V=1 看底层命令)
+
+_build-amd64:
+	@mkdir -p dist
+	@echo "  → 编译 amd64 (GOAMD64=$(GOAMD64))"
+	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=$(GOAMD64) go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-amd64 ./cmd/panixy
+
+_build-arm64:
+	@mkdir -p dist
+	@echo "  → 编译 arm64"
+	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-arm64 ./cmd/panixy
+
+_checksums:
 	$(Q)(cd dist && sha256sum $(PROG)-linux-* > sha256sums.txt 2>/dev/null || true)
 	@echo "完成 → 产物在 dist/,校验和见 dist/sha256sums.txt"
 
 install: build ## 安装 CLI → $(DESTDIR)$(BINDIR)/$(PROG)(PREFIX/BINDIR/DESTDIR 可覆盖)
-	$(Q)install -Dm755 dist/$(PROG)-linux-$(ARCH) $(DESTDIR)$(BINDIR)/$(PROG) && echo "→ 已安装 $(DESTDIR)$(BINDIR)/$(PROG)"
+	$(Q)install -Dm755 dist/$(PROG)-linux-$(ARCH) $(DESTDIR)$(BINDIR)/$(PROG)
+	@echo "→ 已安装 $(DESTDIR)$(BINDIR)/$(PROG)"
 
 uninstall: ## 卸载已安装的 CLI
 	$(Q)rm -f $(DESTDIR)$(BINDIR)/$(PROG)
+	@echo "→ 已卸载 $(DESTDIR)$(BINDIR)/$(PROG)"
 
 test: ## 运行单元测试(进程内内核,无需外部 mihomo)
 	$(Q)cd src && go test ./internal/... -count=1 -timeout 120s
@@ -55,9 +71,10 @@ test-all: test e2e ## 运行全部测试
 
 clean: ## 清理全部编译产物(dist/ 与暂存目录)
 	$(Q)rm -rf dist/ $(PROG)-V*/
+	@echo "→ 已清理"
 
 lint: ## 代码检查
 	$(Q)cd src && go vet ./...
 
-help: ## 显示所有目标
+help: ## 显示所有目标(调试时用 make V=1)
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'

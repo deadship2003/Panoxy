@@ -175,7 +175,7 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// Success cleanup: remove UI backup, update the upgrade timestamp.
 	os.RemoveAll(p.UiDir + ".old")
 	os.WriteFile(p.LastUp, []byte(time.Now().Format("2006-01-02 15:04:05")+"\n"), 0o644)
-	logx.Info("redeploy complete v%s: geo/rules/UI/CLI refreshed, firewall re-mounted, config kept", constants.Version)
+	logx.Info("redeploy complete %s: geo/rules/UI/CLI refreshed, firewall re-mounted, config kept", version)
 	return nil
 }
 

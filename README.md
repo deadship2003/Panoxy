@@ -9,11 +9,11 @@
 [![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%7Carm64-lightgrey)]()
 [![Release](https://img.shields.io/badge/Release-V0.0.1-orange)](../../releases)
 
-Single binary · zero dependencies · transactional deployment · full rollback
+Single binary · zero dependencies · transactional deployment · automatic rollback
 
 </div>
 
-**What it does.** Panoxy turns one Linux box into a transparent proxy gateway for your entire network. Install it on a single machine and every device behind it — phones, laptops, consoles, IoT — is proxied automatically at the network layer (TUN/TPROXY), with no client software and no per-app configuration. It embeds the mihomo kernel (fused into the single binary), bundles a web panel and geo/rules data, and adds a transactional deploy/upgrade flow with full rollback, so standing up and maintaining a gateway is a single command.
+**What it does.** Panoxy turns one Linux box into a transparent proxy gateway for your entire network. Install it on a single machine and every device behind it — phones, laptops, consoles, IoT — is proxied automatically at the network layer (TUN/TPROXY), with no client software and no per-app configuration. It embeds the mihomo kernel (fused into the single binary), bundles a web panel and geo/rules data, and adds a transactional deploy/upgrade flow with automatic rollback, so standing up and maintaining a gateway is a single command.
 
 > **The name.** *Panoxy* = Greek *πᾶν* (*pan*, "all") + *proxy*: one proxy for *all* of your traffic.
 
@@ -28,7 +28,7 @@ Single binary · zero dependencies · transactional deployment · full rollback
 - 🔄 **Self-healing** — `kill -9`/OOM residue is cleaned automatically on `systemctl restart Panoxy`; no manual intervention
 - 📡 **Verifiable subscriptions** — prefetch → validate → incremental write → restart → **node count > 0 counts as success**; never a false success
 - 🧩 **Config merge** — `merge-conf` does field-level merge of same-named groups (union of proxies/use); base groups are preserved, never deleted
-- ⬆️ **Parameterized upgrade** — `--ui/--cli/--check/--ui-version`; dry-run validation, automatic rollback on failure
+- ⬆️ **Parameterized upgrade** — `--check`/`--ui-version` (web UI); dry-run validation, automatic rollback on failure
 - 📖 **Complete documentation** — every command's `-h/-?/--help` includes examples; `man Panoxy` is generated from the same source as `--help`
 - 🔍 **Debug-friendly** — `--verbose` for step-by-step detail; `--debug` for zero-obfuscation of external command/API I/O
 
@@ -366,7 +366,7 @@ git tag V0.0.1 && git push origin V0.0.1
 | `sudo Panoxy init [URL]` | bare-metal init (nine steps with progress) |
 | `sudo Panoxy deploy [URL]` | deploy from the offline package |
 | `sudo Panoxy redeploy` | in-place reinstall: force-refresh all program files (config preserved), re-apply firewall and restart |
-| `sudo Panoxy merge-conf <yaml>` | overlay-merge a personal config (`--dry-run`/`--rollback`) |
+| `sudo Panoxy merge-conf <yaml>` | overlay-merge a personal config (`--dry-run`/`--dns`/`--no-wire`) |
 | `Panoxy config [--mode tun\|tproxy] [--write]` | print the default config template (rootless; `--write` writes config.default.yaml) |
 | `sudo Panoxy sub import [URL]` | import a subscription (paste mode, no quotes) |
 | `sudo Panoxy sub del --name N` | delete a subscription |
@@ -376,13 +376,15 @@ git tag V0.0.1 && git push origin V0.0.1
 | `sudo Panoxy stop` | stop the service (disable on boot) and clear the firewall |
 | `sudo Panoxy restart` | restart the service (self-heals the firewall) |
 | `sudo Panoxy mode [tun\|tproxy]` | view/switch mode |
-| `sudo Panoxy upgrade [--ui\|--cli] [--check]` | parameterized upgrade |
-| `sudo Panoxy rollback [vX]` | CLI rollback (rolls back the embedded kernel too) |
+| `sudo Panoxy upgrade [--check] [--ui-version vX]` | upgrade the web UI (parameterized) |
 | `Panoxy check [yaml]` | validate a config |
 | `sudo Panoxy apply-conf <yaml>` | apply a config (hot-reload first) |
 | `sudo Panoxy uninstall` | uninstall (data preserved) |
 | `Panoxy man [command]` | view manual (root page or subcommand page) |
 | `sudo Panoxy fw <apply\|teardown\|clean>` | firewall management |
+| `Panoxy units` | print the rendered systemd unit text (offline review) |
+| `Panoxy log` | view service logs (journalctl) |
+| `Panoxy upstream` | check mihomo Alpha upstream for newer commits (hint only) |
 
 **Global flags**: `--root <dir>` custom install dir · `--verbose` step-by-step detail · `--debug` full transparency
 

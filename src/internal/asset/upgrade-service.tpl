@@ -1,5 +1,5 @@
 [Unit]
-Description={{.Prog}} core & UI auto-upgrade (oneshot)
+Description={{.Prog}} web UI auto-upgrade (oneshot)
 After=network-online.target
 
 [Service]

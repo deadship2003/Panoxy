@@ -65,7 +65,7 @@ func runInstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		rollback()
 		return fmt.Errorf("health verification timed out, rolled back")
 	}
-	logx.Info("install complete v%s (health verification passed)", constants.Version)
+	logx.Info("install complete %s (health verification passed)", version)
 	return nil
 }
 

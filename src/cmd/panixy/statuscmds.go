@@ -29,12 +29,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// -q: exit code only (0 healthy, 1 degraded, 2 faulty).
 	if q {
 		if r.Service != "active" || !r.APIAlive {
-			os.Exit(2)
+			cleanExit(2)
 		}
 		if r.Nodes == 0 || r.Egress != "204" {
-			os.Exit(1)
+			cleanExit(1)
 		}
-		os.Exit(0)
+		cleanExit(0)
 	}
 	if asJSON {
 		b, _ := json.Marshal(r)
@@ -42,7 +42,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("== %s v%s  (%s) ==\n", constants.ProgName, constants.Version, p.Root)
+	fmt.Printf("== %s %s  (%s) ==\n", constants.ProgName, version, p.Root)
 	fmt.Printf("service:  %s\n", r.Service)
 	fmt.Printf("mode:     %s   firewall: %s", r.Mode, r.FwBackend)
 	if r.Stale {
