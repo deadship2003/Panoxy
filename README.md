@@ -121,7 +121,6 @@ Panoxy/
 │   ├── MIGRATION.md   bash-version migration steps
 │   ├── KNOWN-LIMITATIONS.md
 │   └── TROUBLESHOOTING.md
-├── legacy/            archived old bash version
 ├── Makefile           local build/install entry (make)
 └── README.md
 ```
