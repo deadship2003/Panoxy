@@ -28,8 +28,11 @@ func TestRenderConfigVariants(t *testing.T) {
 		if !strings.Contains(out, "routing-mark: 6666") {
 			t.Errorf("%s: 缺 routing-mark(防 DNS 回环)", tc.name)
 		}
-		if !strings.Contains(out, "listen: 0.0.0.0:1053") {
-			t.Errorf("%s: DNS 监听应为 0.0.0.0:1053(redirect 落点)", tc.name)
+		if !strings.Contains(out, `listen: "[::]:1053"`) {
+			t.Errorf("%s: DNS 监听应为 [::]:1053 双栈(redirect 落点)", tc.name)
+		}
+		if !strings.Contains(out, "fake-ip-range6: 2001:2::1/48") {
+			t.Errorf("%s: 缺 fake-ip-range6(IPv6 fake-ip 池)", tc.name)
 		}
 		// 断言只看非注释行(注释里会提到这些历史字段)
 		var body []string

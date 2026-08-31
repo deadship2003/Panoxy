@@ -5,7 +5,7 @@
 //   - 启动无条件 CleanAll 再 Apply → kill -9/OOM 残留随 systemctl restart 自愈
 //   - 本机 OUTPUT 劫持排除:保留网段/回环(防内网 DNS 异常)+ mark 6666(mihomo 自身
 //     上游查询,防 DNS 回环死锁 —— 与配置模板 routing-mark 联动)
-//   - DNS 劫持用 redirect(mihomo 监听 0.0.0.0:1053):OUTPUT 落 127.0.0.1,
+//   - DNS 劫持用 redirect(mihomo 监听 [::]:1053 双栈):OUTPUT 落 127.0.0.1,
 //     PREROUTING 落入接口主地址,v4/v6 通吃,无需 route_localnet
 //   - 唯一后端 nftables(内核 4.18+ 均含 nf_tproxy 支持),不保留 iptables 兜底
 package firewall

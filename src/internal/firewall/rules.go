@@ -7,14 +7,14 @@ import (
 )
 
 // keep-out 网段:内核层直接放行、绝不进 mihomo 的地址集合(与 TUN route-exclude 等价)。
-// 刻意不含 fake-ip 段 198.18.0.0/16 —— 那是必须进 mihomo 才能还原域名,不能放行。
+// 刻意不含 fake-ip 段(见下方 fakeIpv4Range / fakeIpv6Range)—— 那是必须进 mihomo 才能还原域名,不能放行。
 // 单一事实源:BuildNftScript / BuildNftTproxyScript 共用。
 const (
 	keep4Elements = "0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, " +
 		"172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24, 192.168.0.0/16, " +
 		"198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, 240.0.0.0/4"
-	// fc00::/7(ULA)在此放行,前提是 config.tpl 未设置 fake-ip-range6(即无 v6 fake-ip);
-	// 若未来启用 v6 fake-ip,须把此处收窄为 fd00::/8,让出 fake-ip 段。
+	// fc00::/7(ULA)在此放行。fake-ip6 段选在 RFC 5180 基准段 2001:2::/48(位于 ULA 之外),
+	// 故无需收窄 fc00::/7;只需保证 2001:2::/48 不进 keep6(见 fakeIpv6Range 及测试断言)。
 	keep6Elements = "::/128, ::1/128, 64:ff9b::/96, 100::/64, 2001:db8::/32, fc00::/7, fe80::/10, ff00::/8"
 
 	// 端口级 keep-out:内核层直接放行的关键端口(SSH/Telnet/VPN/NAT/mDNS/NTP)。
@@ -22,6 +22,13 @@ const (
 	// 故必须在此直接放行(其余基础服务端口由 mihomo rules 段直连)。两链共用,改动需同步。
 	keepPortsTCP = "tcp dport { 22, 23 }"
 	keepPortsUDP = "udp dport { 41641, 3478, 51820, 1194, 5353, 123 }"
+)
+
+// fake-ip 网段:必须进 mihomo 才能还原域名,故刻意不放进 keep 白名单。
+// 单一事实源,与 config.tpl 的 fake-ip-range / fake-ip-range6 联动(此处为网段形式;config 用首地址形式)。
+const (
+	fakeIpv4Range = "198.18.0.0/16"
+	fakeIpv6Range = "2001:2::/48" // RFC 5180 基准测试段(公网不可路由),IPv6 版 198.18.0.0/15
 )
 
 // BuildNftScript 生成 TUN 模式的完整 nft 脚本。

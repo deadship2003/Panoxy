@@ -136,7 +136,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 // any of the three firewall "contract" values causes real problems.
 //
 //	routing-mark 6666 —— the firewall exempts mihomo's own traffic by this mark; missing it causes a DNS loop
-//	dns.listen 0.0.0.0:1053 —— the nft redirect target; mismatching it makes DNS hijack a no-op
+//	dns.listen [::]:1053 —— the nft redirect target (dual-stack); mismatching it makes DNS hijack a no-op
 //	tun.dns-hijack —— the firewall already hijacks DNS uniformly; keeping it double-processes
 func warnCompat(path string) {
 	b, err := os.ReadFile(path)
@@ -159,7 +159,7 @@ func warnCompat(path string) {
 		logx.Warn("config is missing routing-mark: %d — the firewall will be unable to exempt mihomo's own traffic, possibly causing a DNS loop deadlock (the template ships it by default, do not remove)", constants.MarkSelf)
 	}
 	if !strings.Contains(c.DNS.Listen, ":1053") {
-		logx.Warn("dns.listen=%q does not match the firewall hijack target (0.0.0.0:1053) — DNS hijack will be a no-op, please change it to 0.0.0.0:1053", c.DNS.Listen)
+		logx.Warn("dns.listen=%q does not match the firewall hijack target ([::]:1053) — DNS hijack will be a no-op, please change it to [::]:1053", c.DNS.Listen)
 	}
 	if len(c.TUN.DNSHijack) > 0 {
 		logx.Warn("tun.dns-hijack still present — DNS hijack is already handled uniformly by the firewall, remove this item to avoid double hijacking")

@@ -33,8 +33,11 @@ func TestBuildNftScriptGolden(t *testing.T) {
 	if !strings.Contains(s, keep6Elements) {
 		t.Errorf("keep6 缺少保留网段: %s", keep6Elements)
 	}
-	if strings.Contains(keep4Elements, "198.18.0.0/16") {
-		t.Errorf("keep4 不得包含 fake-ip 段 198.18.0.0/16(否则无法进 mihomo 还原域名)")
+	if strings.Contains(keep4Elements, fakeIpv4Range) {
+		t.Errorf("keep4 不得包含 fake-ip 段 %s(否则无法进 mihomo 还原域名)", fakeIpv4Range)
+	}
+	if strings.Contains(keep6Elements, fakeIpv6Range) {
+		t.Errorf("keep6 不得包含 fake-ip6 段 %s(否则无法进 mihomo 还原域名)", fakeIpv6Range)
 	}
 	// 不阻断任何协议(DoT/DoQ 已移除阻断,纳入正常分流)
 	if strings.Contains(s, "853 reject") {
