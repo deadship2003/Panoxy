@@ -243,7 +243,8 @@ rule-providers:
 # 原则:不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流);透明代理的第一目标是正常访问。
 # DNS 53 端口照常劫持(为大多数设备提供域名级分流);加密 DNS(853/443)走代理(为自定义设备保留访问)。
 rules:
-  # ===== 基础服务直连(不走代理,保证 VPN/远程桌面/VoIP/IoT 等正常)=====
+  # ===== 基础服务直连(不走代理,保证 SSH/VPN/远程桌面/VoIP/IoT 等正常)=====
+  #- DST-PORT,22,DIRECT                             # SSH/SFTP(已禁用:境外 SSH 走代理,GitHub SSH 规避污染)
   - DST-PORT,23,DIRECT                              # Telnet
   - DST-PORT,3389,DIRECT                            # RDP 远程桌面(延迟敏感)
   - DST-PORT,5900,DIRECT                            # VNC 远程桌面
