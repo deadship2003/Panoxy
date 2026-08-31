@@ -14,7 +14,7 @@ import (
 
 	"github.com/deadship2003/Panoxy/internal/config"
 	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/execx"
+	"github.com/deadship2003/Panoxy/internal/core"
 	"github.com/deadship2003/Panoxy/internal/health"
 	"github.com/deadship2003/Panoxy/internal/locker"
 	"github.com/deadship2003/Panoxy/internal/logx"
@@ -50,9 +50,16 @@ func withRootLock(fn func(p paths.Paths) error) error {
 	return fn(p)
 }
 
-// mihomoTest validates config with the kernel's -t flag (CombinedOutput: kernel logs go to stdout, must merge-capture).
+// mihomoTest 用进程内内核校验配置(等价 mihomo -t;M2 起不再调用外部二进制)。
 func mihomoTest(p paths.Paths, conf string) (string, error) {
-	return execx.Run(p.Bin, "-t", "-f", conf, "-d", p.Root)
+	b, err := os.ReadFile(conf)
+	if err != nil {
+		return "", err
+	}
+	if err := core.Validate(p.Root, b); err != nil {
+		return err.Error(), err
+	}
+	return "", nil
 }
 
 // runSubImport implements sub import: prefetch → validate → incremental edit → -t → preload cache → restart → verify node count.

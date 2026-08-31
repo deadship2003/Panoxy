@@ -1,27 +1,67 @@
 // Package core 进程内封装 mihomo 内核(Alpha 分支),与外部 mihomo 二进制等价。
 //
-// 双轨并行(M1):生产 systemd 单元仍 ExecStart=mihomo 二进制(见 asset/service.tpl),
-// 本包提供进程内入口,供 M2 生命周期切换与 M1 的 -t 等价校验。所有函数严格对应
-// 上游 main.go 主循环,禁止私自增删逻辑(细节见 [[mihomo-alpha-embedding]])。
+// M2 起生命周期切换为进程内:systemd 单元 ExecStart 直接跑 Run,不再启动外部二进制。
+// Run 严格对应上游 main.go 的启动段 + 信号主循环;Validate 对应 -t 校验。
+// 禁止私自增删逻辑(细节见 [[mihomo-alpha-embedding]])。
 package core
 
 import (
+	"net"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+
+	"go.uber.org/automaxprocs/maxprocs"
+
+	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
+	"github.com/metacubex/mihomo/log"
 )
 
-// Start 启动内核,等价 mihomo 主循环的启动段:SetHomeDir → config.Init → hub.Parse。
-// configBytes 为空时走默认配置路径(等价 -f 缺省)。opts 透传 external-controller/secret 等覆盖项。
-func Start(homeDir string, configBytes []byte, opts ...hub.Option) error {
+// Run 进程内启动内核并阻塞,等价 mihomo main() 的启动段 + 信号主循环:
+// PreferGo → maxprocs → SetHomeDir → SetConfig → config.Init → hub.Parse(nil) →
+// geo 自动更新 → 信号循环(SIGHUP 重读文件 reload / SIGINT·SIGTERM → executor.Shutdown)。
+// configPath 为空时退回 homeDir/config.yaml(等价 -f 缺省)。opts 透传 external-ui 等覆盖项。
+func Run(homeDir, configPath string, opts ...hub.Option) error {
+	net.DefaultResolver.PreferGo = true
+	_, _ = maxprocs.Set(maxprocs.Logger(func(string, ...any) {}))
+
 	if homeDir != "" {
 		C.SetHomeDir(homeDir)
 	}
+	if configPath == "" {
+		configPath = filepath.Join(C.Path.HomeDir(), C.Path.Config())
+	}
+	C.SetConfig(configPath)
 	if err := config.Init(C.Path.HomeDir()); err != nil {
 		return err
 	}
-	return hub.Parse(configBytes, opts...)
+	if err := hub.Parse(nil, opts...); err != nil {
+		return err
+	}
+	if updater.GeoAutoUpdate() {
+		updater.RegisterGeoUpdater()
+	}
+
+	defer executor.Shutdown()
+	termSign := make(chan os.Signal, 1)
+	hupSign := make(chan os.Signal, 1)
+	signal.Notify(termSign, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(hupSign, syscall.SIGHUP)
+	for {
+		select {
+		case <-termSign:
+			return nil
+		case <-hupSign:
+			if err := hub.Parse(nil, opts...); err != nil {
+				log.Errorln("Parse config error: %s", err.Error())
+			}
+		}
+	}
 }
 
 // Validate 等价 mihomo -t:仅解析校验配置,不启动任何监听。
@@ -32,14 +72,4 @@ func Validate(homeDir string, configBytes []byte) error {
 	}
 	_, err := executor.ParseWithBytes(configBytes)
 	return err
-}
-
-// Reload 等价 SIGHUP:重新 hub.Parse 热重载(与 Start 不同,不重做 SetHomeDir/config.Init)。
-func Reload(configBytes []byte, opts ...hub.Option) error {
-	return hub.Parse(configBytes, opts...)
-}
-
-// Shutdown 等价 SIGTERM:清理监听、回写 fake-ip 状态。
-func Shutdown() {
-	executor.Shutdown()
 }

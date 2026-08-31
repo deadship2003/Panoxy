@@ -102,7 +102,7 @@ Details: panixy man, or man panixy-<command> (after deployment)`,
 	}
 	root.AddCommand(
 		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdSub(),
-		cmdTry(), cmdMergeConf(), cmdStatus(), cmdStart(), cmdStop(), cmdRestart(),
+		cmdTry(), cmdMergeConf(), cmdStatus(), cmdStart(), cmdStop(), cmdRestart(), cmdRun(),
 		cmdMode(), cmdUpgrade(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(), cmdConfig(),
 		cmdFw(), cmdMan(),
