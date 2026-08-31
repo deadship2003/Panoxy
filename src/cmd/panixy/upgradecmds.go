@@ -27,16 +27,15 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 }
 
 func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
-	coreOnly, _ := cmd.Flags().GetBool("core")
 	uiOnly, _ := cmd.Flags().GetBool("ui")
 	cliOnly, _ := cmd.Flags().GetBool("cli")
 	check, _ := cmd.Flags().GetBool("check")
-	coreVer, _ := cmd.Flags().GetString("core-version")
 	uiVer, _ := cmd.Flags().GetString("ui-version")
 	srcDir, _ := cmd.Flags().GetString("src")
-	// Default upgrades core+ui; --cli must be explicit (the CLI self-compiles locally, it is not part of the default full upgrade / daily timer).
-	anyOnly := coreOnly || uiOnly || cliOnly
-	doCore := !anyOnly || coreOnly
+	// Default upgrades the UI; --cli upgrades the Panoxy CLI itself (local self-compile). After fusion
+	// the kernel is embedded in the CLI, so "upgrade the CLI" IS "upgrade the kernel" — there is no
+	// separate prebuilt core to download anymore.
+	anyOnly := uiOnly || cliOnly
 	doUI := !anyOnly || uiOnly
 	doCLI := cliOnly
 
@@ -44,37 +43,12 @@ func runUpgradeBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	api := mihomoapi.NewFromConf(p.Conf)
 	proxy := api.Proxy()
 
-	curCore := ""
-	if out := runCmd(p.Bin, "-v"); out != "" {
-		curCore = firstVer(out)
-	}
 	curUI := ""
 	if b, err := os.ReadFile(p.UiStamp); err == nil {
 		curUI = strings.TrimSpace(string(b))
 	}
 
-	var latestCore, latestUI string
-	if doCore {
-		want := coreVer
-		if want == "" {
-			if latestCore, err = upgrade.Latest("MetaCubeX/mihomo", proxy); err != nil {
-				if !check {
-					logx.Warn("kernel version query failed, skipping this time: %v", err)
-				}
-			} else {
-				want = latestCore
-			}
-		}
-		if check {
-			fmt.Printf("kernel: current %s latest %s → %s\n", orQ(curCore), orQ(want), action(curCore, want))
-		} else if want != "" && want != curCore {
-			if err := coreUpgrade(p, proxy, want); err != nil {
-				return err
-			}
-		} else {
-			logx.Info("kernel is already latest %s", curCore)
-		}
-	}
+	var latestUI string
 	if doUI {
 		want := uiVer
 		if want == "" {
@@ -129,76 +103,6 @@ func action(cur, want string) string {
 	return "upgradable"
 }
 
-// coreUpgrade: download candidate assets → trial run → back up → replace → restart → dual health check → rollback on failure.
-func coreUpgrade(p paths.Paths, proxy, want string) error {
-	logx.Info("kernel upgrade: → %s", want)
-	tmp, _ := os.MkdirTemp("", "panixy-up-")
-	defer os.RemoveAll(tmp)
-	var got string
-	for _, base := range upgrade.CoreAssetCandidates(want) {
-		gz := filepath.Join(tmp, "core.gz")
-		url := "https://github.com/MetaCubeX/mihomo/releases/download/" + want + "/" + base + ".gz"
-		logx.Step("trying asset %s", base)
-		if err := upgrade.Download(url, proxy, gz); err != nil {
-			logx.Step("download failed (404/network), degrading to the next candidate")
-			continue
-		}
-		core := filepath.Join(tmp, "core")
-		if err := upgrade.GunzipFile(gz, core); err != nil {
-			continue
-		}
-		os.Chmod(core, 0o755)
-		if err := upgrade.VerifyCore(core, want); err != nil {
-			logx.Step("%v, degrading to the next candidate", err)
-			continue
-		}
-		got = core
-		break
-	}
-	if got == "" {
-		return fmt.Errorf("all candidate assets failed")
-	}
-	cur := firstVer(runCmd(p.Bin, "-v"))
-	bak := p.Bin + ".bak-" + cur
-	copyFile(p.Bin, bak)
-	if err := copyFile(got, p.Bin+".new"); err != nil {
-		return err
-	}
-	os.Rename(p.Bin+".new", p.Bin)
-	os.Chmod(p.Bin, 0o755)
-	if err := systemdunit.Restart(); err != nil {
-		restoreCore(p, bak, cur)
-		return fmt.Errorf("restart failed, rolled back to %s", cur)
-	}
-	if err := health.WaitHealthy(p.Conf, 90*time.Second, want); err != nil || !health.EgressOK(mihomoapi.NewFromConf(p.Conf).Mixed, 3) {
-		restoreCore(p, bak, cur)
-		return fmt.Errorf("upgrade health check failed, rolled back to %s", cur)
-	}
-	logx.Info("kernel upgrade succeeded → %s (backup %s)", want, bak)
-	pruneCoreBackups(p, constants.CoreKeep)
-	return nil
-}
-
-func restoreCore(p paths.Paths, bak, cur string) {
-	copyFile(bak, p.Bin)
-	os.Chmod(p.Bin, 0o755)
-	systemdunit.Restart()
-	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
-		logx.Warn("health check still failing after rollback, troubleshoot with %s log", constants.ProgName)
-	}
-}
-
-func pruneCoreBackups(p paths.Paths, keep int) {
-	matches, _ := filepath.Glob(p.Bin + ".bak-*")
-	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
-	if len(matches) <= keep {
-		return
-	}
-	for _, m := range matches[keep:] {
-		os.Remove(m)
-	}
-}
-
 // uiUpgrade: download compressed-dist.tgz → swap dir → probe /ui/ → restore the old dir on failure.
 func uiUpgrade(p paths.Paths, proxy, want string) error {
 	logx.Info("UI upgrade: → %s", want)
@@ -232,46 +136,37 @@ func uiUpgrade(p paths.Paths, proxy, want string) error {
 	return nil
 }
 
-// runRollback rolls back the kernel binary (default: the most recent backup).
+// runRollback rolls the Panoxy CLI back to a backup left by a --cli upgrade (default: the most recent).
 func runRollback(cmd *cobra.Command, args []string) error {
 	return withRootLock(func(p paths.Paths) error { return runRollbackBody(p, cmd, args) })
 }
 
 func runRollbackBody(p paths.Paths, cmd *cobra.Command, args []string) error {
-	matches, _ := filepath.Glob(p.Bin + ".bak-*")
+	matches, _ := filepath.Glob(p.Cli + ".bak-*")
 	if len(matches) == 0 {
-		return fmt.Errorf("no backup available")
+		return fmt.Errorf("no backup available (run sudo %s upgrade --cli first to create one)", constants.ProgName)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 	bak := matches[0]
 	if len(args) > 0 {
-		bak = p.Bin + ".bak-" + args[0]
+		bak = p.Cli + ".bak-" + args[0]
 		if !exists(bak) {
 			return fmt.Errorf("backup does not exist: %s (existing: %s)", bak, strings.Join(matches, " "))
 		}
 	}
-	cur := firstVer(runCmd(p.Bin, "-v"))
-	copyFile(p.Bin, p.Bin+".bak-"+cur)
-	copyFile(bak, p.Bin)
-	os.Chmod(p.Bin, 0o755)
+	// Back up the current CLI first (same naming as cliUpgrade), so rolling back can be repeated.
+	cur := strings.TrimPrefix(version, "v")
+	copyFile(p.Cli, p.Cli+".bak-"+cur)
+	copyFile(bak, p.Cli)
+	os.Chmod(p.Cli, 0o755)
 	if err := systemdunit.Restart(); err != nil {
 		return err
 	}
 	if err := health.WaitHealthy(p.Conf, 30*time.Second, ""); err != nil {
 		logx.Warn("health check failed after rollback: %v", err)
 	}
-	logx.Info("kernel rolled back %s → %s", cur, filepath.Base(bak))
+	logx.Info("CLI rolled back %s → %s", cur, filepath.Base(bak))
 	return nil
-}
-
-func firstVer(s string) string {
-	if i := strings.IndexByte(s, '\n'); i > 0 {
-		s = s[:i]
-	}
-	if v := upgradeVerRe(s); v != "" {
-		return v
-	}
-	return s
 }
 
 // cliUpgrade upgrades the Panoxy CLI itself: self-compile locally inside the source tree (go build) → replace the installed binary.

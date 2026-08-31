@@ -10,7 +10,6 @@ import (
 
 type Paths struct {
 	Root        string // /opt/<prog>
-	Bin         string // 内核
 	UiDir       string
 	UiStamp     string
 	State       string // /opt/<prog>/<prog>.yaml:自身状态(proxy-mode 等)
@@ -39,7 +38,6 @@ func Get() Paths {
 	root := env(pfx+"_ROOT", constants.DefRootDir)
 	return Paths{
 		Root:        root,
-		Bin:         filepath.Join(root, "bin", "mihomo"),
 		UiDir:       filepath.Join(root, "ui", "official"),
 		UiStamp:     filepath.Join(root, "ui", ".official.version"),
 		State:       env(pfx+"_STATE", filepath.Join(root, constants.ProgName+".yaml")),

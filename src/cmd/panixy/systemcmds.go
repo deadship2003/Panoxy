@@ -18,7 +18,6 @@ import (
 	"github.com/deadship2003/Panoxy/internal/paths"
 	"github.com/deadship2003/Panoxy/internal/statemode"
 	"github.com/deadship2003/Panoxy/internal/systemdunit"
-	"github.com/deadship2003/Panoxy/internal/upgrade"
 )
 
 // runInstall deploys only the service and system settings (files already in place; an internal deploy step).
@@ -28,10 +27,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 func runInstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	mode := statemode.Read(p.State)
-	logx.Step("[1/4] precheck: kernel executable + config passes -t")
-	if err := checkBinary(p); err != nil {
-		return err
-	}
+	logx.Step("[1/4] precheck: config passes -t")
 	if out, err := mihomoTest(p, p.Conf); err != nil {
 		return fmt.Errorf("config validation failed (%s)", firstErrLine(out))
 	}
@@ -107,16 +103,12 @@ clean it up manually first, then retry:
 	snap := snapshot(p)
 	defer func() { /* each failure path rolls back explicitly */ _ = snap }()
 
-	logx.Step("[1/6] kernel: unpack the %s version inside assets", runtimeArch())
-	if err := placeCore(p, assets); err != nil {
-		return err
-	}
-	logx.Step("[2/6] place geo and ad rules (offline preloaded)")
+	logx.Step("[1/5] place geo and ad rules (offline preloaded)")
 	placeGeoAndRules(p, assets)
-	logx.Step("[3/6] place web UI")
+	logx.Step("[2/5] place web UI")
 	placeUI(p, assets)
 
-	logx.Step("[4/6] config: existing > in-package manual clash.yaml > template render")
+	logx.Step("[3/5] config: existing > in-package manual clash.yaml > template render")
 	confNew := false
 	if _, err := os.Stat(p.Conf); err == nil {
 		logx.Info("existing config detected, kept untouched: %s", p.Conf)
@@ -141,7 +133,7 @@ clean it up manually first, then retry:
 	}
 	_ = confNew
 
-	logx.Step("[5/6] place CLI and man pages; write proxy-mode=%s to the state file", mode)
+	logx.Step("[4/5] place CLI and man pages; write proxy-mode=%s to the state file", mode)
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -157,7 +149,7 @@ clean it up manually first, then retry:
 	os.MkdirAll(filepath.Dir(p.State), 0o755)
 	statemode.Write(p.State, statemode.State{ProxyMode: mode})
 
-	logx.Step("[6/6] service deployment (incl. firewall; full rollback on failure)")
+	logx.Step("[5/5] service deployment (incl. firewall; full rollback on failure)")
 	if err := runInstall(cmd, args); err != nil {
 		deployRollback(p, snap)
 		return err
@@ -295,17 +287,6 @@ func deployRollback(p paths.Paths, s deploySnap) {
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-func checkBinary(p paths.Paths) error {
-	if !exists(p.Bin) {
-		return fmt.Errorf("kernel not found: %s (use %s deploy inside an offline package, or place it manually)", p.Bin, constants.ProgName)
-	}
-	// Lesson learned: an empty/corrupt kernel gets executed as an empty script via ENOEXEC and -v falsely passes — the output must be validated.
-	if out := runCmd(p.Bin, "-v"); !strings.Contains(out, "Mihomo") {
-		return fmt.Errorf("kernel cannot run (empty file / wrong arch?): %s", p.Bin)
-	}
-	return nil
-}
-
 func readIPForward() string {
 	b, err := os.ReadFile("/proc/sys/net/ipv4/ip_forward")
 	if err != nil {
@@ -322,36 +303,6 @@ func writeSysctl(p paths.Paths) {
 
 func setIPForward(v string) {
 	runCmd("sysctl", "-w", "net.ipv4.ip_forward="+v)
-}
-
-func placeCore(p paths.Paths, assets string) error {
-	if exists(p.Bin) {
-		logx.Info("kernel already exists, keeping it")
-		return nil
-	}
-	return placeCoreForce(p, assets)
-}
-
-// placeCoreForce unconditionally unpacks and overwrites the kernel (redeploy uses it; the only difference from placeCore is the exists skip).
-func placeCoreForce(p paths.Paths, assets string) error {
-	arch := runtimeArch()
-	if arch == "" {
-		return fmt.Errorf("unsupported architecture (package ships amd64/arm64)")
-	}
-	matches, _ := filepath.Glob(filepath.Join(assets, "core", "mihomo-linux-"+arch+"-*.gz"))
-	if len(matches) == 0 {
-		return fmt.Errorf("assets missing the %s kernel", arch)
-	}
-	core := matches[len(matches)-1]
-	if err := upgrade.GunzipFile(core, p.Bin); err != nil {
-		return err
-	}
-	os.Chmod(p.Bin, 0o755)
-	if err := checkBinary(p); err != nil {
-		return err
-	}
-	logx.Info("kernel: %s", firstLineOf(runCmd(p.Bin, "-v")))
-	return nil
 }
 
 // geoFiles lists the GeoIP/GeoSite/Country data filenames needed for deployment (init download and deploy placement share the same source).
@@ -441,9 +392,7 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 	if _, err := os.Stat(assets); err != nil {
 		return fmt.Errorf("no offline assets in the current directory — deploy must run inside the extracted offline package (for a bare-metal direct install use %s init)", constants.ProgName)
 	}
-	arch := runtimeArch()
 	for _, item := range []struct{ name, path string }{
-		{"kernel (" + arch + ")", filepath.Join(assets, "core")},
 		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
 		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
 		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
@@ -468,7 +417,7 @@ func deployDryRun(cmd *cobra.Command, args []string) error {
 	default:
 		logx.Info("  render the default template (secret %s)", drySecret(cmd))
 	}
-	logx.Step("[plan] placement: %s (kernel/geo/rules/UI → service → optional subscription import)", p.Root)
+	logx.Step("[plan] placement: %s (geo/rules/UI → service → optional subscription import)", p.Root)
 	logx.Info("== dry-run done. Real run: sudo ./%s deploy ...", constants.ProgName)
 	return nil
 }

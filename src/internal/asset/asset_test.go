@@ -1,13 +1,8 @@
 package asset
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
 func TestRenderConfigVariants(t *testing.T) {
@@ -50,66 +45,6 @@ func TestRenderConfigVariants(t *testing.T) {
 			if !strings.Contains(out, "stack: system") || strings.Contains(out, "tproxy-port") {
 				t.Errorf("tun 变体错误")
 			}
-		}
-	}
-}
-
-// TestConfigPassesMihomoCheck 用真实 mihomo 二进制 -t 校验两个变体(模板定稿的硬门槛)。
-// 本机无内核时跳过(CI 打包阶段会再验)。
-func TestConfigPassesMihomoCheck(t *testing.T) {
-	bin := os.Getenv("MIHOMO_BIN")
-	if bin == "" {
-		for _, c := range []string{
-			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
-			"/opt/panixy/bin/mihomo", // 旧版残留
-		} {
-			if _, err := os.Stat(c); err == nil {
-				bin = c
-				break
-			}
-		}
-		if bin == "" {
-			t.Skip("本机无 mihomo 内核,跳过 -t 实测")
-		}
-	}
-	geoSrc := os.Getenv("GEO_SRC")
-	if geoSrc == "" {
-		geoSrc = filepath.Join("/opt", constants.ProgName)
-		if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
-			geoSrc = "/opt/panixy" // 旧版残留
-			if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
-				h, _ := os.UserHomeDir()
-				if _, err2 := os.Stat(h + "/panixy-e2e/GeoSite.dat"); err2 == nil {
-					geoSrc = h + "/panixy-e2e"
-				}
-			}
-		}
-	}
-	for _, tc := range []struct {
-		name   string
-		tproxy bool
-	}{{"tun", false}, {"tproxy", true}} {
-		d := DefaultConfigData()
-		d.TProxy = tc.tproxy
-		out, err := RenderConfig(d)
-		if err != nil {
-			t.Fatalf("%s: %v", tc.name, err)
-		}
-		dir := t.TempDir()
-		// geo 文件与 ui 目录(mihomo 要求 external-ui 在家目录内)
-		for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
-			b, err := os.ReadFile(filepath.Join(geoSrc, f))
-			if err == nil {
-				os.WriteFile(filepath.Join(dir, f), b, 0o644)
-			}
-		}
-		os.MkdirAll(filepath.Join(dir, "ui", "official"), 0o755)
-		conf := filepath.Join(dir, "clash.yaml")
-		os.WriteFile(conf, []byte(out), 0o644)
-		cmd := exec.Command(bin, "-t", "-f", conf, "-d", dir)
-		got, err := cmd.CombinedOutput() // 教训:mihomo 日志走 stdout,必须合并捕获
-		if err != nil {
-			t.Errorf("%s 变体未过 mihomo -t:\n%s", tc.name, string(got))
 		}
 	}
 }

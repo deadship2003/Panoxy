@@ -20,7 +20,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	q, _ := cmd.Flags().GetBool("quiet")
 	asJSON, _ := cmd.Flags().GetBool("json")
 
-	r := health.Collect(p.Conf, p.Bin, p.UiStamp, p.LastUp, p.State)
+	r := health.Collect(p.Conf, p.UiStamp, p.LastUp, p.State)
 	// Fix the stale-rule judgement: table exists + service active = normal; table exists + service inactive = truly stale.
 	if r.Stale && r.Service == "active" {
 		r.Stale = false // service is running, rules in the table is the normal state

@@ -15,9 +15,9 @@ var files embed.FS
 
 // UnitData 渲染主服务单元所需字段。
 type UnitData struct {
-	Mode                        string // tun / tproxy(仅用于 Description)
-	Prog, EnvPrefix             string // 程序名 / env 前缀(随编译期 ProgName 注入)
-	Bin, Conf, Root, UiDir, Cli string
+	Mode            string // tun / tproxy(仅用于 Description)
+	Prog, EnvPrefix string // 程序名 / env 前缀(随编译期 ProgName 注入)
+	Conf, Root, UiDir, Cli string
 }
 
 func render(name string, data any) (string, error) {

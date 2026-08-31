@@ -2,13 +2,13 @@ package config
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/deadship2003/Panoxy/internal/asset"
 	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/core"
 )
 
 // personalSample 模拟个人配置:自定义分组(进程/地理分流)、自建节点、端口密钥、

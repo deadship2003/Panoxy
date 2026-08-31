@@ -8,11 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/deadship2003/Panoxy/internal/config"
-	"github.com/deadship2003/Panoxy/internal/execx"
+	"github.com/deadship2003/Panoxy/internal/core"
 	"github.com/deadship2003/Panoxy/internal/firewall"
 	"github.com/deadship2003/Panoxy/internal/mihomoapi"
 	"github.com/deadship2003/Panoxy/internal/statemode"
@@ -37,7 +36,7 @@ type Report struct {
 
 // Collect 收集健康快照。confPath 用于构造 API 客户端与 provider 名单。
 // 单项失败不影响其他项(探测永不致命)。
-func Collect(confPath, bin, uiStamp, lastUp, statePath string) Report {
+func Collect(confPath, uiStamp, lastUp, statePath string) Report {
 	r := Report{Service: systemdunit.Active(), Mode: modeOf(statePath)}
 	api := mihomoapi.NewFromConf(confPath)
 	if v, err := api.Version(); err == nil {
@@ -55,9 +54,7 @@ func Collect(confPath, bin, uiStamp, lastUp, statePath string) Report {
 	}
 	r.Egress = probe204(true, api.Mixed)
 	r.Direct = probe204(false, 0)
-	if out, err := execx.Run(bin, "-v"); err == nil {
-		r.CoreVer = firstLine(out)
-	}
+	r.CoreVer = core.Version()
 	if b, err := os.ReadFile(uiStamp); err == nil {
 		r.UIVer = strings.TrimSpace(string(b))
 	}
@@ -115,11 +112,4 @@ func WaitHealthy(confPath string, timeout time.Duration, expectVer string) error
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("health check timed out (service/API not ready)")
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return strings.TrimSpace(s)
 }

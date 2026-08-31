@@ -28,7 +28,7 @@ import (
 )
 
 // runInit: no packaging, single-binary bare-metal init — downloads all assets and deploys by itself, then imports the subscription.
-// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs a usable kernel on this machine) > gh mirror.
+// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs the panixy CLI on this machine) > gh mirror.
 func runInit(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return initDryRun(cmd, args)
@@ -37,7 +37,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 }
 
 func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
-	total := 9
+	total := 8
 	stepf := func(i int, f string, a ...any) { logx.Step("[%d/%d] %s", i, total, fmt.Sprintf(f, a...)) }
 
 	name, _ := cmd.Flags().GetString("name")
@@ -110,34 +110,7 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	tmp, _ := os.MkdirTemp("", "panixy-init-")
 	defer os.RemoveAll(tmp)
 
-	stepf(4, "download mihomo kernel (%s)", runtimeArch())
-	coreVer, err := detectCoreVer(proxyFn)
-	if err != nil {
-		return fmt.Errorf("cannot probe the latest mihomo kernel version: %v (use the offline package sudo ./%s deploy, or manually copy the kernel to %s and chmod +x then retry)", err, constants.ProgName, p.Bin)
-	}
-	logx.Info("latest upstream kernel detected at runtime: %s", coreVer)
-	kernel := ""
-	for _, base := range upgrade.CoreAssetCandidates(coreVer) {
-		kurl := fmt.Sprintf("https://github.com/MetaCubeX/mihomo/releases/download/%s/%s.gz", coreVer, base)
-		if downloadAny(kurl, allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "core.gz"), "kernel "+shortAsset(base)) {
-			core := filepath.Join(tmp, "core")
-			if err := upgrade.GunzipFile(filepath.Join(tmp, "core.gz"), core); err != nil {
-				continue
-			}
-			os.Chmod(core, 0o755)
-			if err := upgrade.VerifyCore(core, coreVer); err != nil {
-				logx.Step("%v, degrading to next candidate", err)
-				continue
-			}
-			kernel = core
-			break
-		}
-	}
-	if kernel == "" {
-		return fmt.Errorf("kernel download failed (direct/proxy/mirror all unavailable); use the offline package sudo ./%s deploy, or manually copy the mihomo kernel to %s and chmod +x then retry", constants.ProgName, p.Bin)
-	}
-
-	stepf(5, "download geo data and ad rules")
+	stepf(4, "download geo data and ad rules")
 	geoBase := "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
 	geos := map[string]string{
 		"GeoIP.dat":    geoBase + "/geoip.dat",
@@ -156,21 +129,13 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("geo data download incomplete (%d/3)", geoOK)
 	}
 
-	stepf(6, "download metacubexd web UI")
+	stepf(5, "download metacubexd web UI")
 	uiOK := downloadAny("https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz",
 		allowDirect, proxyFn, mirrorList, filepath.Join(tmp, "ui.tgz"), "web UI")
 
 	// ---- assets are all ready now; from here on it is structurally identical to deploy ----
 	snap := snapshot(p)
-	stepf(7, "place assets in %s + render config (secret %s)", constants.DefRootDir, secret)
-	os.MkdirAll(filepath.Join(p.Root, "bin"), 0o755)
-	if err := copyFile(kernel, p.Bin); err != nil {
-		return err
-	}
-	os.Chmod(p.Bin, 0o755)
-	if err := checkBinary(p); err != nil {
-		return err
-	}
+	stepf(6, "place assets in %s + render config (secret %s)", constants.DefRootDir, secret)
 	for f := range geos {
 		copyFile(filepath.Join(tmp, f), filepath.Join(p.Root, f))
 	}
@@ -218,13 +183,13 @@ func runInitBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	installMan(p.ManGz, self)
 	statemode.Write(p.State, statemode.State{ProxyMode: mode})
 
-	stepf(8, "deploy service (units/firewall/health verification)")
+	stepf(7, "deploy service (units/firewall/health verification)")
 	if err := runInstall(cmd, args); err != nil {
 		deployRollback(p, snap)
 		return err
 	}
 
-	stepf(9, "import subscription (%s)", name)
+	stepf(8, "import subscription (%s)", name)
 	subFile := filepath.Join(tmp, "sub.yaml")
 	os.WriteFile(subFile, body, 0o644)
 	setCmd := &cobra.Command{}
@@ -252,29 +217,6 @@ func orURL(u, f string) string {
 		return u
 	}
 	return "paste mode"
-}
-
-func shortAsset(base string) string {
-	if len(base) > 28 {
-		return base[:28] + "…"
-	}
-	return base
-}
-
-// detectCoreVer probes the latest upstream kernel version at runtime (never hard-coded): direct → subscription bootstrap proxy.
-// The direct probe does not depend on allowDirect (api.github.com and the release asset domain are different domains; one may work
-// while the other does not); only on failure does it borrow a subscription node to start a bootstrap proxy and retry; if both fail
-// it returns an error and falls back to the offline package / a manually placed kernel.
-func detectCoreVer(proxyFn func() string) (string, error) {
-	if v, err := upgrade.Latest("MetaCubeX/mihomo", ""); err == nil {
-		return v, nil
-	}
-	if p := proxyFn(); p != "" {
-		if v, err := upgrade.Latest("MetaCubeX/mihomo", p); err == nil {
-			return v, nil
-		}
-	}
-	return "", fmt.Errorf("GitHub API unreachable (both direct and subscription proxy failed)")
 }
 
 // directAssetReachable probes a real release asset with a Range request (fetch 1 byte only, 15s hard cap).
@@ -306,7 +248,7 @@ func downloadAny(url string, allowDirect bool, proxyFn func() string, mirrors []
 	for _, m := range mirrors {
 		m = strings.TrimRight(m, "/") + "/" + url
 		if err := upgrade.DownloadProgress(m, "", dst, label+"(mirror)"); err == nil {
-			logx.Info("%s downloaded via mirror (mirror is a third-party source; the kernel was verified by a trial run)", label)
+			logx.Info("%s downloaded via mirror (mirror is a third-party source)", label)
 			return true
 		}
 	}
@@ -343,17 +285,22 @@ func syscallKill(pid string) {
 	}
 }
 
-// bootProxyFromSub starts a temporary mihomo bootstrap proxy using the fetched subscription body (needs a kernel on this machine).
+// bootProxyFromSub starts a temporary bootstrap proxy using the fetched subscription body. After fusion the
+// kernel is embedded in panixy, so it boots `panixy run` in a subprocess (temp dir as the data home) rather
+// than a separate mihomo binary.
 func bootProxyFromSub(body []byte, cmd *cobra.Command) string {
 	bootBin, _ := cmd.Flags().GetString("boot-bin")
 	if bootBin == "" {
-		bootBin = paths.Get().Bin // follows --root/env; falls back to default /opt when nothing is installed
+		bootBin = paths.Get().Cli // the installed panixy (embedded kernel); follows --root/env
+		if _, err := os.Stat(bootBin); err != nil {
+			bootBin, _ = os.Executable() // fall back to the running binary (bare-metal init)
+		}
 	}
 	if _, err := os.Stat(bootBin); err != nil {
-		// Bare-metal with no kernel: cannot start a bootstrap proxy via a subscription node. Print clear guidance then skip, falling back to mirror/offline package.
-		logx.Step("no bootstrap kernel (%s), cannot download assets via a subscription node", bootBin)
+		// No panixy CLI: cannot start a bootstrap proxy via a subscription node. Print clear guidance then skip, falling back to mirror/offline package.
+		logx.Step("no panixy CLI (%s), cannot download assets via a subscription node", bootBin)
 		logx.Step("  option 1 (recommended): run make package on a machine with internet to build an offline package → then sudo ./%s deploy on the target", constants.ProgName)
-		logx.Step("  option 2: manually copy the mihomo kernel to %s and chmod +x, then rerun init", bootBin)
+		logx.Step("  option 2: manually place panixy at %s and chmod +x, then rerun init", bootBin)
 		return ""
 	}
 	port := freePortStr()
@@ -379,8 +326,12 @@ rules:
 		bootBody = body // fall back to the original on normalization failure, letting mihomo report its own error (consistent with the real import path)
 	}
 	os.WriteFile(filepath.Join(dir, "boot.sub.yaml"), bootBody, 0o644)
-	c := exec.Command(bootBin, "-f", "boot.yaml", "-d", dir)
+	// Boot the embedded kernel via `panixy run`; the temp dir is the data home, the temp config the source.
+	c := exec.Command(bootBin, "run")
 	c.Dir = dir
+	c.Env = append(os.Environ(),
+		constants.EnvPrefix()+"_ROOT="+dir,
+		constants.EnvPrefix()+"_CONF="+filepath.Join(dir, "boot.yaml"))
 	if err := c.Start(); err != nil {
 		os.RemoveAll(dir)
 		return ""
@@ -455,12 +406,11 @@ func initDryRun(cmd *cobra.Command, args []string) error {
 	if directAssetReachable(probe, 15*time.Second) {
 		logx.Info("  direct works → download directly")
 	} else {
-		logx.Info("  direct unavailable → subscription bootstrap proxy (needs a kernel on this machine: %s)%s",
+		logx.Info("  direct unavailable → subscription bootstrap proxy (needs the panixy CLI on this machine: %s)%s",
 			orOK(exists(bootDefaultBin(cmd))), " → mirror (--mirror)")
 	}
 
 	logx.Step("[plan] download list")
-	logx.Info("  kernel: mihomo-linux-%s-<latest upstream auto-detected at runtime>.gz (candidate degradation v3→standard→compatible)", arch)
 	logx.Info("  geo:  GeoIP.dat / GeoSite.dat / Country.mmdb")
 	logx.Info("  rules: HyperADRules-Ads.yaml   web UI: metacubexd compressed-dist.tgz")
 
@@ -488,7 +438,7 @@ func modeOf(cmd *cobra.Command) string {
 func bootDefaultBin(cmd *cobra.Command) string {
 	b, _ := cmd.Flags().GetString("boot-bin")
 	if b == "" {
-		b = paths.Get().Bin
+		b = paths.Get().Cli
 	}
 	return b
 }

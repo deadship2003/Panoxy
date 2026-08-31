@@ -23,8 +23,8 @@ func addDeployFlags(c *cobra.Command) {
 
 // addDownloadFlags is the download fallback parameters: --mirror/--boot-bin (shared by init/try which download over the network).
 func addDownloadFlags(c *cobra.Command) {
-	c.Flags().StringSlice("mirror", nil, "gh mirror prefixes (multiple allowed; third-party source, the kernel is verified by a trial run)")
-	c.Flags().String("boot-bin", "", "kernel used by the subscription bootstrap proxy (defaults to bin/mihomo in the install dir)")
+	c.Flags().StringSlice("mirror", nil, "gh mirror prefixes (multiple allowed; third-party source)")
+	c.Flags().String("boot-bin", "", "panixy CLI used as the subscription bootstrap proxy (defaults to the installed panixy)")
 }
 
 // addDryRunFlag is the dry-run parameter (each command's semantics differ slightly, described by desc).

@@ -73,3 +73,6 @@ func Validate(homeDir string, configBytes []byte) error {
 	_, err := executor.ParseWithBytes(configBytes)
 	return err
 }
+
+// Version 返回内嵌内核的版本(上游 Alpha 分支 C.Version;融合后内核=Panoxy 自身)。
+func Version() string { return C.Version }

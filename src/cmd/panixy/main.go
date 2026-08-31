@@ -77,7 +77,7 @@ Daily use:
 
 Operations:
   sudo panixy redeploy                   # force-refresh all program files in place (keep config)
-  sudo panixy rollback                   # roll the core back to the latest backup
+  sudo panixy rollback                   # roll the CLI back to the latest backup
   sudo panixy uninstall                  # uninstall (keep data and config)
 
 Details: panixy man, or man panixy-<command> (after deployment)`,
@@ -157,12 +157,12 @@ func cmdTry() *cobra.Command {
 		Use:   "try [SUBSCRIPTION_URL]",
 		Short: "pre-install: run the full install flow in a sandbox without root (pass = safe to install)",
 		Long: `Pre-install (test install, no root): run the whole init flow for real inside a sandbox —
-real asset download, real mihomo core startup, real subscription import with node-count>0
+real asset download, real kernel startup, real subscription import with node-count>0
 verification, real health checks. Everything lands in the sandbox dir; it does not touch the
 real system (no /opt or /etc writes, no service install, no firewall changes).
 
 Only two differences from a real deploy (both due to non-root limits, absent with sudo):
-  - the tun section is stripped when booting the core (TUN device needs CAP_NET_ADMIN)
+  - the tun section is stripped when booting the kernel (TUN device needs CAP_NET_ADMIN)
   - routing-mark is stripped (SO_MARK needs privileges); firewall rules are not applied
 After it passes, deploy for real with: sudo panixy init 'SUBSCRIPTION_URL'`,
 		Example: `  panixy try 'https://example.com/sub?token=x'   # full-flow test
@@ -218,13 +218,11 @@ func cmdInit() *cobra.Command {
 
 Three-tier download strategy (each step shows a progress bar; --verbose for steps, --debug for full detail):
   direct (hard-fail after 15s) > subscription-bootstrap proxy (start a local proxy via a
-  subscription node; needs any local mihomo core, --boot-bin to specify, default
-  /opt/panixy/bin/mihomo) > gh mirror (--mirror, third-party source; the core is test-run
-  verified; for friends prefer the offline package deploy)
+  subscription node; needs a local panixy CLI, --boot-bin to specify, default the installed
+  panixy) > gh mirror (--mirror, third-party source; for friends prefer the offline package deploy)
 
-Nine steps: pre-check -> fetch subscription -> network probe -> download core (arch/AVX2
-fallback) -> geo/rules -> UI -> place assets + render config -> deploy service
-(firewall/health) -> import subscription (node count > 0).`,
+Eight steps: pre-check -> fetch subscription -> network probe -> geo/rules -> UI -> place assets
++ render config -> deploy service (firewall/health) -> import subscription (node count > 0).`,
 		Example: `  sudo panixy init 'https://example.com/sub?token=x&sid=y'
   sudo panixy init --name Nano                            # paste a subscription on Enter
   sudo panixy init --file sub.yaml URL                    # import subscription offline
@@ -245,7 +243,7 @@ func cmdDeploy() *cobra.Command {
 		Short: "fresh deploy (run inside an unpacked offline package; --dry-run)",
 		Long: `Fresh deploy; must be run from the root of an unpacked offline package.
 
-Flow: place core/geo/UI/ad-block rules -> render config (existing > hand-edited in package >
+Flow: place geo/UI/ad-block rules -> render config (existing > hand-edited in package >
 template) -> install CLI and man pages -> write systemd units -> enable ip_forward -> start
 the service (with firewall). Any step failing rolls back everything. If legacy bash-deploy
 leftovers are detected (units with resolvectl / config with dns-hijack), it aborts and prints
@@ -268,7 +266,7 @@ func cmdSub() *cobra.Command {
 		Long: `Manage mihomo subscriptions (proxy-providers): import or replace, delete, view status and node count.
 
 Subscription import uses incremental yaml editing to write proxy-providers[NAME] (reusing anchor
-<<: *p), and pre-populates cache, restarts the core, and verifies node count > 0; any step
+<<: *p), and pre-populates cache, restarts the kernel, and verifies node count > 0; any step
 failing rolls back automatically.`,
 		Example: `  sudo panixy sub import 'https://example.com/sub?token=x'   # import (paste mode, no quoting)
   sudo panixy sub import --name airport2 'https://example.com/sub2'
@@ -288,8 +286,8 @@ URLs with & ? etc. need no quoting).
 
 Flow: prefetch (local file > direct > via local proxy) -> validate as Clash YAML with nodes ->
 incremental yaml edit into proxy-providers[NAME] (reuse anchor <<: *p, keep other providers
-and comments, and merge NAME into each group's use list) -> mihomo -t validate -> pre-populate
-provider cache -> restart (hot-reload does not refresh providers, a mihomo limitation) -> query
+and comments, and merge NAME into each group's use list) -> validate (embedded kernel) -> pre-populate
+provider cache -> restart (hot-reload does not refresh providers, a kernel limitation) -> query
 that provider's node count, and roll back automatically if it is 0.
 
 Prerequisite: the config has an &p anchor (the base template ships it).`,
@@ -307,7 +305,7 @@ func cmdSubDel() *cobra.Command {
 		Short: "delete a subscription provider (backup, validate, restart; roll back on failure)",
 		Long: `Delete a subscription from proxy-providers and remove it from every group's use list.
 
-Transaction flow: backup config -> delete provider + unwire -> mihomo -t validate -> restart ->
+Transaction flow: backup config -> delete provider + unwire -> validate (embedded kernel) -> restart ->
 health check; any step failing rolls back automatically. Note: deleting the only subscription
 leaves a group without use, which -t rejects (import a new subscription first).
 
@@ -340,7 +338,7 @@ func cmdStatus() *cobra.Command {
 		Short: "health overview: service/firewall/per-sub node counts/core & UI versions/egress",
 		Long: `Health overview. Includes: service status, firewall backend and leftover rules, every
 proxy-provider status, core/UI versions, last upgrade time, and proxy egress connectivity;
-it also notes that browser DoH cannot be intercepted by the core.
+it also notes that browser DoH cannot be intercepted by the kernel.
 
   --detail  append details: current proxy mode (tun/tproxy), TUN stack risk hints, route/cache details
   -q        quiet, exit code only: 0 healthy 1 degraded (zero nodes or proxy egress down) 2 fault (service/API unavailable)
@@ -408,27 +406,22 @@ current mode.`,
 
 func cmdUpgrade() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "upgrade [--core|--ui|--cli] [--core-version vX] [--ui-version vX] [--check]",
-		Short: "upgrade core/UI/CLI (auto-invoked daily by the timer)",
-		Long: `Upgrade the mihomo core and metacubexd UI (default: both; --cli explicitly upgrades the CLI
-itself). Only when everything succeeds is .last-upgrade updated.
+		Use:   "upgrade [--ui|--cli] [--ui-version vX] [--check]",
+		Short: "upgrade UI/CLI (auto-invoked daily by the timer)",
+		Long: `Upgrade the metacubexd UI (default) and the Panoxy CLI itself. Only when everything
+succeeds is .last-upgrade updated.
+
 CLI upgrade (--cli): self-compile locally inside the source tree (go build) -> back up the old
 binary -> replace the installed one; no prebuilt artifacts are downloaded (--src points at the
-repo root, default is the current directory).
-
-Core flow: query latest release (via local proxy, direct on failure) -> download (amd64 prefers
-v3 by avx2, falls back to compatible) -> test-run verify -> back up old core (keep ` + fmt.Sprintf("%d", constants.CoreKeep) + `) ->
-atomic replace -> restart -> health check (API version + egress) -> auto-rollback to the old
-binary on failure.`,
-		Example: "  panixy upgrade --check            # show upgradeable items only\n  sudo panixy upgrade --core         # core only\n  sudo panixy upgrade --cli          # CLI only\n  sudo panixy upgrade --core-version v1.19.31",
+repo root, default is the current directory). After fusion the kernel is embedded in the CLI, so
+this is also how the kernel is upgraded.`,
+		Example: "  panixy upgrade --check            # show upgradeable items only\n  sudo panixy upgrade --ui           # UI only (the daily-timer default)\n  sudo panixy upgrade --cli          # CLI (embedded kernel) only\n  sudo panixy upgrade --ui-version vX",
 		RunE:    runUpgrade,
 	}
-	c.Flags().Bool("core", false, "upgrade the core only")
-	c.Flags().Bool("ui", false, "upgrade the UI only (default: both)")
-	c.Flags().String("core-version", "", "pin a core version (e.g. v1.19.31)")
+	c.Flags().Bool("ui", false, "upgrade the UI only (default: UI)")
 	c.Flags().String("ui-version", "", "pin a UI version")
 	c.Flags().Bool("check", false, "dry-run: show current/latest versions and the action to take")
-	c.Flags().Bool("cli", false, "upgrade the CLI only (panixy itself; local self-compile)")
+	c.Flags().Bool("cli", false, "upgrade the CLI only (panixy itself, embedded kernel; local self-compile)")
 	c.Flags().String("src", "", "source tree root (for --cli self-compile; default: current dir)")
 	return c
 }
@@ -436,16 +429,16 @@ binary on failure.`,
 func cmdRollback() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rollback [version]",
-		Short: "roll the core binary back to a backup (default: latest; can be repeated)",
-		Long: `Roll the mihomo core binary back to a backup left by an upgrade (keeps the most recent ` + fmt.Sprintf("%d", constants.CoreKeep) + `).
+		Short: "roll the Panoxy CLI back to a backup (default: latest; can be repeated)",
+		Long: `Roll the Panoxy CLI back to a backup left by a --cli upgrade.
 
-With no argument it rolls back to the latest backup; with a version (e.g. v1.19.30) it rolls back
-to that specific backup. The current core is saved as a backup first, so rolling back can be
+With no argument it rolls back to the latest backup; with a version (e.g. 0.0.1) it rolls back
+to that specific backup. The current CLI is saved as a backup first, so rolling back can be
 repeated; it restarts and health-checks afterwards (failure only warns, does not block).
 
-UI rollback is handled automatically inside the upgrade transaction; this command is core-only.`,
+UI rollback is handled automatically inside the upgrade transaction; this command is CLI-only.`,
 		Example: `  sudo panixy rollback              # roll back to the latest backup
-  sudo panixy rollback v1.19.30    # roll back to a specific version`,
+  sudo panixy rollback 0.0.1         # roll back to a specific version`,
 		RunE: runRollback,
 	}
 }
@@ -479,7 +472,7 @@ review or diffing.`,
 func cmdLog() *cobra.Command {
 	return &cobra.Command{
 		Use:   "log [lines]",
-		Short: "view panixy/mihomo service logs (journalctl)",
+		Short: "view panixy service logs (journalctl)",
 		Long: `Pass through journalctl to view the recent logs of panixy.service and panixy-upgrade.service.
 No argument shows the last 80 lines; a numeric argument sets the line count.`,
 		Example: "  panixy log        # last 80 lines\n  panixy log 200    # last 200 lines",
@@ -490,8 +483,8 @@ No argument shows the last 80 lines; a numeric argument sets the line count.`,
 func cmdCheck() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check [yaml]",
-		Short: "validate config syntax with mihomo -t (default: current config; read-only, no root)",
-		Long: `Validate the config with mihomo -t, passing through the kernel's first error. Read-only, changes
+		Short: "validate config syntax with the embedded kernel (-t; default: current config; read-only, no root)",
+		Long: `Validate the config with the embedded kernel (-t), passing through the kernel's first error. Read-only, changes
 no files, no root needed.
 
 With no argument it validates the current /etc/clash.yaml; with a path it validates that file

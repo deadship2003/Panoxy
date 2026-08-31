@@ -33,8 +33,6 @@ const (
 	MixedPortDef  = 33833
 	ApiPortDef    = 9999
 	DefSecret     = "deadship" // 面板/API 默认密钥(init/deploy --secret 默认值,与 API 客户端回退同源)
-
-	CoreKeep = 3 // 内核备份保留份数
 )
 
 // 以下默认值随 ProgName 派生(编译注入 ProgName 后自动跟随)。

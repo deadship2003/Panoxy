@@ -112,15 +112,6 @@ func journal(n string) (string, error) {
 	return execx.Run("journalctl", "-u", constants.ProgName+".service", "-u", constants.ProgName+"-upgrade.service", "-n", n, "--no-pager")
 }
 
-func upgradeVerRe(s string) string {
-	for _, f := range strings.Fields(s) {
-		if strings.HasPrefix(f, "v") && len(f) > 2 && f[1] >= '0' && f[1] <= '9' {
-			return f
-		}
-	}
-	return ""
-}
-
 func probeUI(p string) string {
 	api := mihomoapi.NewFromConf(p)
 	code, err := api.RawGet("/ui/")

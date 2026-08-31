@@ -36,17 +36,17 @@ func runTry(cmd *cobra.Command, args []string) error {
 	// Sandbox systemd shim: enable/restart boot the kernel directly with tun+routing-mark stripped.
 	shim := filepath.Join(dir, "bin", "systemctl")
 	pidf := filepath.Join(dir, "pid")
-	// On exit, stop the sandbox kernel as a last resort: do not leave a background mihomo holding
+	// On exit, stop the sandbox kernel as a last resort: do not leave a background kernel holding
 	// the transparent-proxy ports, otherwise a subsequent sudo panixy init/deploy would be blocked
 	// by our own leftover process (port conflict).
-	defer stopSandboxMihomo(pidf)
+	defer stopSandboxKernel(pidf)
 	shimScript := fmt.Sprintf(`#!/bin/sh
 # {{PROG}} try sandbox shim (productized e2e): strip tun section and routing-mark when booting the kernel as non-root
 # (TUN device creation / SO_MARK need CAP_NET_ADMIN; a real root deploy has no such limit)
 PIDF=%s
 start_mh() {
   awk '/^tun:/{s=1;next} /^routing-mark:/{next} s && /^[^ \t#]/{s=0} !s{print}' "${{PREFIX}}_CONF" > "${{PREFIX}}_CONF.notun"
-  "${{PREFIX}}_ROOT/bin/mihomo" -f "${{PREFIX}}_CONF.notun" -d "${{PREFIX}}_ROOT" >> "${{PREFIX}}_ROOT/run.log" 2>&1 < /dev/null &
+  {{PREFIX}}_CONF="${{PREFIX}}_CONF.notun" "${{PREFIX}}_CLI" run >> "${{PREFIX}}_ROOT/run.log" 2>&1 < /dev/null &
   echo $! > "$PIDF"
 }
 case "$1" in
@@ -135,10 +135,10 @@ func subArgsHint(args []string) string {
 	return "(press enter to paste subscription)"
 }
 
-// stopSandboxMihomo stops the kernel booted by the sandbox shim (the shim's start_mh writes its pid into pidf).
-// It must be called when try finishes, otherwise the leftover mihomo would hold the transparent-proxy ports
+// stopSandboxKernel stops the kernel booted by the sandbox shim (the shim's start_mh writes its pid into pidf).
+// It must be called when try finishes, otherwise the leftover kernel would hold the transparent-proxy ports
 // and block a subsequent real init/deploy.
-func stopSandboxMihomo(pidf string) {
+func stopSandboxKernel(pidf string) {
 	b, err := os.ReadFile(pidf)
 	if err != nil {
 		return

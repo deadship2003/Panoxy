@@ -36,14 +36,14 @@ func cmdRedeploy() *cobra.Command {
 		Long: `On an installed machine, force-refresh all program files from the root of an extracted offline
 package and redeploy.
 
-Difference from deploy: deploy skips any kernel/geo/rules/UI that already exist ("exists = skip");
+Difference from deploy: deploy skips any geo/rules/UI that already exist ("exists = skip");
 redeploy force-overwrites all of them — for pushing a freshly compiled version to an installed
 machine, no network, no uninstall/reinstall.
 
-Flow: stop service + clear firewall → back up kernel/UI (for rollback) → force-replace
-kernel/geo/rules/UI → refresh CLI/man/systemd units → validate + restart → explicitly re-mount
+Flow: stop service + clear firewall → back up UI (for rollback) → force-replace
+geo/rules/UI → refresh CLI/man/systemd units → validate + restart → explicitly re-mount
 firewall → health verification.
-Any failing step rolls back the kernel/UI (the CLI is a management tool and is not rolled back;
+Any failing step rolls back the UI (the CLI is a management tool and is not rolled back;
 config.yaml is always kept untouched).
 To switch transparent-proxy mode use panixy mode (mode is data, redeploy does not touch it).`,
 		Example: `  sudo ./panixy redeploy              # run from the root of the extracted new offline package
@@ -63,8 +63,8 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 
 func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// Precheck: must already be installed (fresh install uses deploy); offline package assets complete; no bash legacy residue.
-	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
-		return fmt.Errorf("no installed %s detected (kernel/config/CLI missing) — for a fresh install use sudo ./%s deploy", constants.ProgName, constants.ProgName)
+	if !exists(p.Conf) || !exists(p.Cli) {
+		return fmt.Errorf("no installed %s detected (config/CLI missing) — for a fresh install use sudo ./%s deploy", constants.ProgName, constants.ProgName)
 	}
 	pkgDir, err := os.Getwd() // redeploy must be run from the root of the extracted offline package
 	if err != nil {
@@ -90,13 +90,8 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		logx.Warn("firewall cleanup failed: %v (fw apply will cover it after restart)", err)
 	}
 
-	// [2] Back up kernel/UI (rollback the data plane on failure; geo/rules are static data, no rollback needed).
-	logx.Step("[2/6] back up current kernel and UI")
-	cur := firstVer(runCmd(p.Bin, "-v"))
-	bak := p.Bin + ".bak-" + cur
-	if err := copyFile(p.Bin, bak); err != nil {
-		return err
-	}
+	// [2] Back up UI (rollback the data plane on failure; geo/rules are static data, no rollback needed).
+	logx.Step("[2/6] back up current UI")
 	if exists(p.UiDir) {
 		os.RemoveAll(p.UiDir + ".old")
 		if err := os.Rename(p.UiDir, p.UiDir+".old"); err != nil {
@@ -104,8 +99,6 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		}
 	}
 	rollback := func() {
-		copyFile(bak, p.Bin)
-		os.Chmod(p.Bin, 0o755)
 		if exists(p.UiDir + ".old") {
 			os.RemoveAll(p.UiDir)
 			os.Rename(p.UiDir+".old", p.UiDir)
@@ -113,15 +106,11 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		systemdunit.Write(p, mode)
 		systemdunit.EnableNow()
 		applyFW(mode)
-		logx.Warn("redeploy failed, rolled back kernel/UI and restarted the old service (CLI stays at the new version, config untouched)")
+		logx.Warn("redeploy failed, rolled back UI and restarted the old service (CLI stays at the new version, config untouched)")
 	}
 
 	// [3] Force-replace program files.
-	logx.Step("[3/6] force-replace kernel/geo/rules/UI")
-	if err := placeCoreForce(p, assets); err != nil {
-		rollback()
-		return err
-	}
+	logx.Step("[3/6] force-replace geo/rules/UI")
 	placeGeoAndRulesForce(p, assets)
 	if err := placeUIForce(p, assets); err != nil {
 		rollback()
@@ -183,11 +172,10 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("health verification timed out, rolled back")
 	}
 
-	// Success cleanup: remove UI backup, prune kernel backups, update the upgrade timestamp.
+	// Success cleanup: remove UI backup, update the upgrade timestamp.
 	os.RemoveAll(p.UiDir + ".old")
-	pruneCoreBackups(p, constants.CoreKeep)
 	os.WriteFile(p.LastUp, []byte(time.Now().Format("2006-01-02 15:04:05")+"\n"), 0o644)
-	logx.Info("redeploy complete v%s: kernel/geo/rules/UI/CLI refreshed, firewall re-mounted, config kept", constants.Version)
+	logx.Info("redeploy complete v%s: geo/rules/UI/CLI refreshed, firewall re-mounted, config kept", constants.Version)
 	return nil
 }
 
@@ -195,14 +183,13 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 func redeployDryRun(cmd *cobra.Command) error {
 	p := paths.Get()
 	logx.Info("== redeploy --dry-run (dry-run mode, does not execute) ==")
-	if !exists(p.Bin) || !exists(p.Conf) || !exists(p.Cli) {
+	if !exists(p.Conf) || !exists(p.Cli) {
 		logx.Warn("no installed %s detected; for a fresh install use sudo ./%s deploy", constants.ProgName, constants.ProgName)
 	}
 	pkgDir, _ := os.Getwd()
 	assets := filepath.Join(pkgDir, "assets")
 	logx.Step("[precheck] offline package assets (%s)", assets)
 	for _, item := range []struct{ name, path string }{
-		{"kernel (" + runtimeArch() + ")", filepath.Join(assets, "core")},
 		{"GeoIP.dat", filepath.Join(assets, "geo", "GeoIP.dat")},
 		{"GeoSite.dat", filepath.Join(assets, "geo", "GeoSite.dat")},
 		{"Country.mmdb", filepath.Join(assets, "geo", "Country.mmdb")},
@@ -219,7 +206,7 @@ func redeployDryRun(cmd *cobra.Command) error {
 	if mode == "" {
 		mode = "tun"
 	}
-	logx.Step("[plan] force-replace: kernel/geo/rules/UI/CLI/man/units → clear FW → restart → re-mount FW (mode %s)", mode)
+	logx.Step("[plan] force-replace: geo/rules/UI/CLI/man/units → clear FW → restart → re-mount FW (mode %s)", mode)
 	logx.Info("kept untouched: %s (subscription/node selection/groups) and %s", p.Conf, p.Proxies)
 	logx.Info("== dry-run done. Real run: sudo ./%s redeploy", constants.ProgName)
 	return nil
