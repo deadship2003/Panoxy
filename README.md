@@ -95,11 +95,11 @@ The first goal of transparent proxying is **normal access**; routing is only an 
 | DoQ (UDP 853) | **normal routing** | same as above |
 | DoH (TCP 443) | **normal routing** | same port as HTTPS, cannot and should not be blocked |
 
-### Direct-connect base services (32 rules, no proxy)
+### Direct-connect base services (31 rules, no proxy)
 
 | Category | Ports | Services |
 |---|---|---|
-| **Remote management** | 22, 23 | SSH/SFTP, Telnet |
+| **Remote management** | 23 | Telnet |
 | **Remote desktop** | 3389, 5900 | RDP, VNC |
 | **VPN/overlay** | 41641, 3478, 51820, 1194, 500, 4500, 1701, 1723 | Tailscale, STUN/TURN, WireGuard, OpenVPN, IPSec (IKE/NAT-T), L2TP, PPTP |
 | **VoIP** | 5060, 5061 | SIP, SIPS |

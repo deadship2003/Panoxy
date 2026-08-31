@@ -17,10 +17,12 @@ const (
 	// 故无需收窄 fc00::/7;只需保证 2001:2::/48 不进 keep6(见 fakeIpv6Range 及测试断言)。
 	keep6Elements = "::/128, ::1/128, 64:ff9b::/96, 100::/64, 2001:db8::/32, fc00::/7, fe80::/10, ff00::/8"
 
-	// 端口级 keep-out:内核层直接放行的关键端口(SSH/Telnet/VPN/NAT/mDNS/NTP)。
-	// 这是 config.tpl rules 段"基础服务直连"的内核级子集 —— 一旦这些端口被劫持 SSH/VPN 即断,
+	// 端口级 keep-out:内核层直接放行的关键端口(Telnet/VPN/NAT/mDNS/NTP)。
+	// 这是 config.tpl rules 段"基础服务直连"的内核级子集 —— 一旦这些端口被劫持 Telnet/VPN 即断,
 	// 故必须在此直接放行(其余基础服务端口由 mihomo rules 段直连)。两链共用,改动需同步。
-	keepPortsTCP = "tcp dport { 22, 23 }"
+	// SSH(22)刻意不进 keep:默认按分流规则走(国内直连、境外代理),与 config.tpl 已禁用
+	// DST-PORT,22,DIRECT 保持一致(GitHub SSH 规避污染)。
+	keepPortsTCP = "tcp dport { 23 }"
 	keepPortsUDP = "udp dport { 41641, 3478, 51820, 1194, 5353, 123 }"
 )
 
