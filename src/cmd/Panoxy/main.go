@@ -500,7 +500,7 @@ func cmdApplyConf() *cobra.Command {
 non-provider changes); if that doesn't take effect, fall back to restart, then restore the original
 on failure. Auto-backup before applying; success clears the backup.
 
-Note: mihomo hot-reload does not refresh proxy-providers, so subscription-related changes need a
+Note: kernel hot-reload does not refresh proxy-providers, so subscription-related changes need a
 restart to take effect.`,
 		Example: "  sudo panixy apply-conf ~/my-clash.yaml",
 		RunE:    runApplyConf,

@@ -63,7 +63,7 @@ func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	api := mihomoapi.NewFromConf(p.Conf)
-	// Hot-reload does not refresh proxy-providers (mihomo limitation); only effective for non-provider changes.
+	// Hot-reload does not refresh proxy-providers (kernel limitation); only effective for non-provider changes.
 	if err := api.ReloadConf(p.Conf); err == nil && health.WaitHealthy(p.Conf, 20*time.Second, "") == nil {
 		config.ClearBackup(p.Conf)
 		logx.Info("config hot-reloaded (no restart); note provider changes need a restart")
@@ -128,7 +128,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 // warnCompat runs a compatibility self-check before merging a personal config: mismatching
 // any of the three firewall "contract" values causes real problems.
 //
-//	routing-mark 6666 —— the firewall exempts mihomo's own traffic by this mark; missing it causes a DNS loop
+//	routing-mark 6666 —— the firewall exempts the kernel's own traffic by this mark; missing it causes a DNS loop
 //	dns.listen [::]:1053 —— the nft redirect target (dual-stack); mismatching it makes DNS hijack a no-op
 //	tun.dns-hijack —— the firewall already hijacks DNS uniformly; keeping it double-processes
 func warnCompat(path string) {
@@ -149,7 +149,7 @@ func warnCompat(path string) {
 		return
 	}
 	if c.RoutingMark != constants.MarkSelf {
-		logx.Warn("config is missing routing-mark: %d — the firewall will be unable to exempt mihomo's own traffic, possibly causing a DNS loop deadlock (the template ships it by default, do not remove)", constants.MarkSelf)
+		logx.Warn("config is missing routing-mark: %d — the firewall will be unable to exempt the kernel's own traffic, possibly causing a DNS loop deadlock (the template ships it by default, do not remove)", constants.MarkSelf)
 	}
 	if !strings.Contains(c.DNS.Listen, ":1053") {
 		logx.Warn("dns.listen=%q does not match the firewall hijack target ([::]:1053) — DNS hijack will be a no-op, please change it to [::]:1053", c.DNS.Listen)

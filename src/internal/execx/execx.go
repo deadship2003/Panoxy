@@ -9,7 +9,7 @@ import (
 	"github.com/deadship2003/Panoxy/internal/logx"
 )
 
-// Run 执行并返回合并输出;失败时错误信息附带输出(教训:mihomo 日志走 stdout,
+// Run 执行并返回合并输出;失败时错误信息附带输出(教训:内核日志走 stdout,
 // 只看 stderr 会"静默失败")。
 func Run(name string, args ...string) (string, error) {
 	out, err := exec.Command(name, args...).CombinedOutput()

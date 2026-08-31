@@ -6,8 +6,8 @@ import (
 	"github.com/deadship2003/Panoxy/internal/constants"
 )
 
-// keep-out 网段:内核层直接放行、绝不进 mihomo 的地址集合(与 TUN route-exclude 等价)。
-// 刻意不含 fake-ip 段(见下方 fakeIpv4Range / fakeIpv6Range)—— 那是必须进 mihomo 才能还原域名,不能放行。
+// keep-out 网段:内核层直接放行、绝不进内核的地址集合(与 TUN route-exclude 等价)。
+// 刻意不含 fake-ip 段(见下方 fakeIpv4Range / fakeIpv6Range)—— 那是必须进内核才能还原域名,不能放行。
 // 单一事实源:BuildNftScript / BuildNftTproxyScript 共用。
 const (
 	keep4Elements = "0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, " +
@@ -21,13 +21,13 @@ const (
 	// 这是 config.tpl rules 段"基础服务直连"的内核级子集 —— 一旦这些端口被劫持 VPN 即断,
 	// 故必须在此直接放行(其余基础服务端口由 mihomo rules 段直连)。两链共用,改动需同步。
 	// 注意:SSH(22)已从内核级放行移除 —— config.tpl 已注释 DST-PORT,22,DIRECT(境外 SSH 走代理,
-	// GitHub SSH 规避污染)。若内核级仍放行 22,TPROXY 模式下 SSH 永不进 mihomo、GitHub SSH 必直连被墙,
+	// GitHub SSH 规避污染)。若内核级仍放行 22,TPROXY 模式下 SSH 永不进内核、GitHub SSH 必直连被墙,
 	// 且与 TUN 模式行为不一致(TUN 的 BuildNftScript 本就不放行 22)。此内核子集必须与 config.tpl rules 段同步。
 	keepPortsTCP = "tcp dport { 23 }"
 	keepPortsUDP = "udp dport { 41641, 3478, 51820, 1194, 5353, 123 }"
 )
 
-// fake-ip 网段:必须进 mihomo 才能还原域名,故刻意不放进 keep 白名单。
+// fake-ip 网段:必须进内核才能还原域名,故刻意不放进 keep 白名单。
 // 单一事实源,与 config.tpl 的 fake-ip-range / fake-ip-range6 联动(此处为网段形式;config 用首地址形式)。
 const (
 	fakeIpv4Range = "198.18.0.0/16"
@@ -78,7 +78,7 @@ func BuildNftScript(dnsPort, markSelf int) string {
 //
 // 本机出站流量走 output 钩子(TPROXY 抓不到),故用 local_output 链把「非 keep-out 的本机
 // tcp/udp 流量」打上 markTproxy,经策略路由 `ip rule fwmark 1 lookup 100` → `local 0.0.0.0/0
-// dev lo` 回环重入,再走 tproxy_prerouting 交给 mihomo —— 与 TUN 等价(含 v6 与直连 IP)。
+// dev lo` 回环重入,再走 tproxy_prerouting 交给内核 —— 与 TUN 等价(含 v6 与直连 IP)。
 // 关键点:local_output 必须用 `type route`(强制 re-route,普通 output 钩子打 mark 不触发重路由)。
 //
 // tproxy_prerouting 的 `socket transparent 1` 是 DIVERT 优化(内核 tproxy.txt 标准做法):
