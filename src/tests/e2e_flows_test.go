@@ -121,6 +121,47 @@ func TestE2EModeSwitchConfigLevel(t *testing.T) {
 	}
 }
 
+// TestE2EServiceLifecycle 覆盖 start/stop/restart 全生命周期(测试 shim 中 nft/ip 为空操作,防误删真机防火墙)。
+func TestE2EServiceLifecycle(t *testing.T) {
+	e := newEnv(t)
+	pkg := t.TempDir()
+	buildAssets(t, pkg)
+	os.WriteFile(e.conf, []byte(noTunConf(t, e.apiPort, e.mixPort, e.dnsPort, false)), 0o644)
+
+	c := e.cmd("deploy")
+	c.Dir = pkg
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("deploy 失败:\n%s", out)
+	}
+	e.waitAPI(t)
+
+	// start 在已 active 的服务上是幂等的(不重复拉起内核)
+	out := e.run(t, "start")
+	if !strings.Contains(out, "already active") {
+		t.Errorf("start 应报告 already active:\n%s", out)
+	}
+
+	// restart:单元重载防火墙(shim 重启内核),health 通过
+	out = e.run(t, "restart")
+	if !strings.Contains(out, "restarted") {
+		t.Errorf("restart 输出异常:\n%s", out)
+	}
+	e.waitAPI(t)
+
+	// stop:服务停止 + 防火墙清理
+	out = e.run(t, "stop")
+	if !strings.Contains(out, "stopped") {
+		t.Errorf("stop 输出异常:\n%s", out)
+	}
+
+	// start 再次拉起:应检测到 inactive 并重新启动
+	out = e.run(t, "start")
+	if !strings.Contains(out, "started") {
+		t.Errorf("start(重新拉起) 输出异常:\n%s", out)
+	}
+	e.waitAPI(t)
+}
+
 // bootSandbox 直接经 shim 启动内核(等价 enable --now)。
 func bootSandbox(t *testing.T, e *env) {
 	t.Helper()

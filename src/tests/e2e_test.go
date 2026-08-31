@@ -132,7 +132,7 @@ case "$1" in
 esac
 exit 0
 `, pidf, pfx, pfx, pfx, pfx, constants.ProgName)), 0o755)
-	for _, name := range []string{"ip", "sysctl"} {
+	for _, name := range []string{"ip", "sysctl", "nft"} {
 		os.WriteFile(filepath.Join(dir, "bin", name), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	}
 	// 测试结束回收沙箱内核进程,防泄漏

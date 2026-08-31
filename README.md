@@ -389,6 +389,9 @@ git tag V0.0.1 && git push origin V0.0.1
 | `sudo Panoxy sub del --name N` | delete a subscription |
 | `Panoxy sub list [--json]` | per-subscription status / node count |
 | `Panoxy status [-q\|--json\|--detail]` | health overview (`-q` exit code for monitoring) |
+| `sudo Panoxy start` | start the service (enable on boot), load firewall, verify health |
+| `sudo Panoxy stop` | stop the service (disable on boot) and clear the firewall |
+| `sudo Panoxy restart` | restart the service (self-heals the firewall) |
 | `sudo Panoxy mode [tun\|tproxy]` | view/switch mode |
 | `sudo Panoxy upgrade [--core\|--ui\|--cli] [--check]` | parameterized upgrade |
 | `sudo Panoxy rollback [vX]` | core rollback |

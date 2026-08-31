@@ -69,6 +69,9 @@ Subscription / config:
 
 Daily use:
   panixy status                          # health overview (service/firewall/subscription/egress)
+  sudo panixy start                      # start the service (enable on boot) + load firewall
+  sudo panixy stop                       # stop the service + clear firewall (data kept)
+  sudo panixy restart                    # restart the service (self-heals firewall)
   sudo panixy mode tproxy                # switch to TPROXY (nftables tproxy; needs kernel support)
   sudo panixy upgrade --check            # show what can be upgraded
 
@@ -99,7 +102,8 @@ Details: panixy man, or man panixy-<command> (after deployment)`,
 	}
 	root.AddCommand(
 		cmdInit(), cmdDeploy(), cmdRedeploy(), cmdSub(),
-		cmdTry(), cmdMergeConf(), cmdStatus(), cmdMode(), cmdUpgrade(), cmdRollback(),
+		cmdTry(), cmdMergeConf(), cmdStatus(), cmdStart(), cmdStop(), cmdRestart(),
+		cmdMode(), cmdUpgrade(), cmdRollback(),
 		cmdUninstall(), cmdUnits(), cmdLog(), cmdCheck(), cmdApplyConf(), cmdConfig(),
 		cmdFw(), cmdMan(),
 	)

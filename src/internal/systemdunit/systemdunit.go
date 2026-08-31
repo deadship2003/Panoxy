@@ -82,6 +82,13 @@ func Remove(p paths.Paths) {
 // IsActive 服务是否处于 active 状态(由 Active 派生,单一事实源)。
 func IsActive() bool { return Active() == "active" }
 
+// Installed 主服务单元文件是否已写入(init/deploy 已执行过)。start/stop/restart 据此给出
+// "尚未安装"的友好报错,而非把 systemctl 的 "unit not found" 原样抛给用户。
+func Installed(p paths.Paths) bool {
+	_, err := os.Stat(filepath.Join(p.UnitDir, unitMain))
+	return err == nil
+}
+
 // Active 返回服务状态字符串(active/inactive/failed...)。
 func Active() string {
 	out, _ := execx.Run("systemctl", "is-active", unitMain)
