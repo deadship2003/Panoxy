@@ -44,10 +44,8 @@ func Collect(confPath, bin, uiStamp, lastUp, statePath string) Report {
 		r.APIAlive = true
 		r.APIVer = v
 	}
-	if fw, err := firewall.New(); err == nil {
-		r.FwBackend = fw.Name()
-		r.Stale, _ = fw.HasStaleRules()
-	}
+	r.FwBackend = firewall.BackendName
+	r.Stale, _ = firewall.HasStaleRules()
 	if e, err := config.Load(confPath); err == nil {
 		for _, name := range e.Providers() {
 			st, _ := api.Provider(name)

@@ -42,47 +42,10 @@ func TestBuildNftTproxyScriptGolden(t *testing.T) {
 		"type filter hook prerouting priority mangle",
 		"meta mark 6666 return",
 		"th dport 53 return", // DNS 交给 nat 链,不进 tproxy
-		"meta nfproto ipv4 meta l4proto { tcp, udp } tproxy ip to :7893 meta mark set 1 accept",
-		"meta nfproto ipv6 meta l4proto { tcp, udp } tproxy ip6 to :7893 meta mark set 1 accept",
+		"meta l4proto { tcp, udp } tproxy to :7893 meta mark set 1 accept",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("tproxy 脚本缺少关键规则: %q", want)
-		}
-	}
-}
-
-func TestBuildIptCmdsGolden(t *testing.T) {
-	dnsChain := constants.EnvPrefix() + "_DNS"
-	tpChain := constants.EnvPrefix() + "_TP"
-	dns := strings.Join(BuildIptDnsCmds(1053, 6666), "\n")
-	for _, want := range []string{
-		"iptables -t nat -N " + dnsChain,
-		"iptables -t nat -A " + dnsChain + " -m mark --mark 6666 -j RETURN",
-		"iptables -t nat -A " + dnsChain + " -p udp --dport 53 -j REDIRECT --to-ports 1053",
-		"ip6tables -t nat -A PREROUTING -j " + dnsChain,
-		"iptables -t nat -I " + dnsChain + " 1 -d 10.0.0.0/8 -j RETURN",
-	} {
-		if !strings.Contains(dns, want) {
-			t.Errorf("iptables DNS 命令缺少: %q", want)
-		}
-	}
-	tp := strings.Join(BuildIptTproxyCmds(6666, 1, 7893), "\n")
-	for _, want := range []string{
-		"iptables -t mangle -N " + tpChain,
-		"-j TPROXY --on-port 7893 --tproxy-mark 1",
-		"ip6tables -t mangle -C PREROUTING -j " + tpChain + " || ip6tables -t mangle -A PREROUTING -j " + tpChain,
-	} {
-		if !strings.Contains(tp, want) {
-			t.Errorf("iptables tproxy 命令缺少: %q", want)
-		}
-	}
-	clean := strings.Join(BuildIptCleanCmds(), "\n")
-	for _, want := range []string{
-		"iptables -t nat -X " + dnsChain,
-		"ip6tables -t mangle -X " + tpChain,
-	} {
-		if !strings.Contains(clean, want) {
-			t.Errorf("清理命令缺少: %q", want)
 		}
 	}
 }
@@ -130,14 +93,6 @@ func TestTolerantError(t *testing.T) {
 	} {
 		if !tolerantError(s) {
 			t.Errorf("应容忍: %q", s)
-		}
-	}
-	for _, s := range []string{
-		"iptables: No chain/target/match by that name.",
-		"iptables: Bad rule (does a matching rule exist in that chain?).",
-	} {
-		if !iptTolerant([]byte(s)) {
-			t.Errorf("iptTolerant 应容忍: %q", s)
 		}
 	}
 	for _, s := range []string{

@@ -178,10 +178,8 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 func runUninstallBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	systemdunit.Stop()
-	if fw, err := firewall.New(); err == nil {
-		if err := fw.Teardown(); err != nil {
-			logx.Warn("firewall cleanup failed: %v (retry uninstall after restart)", err)
-		}
+	if err := firewall.Teardown(); err != nil {
+		logx.Warn("firewall cleanup failed: %v (retry uninstall after restart)", err)
 	}
 	systemdunit.Remove(p)
 	os.Remove(p.Sysctl)
@@ -211,13 +209,13 @@ func modeSwitchBody(p paths.Paths, want string) error {
 		return nil
 	}
 	if want == "tproxy" && os.Getenv(constants.EnvPrefix()+"_SKIP_TPROXY_PROBE") == "" {
-		if err := checkTproxySupport(); err != nil {
+		if err := firewall.CheckTproxySupport(); err != nil {
 			return fmt.Errorf("TPROXY precondition not met: %v", err)
 		}
 	} // PANIXY_SKIP_TPROXY_PROBE=1 is for the test sandbox only
 	logx.Step("switch %s → %s: unload old firewall", old, want)
-	if fw, err := firewall.New(); err == nil {
-		fw.Teardown()
+	if err := firewall.Teardown(); err != nil {
+		logx.Warn("firewall teardown before switch failed: %v", err)
 	}
 	logx.Step("render config variant and validate")
 	if err := config.Backup(p.Conf); err != nil {

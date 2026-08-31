@@ -23,14 +23,10 @@ import (
 // adjusted rules, so it can't rely solely on the service restart's ExecStartPost fallback
 // (that is an implicit side effect; here it is a first-class citizen).
 func applyFW(mode string) error {
-	fw, err := firewall.New()
-	if err != nil {
-		return err
-	}
 	if mode == "tproxy" {
-		return fw.ApplyTproxy()
+		return firewall.ApplyTproxy()
 	}
-	return fw.ApplyDnsHijack()
+	return firewall.ApplyDnsHijack()
 }
 
 func cmdRedeploy() *cobra.Command {
@@ -90,10 +86,8 @@ func runRedeployBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 	// [1] Stop the service and explicitly clear the firewall (the new binary may have changed FW rules, can't rely only on restart's ExecStartPost).
 	logx.Step("[1/6] stop service and clear firewall rules")
 	systemdunit.Stop()
-	if fw, err := firewall.New(); err == nil {
-		if err := fw.Teardown(); err != nil {
-			logx.Warn("firewall cleanup failed: %v (fw apply will cover it after restart)", err)
-		}
+	if err := firewall.Teardown(); err != nil {
+		logx.Warn("firewall cleanup failed: %v (fw apply will cover it after restart)", err)
 	}
 
 	// [2] Back up kernel/UI (rollback the data plane on failure; geo/rules are static data, no rollback needed).

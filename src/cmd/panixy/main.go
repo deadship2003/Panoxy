@@ -69,7 +69,7 @@ Subscription / config:
 
 Daily use:
   panixy status                          # health overview (service/firewall/subscription/egress)
-  sudo panixy mode tproxy                # switch to TPROXY (needs kernel xt_TPROXY)
+  sudo panixy mode tproxy                # switch to TPROXY (nftables tproxy; needs kernel support)
   sudo panixy upgrade --check            # show what can be upgraded
 
 Operations:
@@ -361,8 +361,8 @@ func cmdMode() *cobra.Command {
 
 Switching is an atomic transaction: teardown old firewall rules -> render the matching config
 variant -> -t validate -> restart service -> load new firewall -> health check; any step failing
-rolls back everything. TPROXY requires the kernel xt_TPROXY module; it refuses to switch when
-unavailable.
+rolls back everything. TPROXY requires kernel TPROXY support (the nftables tproxy statement,
+i.e. the nf_tproxy_ipv4/ipv6 modules); it refuses to switch when unavailable.
 
 Traffic policy (unified for both modes):
   no protocol is blocked (QUIC/DoT/DoQ/DoH all get normal routing)
@@ -377,12 +377,11 @@ TUN (default) vs TPROXY:
           good WSL2/virtualization/Docker compatibility
   TPROXY: keeps the real client IP (per-device visible in logs)
           kernel forwards directly, better performance on weak CPUs
-          needs the xt_TPROXY module; Docker containers may be mis-captured
+          needs kernel TPROXY support; Docker containers may be mis-captured
           IPv6 policy routing needs extra care
 
-TPROXY pre-checks:
-  grep -w TPROXY /proc/net/ip_tables_targets
-  sudo modprobe xt_TPROXY && grep -w TPROXY /proc/net/ip_tables_targets
+TPROXY pre-checks (nftables):
+  sudo modprobe nf_tproxy_ipv4 nf_tproxy_ipv6          # nftables tproxy modules
 
 Verify after switching:
   ip rule show | grep fwmark          # should have fwmark 0x1 lookup 100
@@ -397,7 +396,7 @@ Note: mode cannot be switched from the Web UI — firewall rules and config must
 transaction; the UI only handles the data plane (nodes/groups). With no argument it shows the
 current mode.`,
 		Example: `  panixy mode              # view current mode
-  sudo panixy mode tproxy  # switch to TPROXY (needs kernel xt_TPROXY)
+  sudo panixy mode tproxy  # switch to TPROXY (nftables tproxy; needs kernel support)
   sudo panixy mode tun     # switch back to TUN (default)`,
 		RunE: func(cmd *cobra.Command, args []string) error { return runMode(cmd, args) },
 	}
@@ -552,22 +551,18 @@ func cmdFw() *cobra.Command {
 		ValidArgs: []string{"apply", "teardown", "clean"},
 		Example:   "  sudo panixy fw apply     # idempotently remount current-mode rules\n  sudo panixy fw teardown  # tear rules down\n  sudo panixy fw clean     # clean only, no load",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fw, err := firewall.New()
-			if err != nil {
-				return err
-			}
 			// In tproxy mode, apply must load the full rules (reads the state file; defaults to tun).
 			mode := statemode.Read(paths.Get().State)
 			switch args[0] {
 			case "apply":
 				if mode == "tproxy" {
-					return fw.ApplyTproxy()
+					return firewall.ApplyTproxy()
 				}
-				return fw.ApplyDnsHijack()
+				return firewall.ApplyDnsHijack()
 			case "teardown":
-				return fw.Teardown()
+				return firewall.Teardown()
 			case "clean":
-				return fw.CleanAll()
+				return firewall.CleanAll()
 			}
 			return nil
 		},

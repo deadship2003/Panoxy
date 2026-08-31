@@ -17,14 +17,14 @@ Single binary · zero dependencies · transactional deployment · full rollback
 
 > **The name.** *Panoxy* = Greek *πᾶν* (*pan*, "all") + *proxy*: one proxy for *all* of your traffic.
 
-> **Program name.** The default program name is `Panoxy`, and it can be customized to any name at build time (e.g. `myproxy`). Once renamed, the binary name, install path, config path, systemd unit, nft table, iptables chains, environment-variable prefix and man page **all follow** that name. See [Build · Custom program name](#custom-program-name).
+> **Program name.** The default program name is `Panoxy`, and it can be customized to any name at build time (e.g. `myproxy`). Once renamed, the binary name, install path, config path, systemd unit, nft table, environment-variable prefix and man page **all follow** that name. See [Build · Custom program name](#custom-program-name).
 
 ---
 
 ## ✨ Features
 
 - 🔧 **TUN / TPROXY dual mode** — TUN is stable out of the box (default); TPROXY preserves the client's real source IP with the best kernel forwarding performance
-- 🛡️ **DNS hijack = nftables** — a dedicated `inet Panoxy` table; port 53 redirect → mihomo:1053, and reject 853 (DoT/DoQ)
+- 🛡️ **DNS hijack = nftables** — a dedicated `inet Panoxy` table; port 53 redirect → mihomo:1053 (no protocol blocked, DoT/DoQ/DoH route normally)
 - 🔄 **Self-healing** — `kill -9`/OOM residue is cleaned automatically on `systemctl restart Panoxy`; no manual intervention
 - 📡 **Verifiable subscriptions** — prefetch → validate → incremental write → restart → **node count > 0 counts as success**; never a false success
 - 🧩 **Config merge** — `merge-conf` does field-level merge of same-named groups (union of proxies/use); base groups are preserved, never deleted
@@ -216,7 +216,7 @@ Runtime artifacts follow the renamed program (using `myproxy` as the example):
 | Binary / install path | `Panoxy` → `/usr/local/bin/Panoxy` | `myproxy` → `/usr/local/bin/myproxy` |
 | Config / root dir | `/etc/Panoxy.yaml` · `/opt/Panoxy` | `/etc/myproxy.yaml` · `/opt/myproxy` |
 | systemd unit | `Panoxy.service` etc. | `myproxy.service` etc. |
-| nft table / iptables chains | `inet Panoxy` · `PANOXY_DNS` | `inet myproxy` · `MYPROXY_DNS` |
+| nft table | `inet Panoxy` | `inet myproxy` |
 | Env prefix | `PANOXY_` | `MYPROXY_` (program name uppercased, `-`→`_`) |
 | man page | `Panoxy.1.gz` · `man Panoxy` | `myproxy.1.gz` · `man myproxy` |
 

@@ -7,7 +7,7 @@
 //     上游查询,防 DNS 回环死锁 —— 与配置模板 routing-mark 联动)
 //   - DNS 劫持用 redirect(mihomo 监听 0.0.0.0:1053):OUTPUT 落 127.0.0.1,
 //     PREROUTING 落入接口主地址,v4/v6 通吃,无需 route_localnet
-//   - 853(DoT/DoQ)拒绝:DoH(443)无法在内核劫持,由 status 提示用户关闭浏览器内置 DoH
+//   - 唯一后端 nftables(内核 4.18+ 均含 nf_tproxy 支持),不保留 iptables 兜底
 package firewall
 
 import (
@@ -19,32 +19,16 @@ import (
 	"github.com/deadship2003/Panoxy/internal/logx"
 )
 
-// Firewall 是防火墙后端抽象(spec 六 核心接口,加 ApplyTproxy/Name)。
-type Firewall interface {
-	Name() string
-	CleanAll() error              // 无条件删除自有全部规则(启动第一步)
-	ApplyDnsHijack() error        // TUN 模式:仅 DNS 劫持 + 853 拒绝
-	ApplyTproxy() error           // TPROXY 模式:DNS + mark/策略路由/tproxy 链
-	Teardown() error              // 删除自有全部表/链/策略路由(停止信号)
-	HasStaleRules() (bool, error) // 是否检测到残留规则
-}
+// BackendName 是唯一防火墙后端名(健康报告展示用)。
+const BackendName = "nftables"
 
-// New 按可用性选择后端:nftables 优先,降级 iptables。
-func New() (Firewall, error) {
-	if _, err := exec.LookPath("nft"); err == nil {
-		return &nftBackend{}, nil
+// ensureNft 校验 nftables 用户态可用;Panoxy 只支持 nftables,缺失即快速失败并给出安装提示。
+func ensureNft() error {
+	if _, err := exec.LookPath("nft"); err != nil {
+		return fmt.Errorf("nftables not found: Panoxy requires the nftables userspace (install the 'nftables' package)")
 	}
-	if _, err := exec.LookPath("iptables"); err == nil {
-		return &iptBackend{}, nil
-	}
-	return nil, fmt.Errorf("system has neither nft nor iptables, cannot manage DNS hijacking")
+	return nil
 }
-
-// ---- nftables 后端 ----
-
-type nftBackend struct{}
-
-func (n *nftBackend) Name() string { return "nftables" }
 
 func runNft(script string) error {
 	c := exec.Command("nft", "-f", "-")
@@ -57,8 +41,11 @@ func runNft(script string) error {
 	return nil
 }
 
-func (n *nftBackend) CleanAll() error {
-	// 无条件删表;表不存在视为成功(幂等)
+// CleanAll 无条件删除自有表 + 策略路由(启动第一步;表不存在视为成功,幂等)。
+func CleanAll() error {
+	if err := ensureNft(); err != nil {
+		return err
+	}
 	args := []string{"delete", "table", constants.NftFamily, constants.NftTable}
 	out, err := exec.Command("nft", args...).CombinedOutput()
 	logx.DebugCmd("nft", args, string(out), err)
@@ -72,19 +59,21 @@ func (n *nftBackend) CleanAll() error {
 	return nil
 }
 
-func (n *nftBackend) ApplyDnsHijack() error {
-	if err := n.CleanAll(); err != nil {
+// ApplyDnsHijack TUN 模式:仅 DNS 劫持(先 CleanAll 再加载,幂等)。
+func ApplyDnsHijack() error {
+	if err := CleanAll(); err != nil {
 		return err
 	}
 	if err := runNft(BuildNftScript(constants.DnsListenPort, constants.MarkSelf)); err != nil {
 		return err
 	}
-	logx.Info("firewall: nftables backend loaded DNS hijack")
+	logx.Info("firewall: loaded DNS hijack")
 	return nil
 }
 
-func (n *nftBackend) ApplyTproxy() error {
-	if err := n.CleanAll(); err != nil {
+// ApplyTproxy TPROXY 模式:DNS + mark/策略路由/tproxy 链(先 CleanAll 再加载,幂等)。
+func ApplyTproxy() error {
+	if err := CleanAll(); err != nil {
 		return err
 	}
 	if err := runNft(BuildNftTproxyScript(constants.DnsListenPort, constants.MarkSelf,
@@ -94,13 +83,18 @@ func (n *nftBackend) ApplyTproxy() error {
 	if err := TproxyPolicyAdd(); err != nil {
 		return err
 	}
-	logx.Info("firewall: nftables backend loaded full TPROXY rules")
+	logx.Info("firewall: loaded full TPROXY rules")
 	return nil
 }
 
-func (n *nftBackend) Teardown() error { return n.CleanAll() }
+// Teardown 删除自有全部规则(停止信号)。
+func Teardown() error { return CleanAll() }
 
-func (n *nftBackend) HasStaleRules() (bool, error) {
+// HasStaleRules 表存在即视为有残留规则。
+func HasStaleRules() (bool, error) {
+	if err := ensureNft(); err != nil {
+		return false, err
+	}
 	args := []string{"list", "table", constants.NftFamily, constants.NftTable}
 	out, err := exec.Command("nft", args...).CombinedOutput()
 	logx.DebugCmd("nft", args, string(out), err)
@@ -111,6 +105,29 @@ func (n *nftBackend) HasStaleRules() (bool, error) {
 		return false, fmt.Errorf("nft list failed: %s", strings.TrimSpace(string(out)))
 	}
 	return true, nil
+}
+
+// CheckTproxySupport 用最小 tproxy 规则做 nft -c 干跑:一次校验用户态语法 + 内核 nf_tproxy 支持。
+// nftables TPROXY 走 inet 族 `tproxy to :port` 语句(依赖 nf_tproxy_ipv4/ipv6 模块)。
+func CheckTproxySupport() error {
+	if err := ensureNft(); err != nil {
+		return err
+	}
+	script := fmt.Sprintf(`table inet %s_tproxy_probe {
+  chain tproxy_probe {
+    type filter hook prerouting priority mangle; policy accept;
+    meta l4proto { tcp, udp } tproxy to :%d
+  }
+}
+`, constants.NftTable, constants.TproxyPort)
+	c := exec.Command("nft", "-c", "-f", "-")
+	c.Stdin = strings.NewReader(script)
+	out, err := c.CombinedOutput()
+	logx.DebugCmd("nft", []string{"-c", "-f", "-"}, string(out), err)
+	if err != nil {
+		return fmt.Errorf("nftables cannot express tproxy: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func isNotExist(out []byte, err error) bool {

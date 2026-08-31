@@ -88,10 +88,9 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
     ip6 daddr @keep6 return
     meta mark %d return
     meta l4proto { tcp, udp } th dport 53 return
-    meta nfproto ipv4 meta l4proto { tcp, udp } tproxy ip to :%d meta mark set %d accept
-    meta nfproto ipv6 meta l4proto { tcp, udp } tproxy ip6 to :%d meta mark set %d accept
+    meta l4proto { tcp, udp } tproxy to :%d meta mark set %d accept
   }
 }
 `, constants.NftTable, dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort,
-		markSelf, tproxyPort, markTproxy, tproxyPort, markTproxy)
+		markSelf, tproxyPort, markTproxy)
 }

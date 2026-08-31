@@ -4,8 +4,8 @@
 
 **前置检测(物理机/真机)**:
 ```bash
-grep -w TPROXY /proc/net/ip_tables_targets    # 有输出 = 可用
-sudo modprobe xt_TPROXY                       # 无输出时尝试加载
+# 走 nftables,依赖 nf_tproxy_ipv4/ipv6 内核模块(内核 4.18+ 默认含):
+sudo modprobe nf_tproxy_ipv4 nf_tproxy_ipv6
 ```
 Arch/Debian/Ubuntu 标准内核默认包含;WSL2 微信裁剪内核不支持。
 
@@ -30,7 +30,7 @@ sudo nft list table inet Panoxy | grep tproxy
 | 源 IP | ❌ 丢失(显示为网关 IP) | ✅ **保留客户端真实 IP** |
 | 性能 | gvisor 用户态 | 内核转发,**理论最优** |
 | 配置复杂度 | 低(auto-route) | 中(mark/策略路由) |
-| 内核要求 | TUN 驱动 | xt_TPROXY 模块 |
+| 内核要求 | TUN 驱动 | nf_tproxy 模块(nftables) |
 | Docker/容器 | 兼容好 | 可能误劫持 |
 | WSL2/虚拟化 | ✅ | ❌(内核裁剪) |
 

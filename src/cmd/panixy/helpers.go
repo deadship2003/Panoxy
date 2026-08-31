@@ -53,16 +53,6 @@ func runtimeArch() string {
 	return ""
 }
 
-// checkTproxySupport probes for the kernel xt_TPROXY module (rejects switching to tproxy when unavailable).
-func checkTproxySupport() error {
-	probe := `grep -w TPROXY /proc/net/ip_tables_targets 2>/dev/null || { modprobe xt_TPROXY 2>/dev/null; grep -w TPROXY /proc/net/ip_tables_targets 2>/dev/null; }`
-	out, _ := execx.RunShell(probe)
-	if strings.TrimSpace(out) == "" {
-		return fmt.Errorf("kernel lacks the xt_TPROXY module (/proc/net/ip_tables_targets has no TPROXY)")
-	}
-	return nil
-}
-
 // copyFile copies a file (small files, read at once).
 func copyFile(src, dst string) error {
 	b, err := os.ReadFile(src)

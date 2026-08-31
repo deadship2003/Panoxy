@@ -4,7 +4,7 @@
 # ★ 端口/密钥改动后 {{.Prog}} 自动跟随 —— 配置文件是唯一事实源
 #
 # v0.2.0 要点(相对 bash 版 v0.1.4):
-#   - DNS 劫持由 nftables/iptables 完成(redirect→1053),已删除 tun.dns-hijack
+#   - DNS 劫持由 nftables 完成(redirect→1053),已删除 tun.dns-hijack
 #   - routing-mark 6666:mihomo 自身出站标记,防火墙据此放行防 DNS 回环(勿改)
 #   - tun.stack 默认 system(家用低负载够用);重度 BT/PT、长时间 UDP 流媒体、
 #     节点频繁掉线、老内核(5.4/5.15)建议改 gvisor 无人值守兜底
@@ -88,6 +88,12 @@ tun:
     - 172.16.0.0/12
     - 192.168.0.0/16
 {{- end}}
+# ============ 防火墙(iptables 块)============
+# 重要:这里的 iptables 是 mihomo 自带的“自动写内核规则”开关,不是 Panoxy 的防火墙后端。
+# 透明代理所需的 DNS 劫持 / TPROXY mark/策略路由,全部由 Panoxy 自己的 nftables 规则管理
+# (systemd 的 ExecStartPost 执行 `Panoxy fw apply` 写入内核),mihomo 只负责监听端口。
+# 若误改成 enable: true,mihomo 会再往内核写一套 inbound-tproxy/redirect 规则,与 Panoxy
+# 的规则重复、冲突,卸载时也清不干净。因此这里必须恒为 false,请勿改动。
 iptables:
   enable: false
 
