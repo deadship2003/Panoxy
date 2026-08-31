@@ -28,7 +28,6 @@ func Render(p paths.Paths, mode string) (map[string]string, error) {
 		Mode:      mode,
 		Prog:      constants.ProgName,
 		EnvPrefix: constants.EnvPrefix(),
-		Bin:       p.Bin,
 		Conf:      p.Conf,
 		Root:      p.Root,
 		UiDir:     p.UiDir,
@@ -176,8 +175,8 @@ func PortCheck(confPath string) error {
 	}
 	if len(list) > 0 {
 		hint := ""
-		if pout, _ := execx.Run("sh", "-c", "pgrep -af 'bin/mihomo' | head -3"); strings.TrimSpace(pout) != "" {
-			hint = "\nrunning mihomo detected:\n" + pout + "→ old deployment not cleaned up: first sudo " + constants.ProgName + " uninstall (old version) / stop the old instance, then deploy\n"
+		if pout, _ := execx.Run("sh", "-c", fmt.Sprintf("pgrep -af '%s run' | head -3", constants.ProgName)); strings.TrimSpace(pout) != "" {
+			hint = "\nrunning " + constants.ProgName + " detected:\n" + pout + "→ old deployment not cleaned up: first sudo " + constants.ProgName + " uninstall (old version) / stop the old instance, then deploy\n"
 		}
 		return fmt.Errorf("port already in use: %s%s", strings.Join(list, ", "), hint)
 	}

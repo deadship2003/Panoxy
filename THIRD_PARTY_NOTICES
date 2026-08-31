@@ -7,6 +7,7 @@ Panoxy 在编译或运行时捆绑/下载以下第三方组件。每个组件各
 
 | 依赖 | 许可 |
 |---|---|
+| github.com/metacubex/mihomo(内嵌内核,git subtree 引入) | GPL-3.0 |
 | github.com/spf13/cobra | Apache-2.0 |
 | github.com/spf13/pflag | BSD-3-Clause |
 | github.com/russross/blackfriday/v2 | BSD-2-Clause |
@@ -14,15 +15,15 @@ Panoxy 在编译或运行时捆绑/下载以下第三方组件。每个组件各
 | github.com/inconshreveable/mousetrap | Apache-2.0 |
 | go.yaml.in/yaml/v3 · gopkg.in/yaml.v3 | MIT / Apache-2.0 |
 
-## 运行时组件(由 init/upgrade 下载,并打入离线包)
-
-### mihomo(内核)— MIT / GPL-3.0(按分支不同)
+### mihomo(内核)— GPL-3.0(内嵌)
 
 - 仓库:https://github.com/MetaCubeX/mihomo
-- `main` 分支:**MIT**,版权 © 2023 KT(文本见 [LICENSES/MIT.txt](LICENSES/MIT.txt))
-- `Meta` 分支(旧 Clash.Meta 血统):**GPL-3.0**(文本见 [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt))
-- Panoxy 下载其 Release 产物,并以**独立二进制**运行(不链接其代码)。
-  相应源码见上方仓库。
+- 分支:**Alpha**,锁定 commit `65287f0`;许可 **GPL-3.0**(文本见 [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt))
+- 内嵌方式:git subtree 引入 `third_party/mihomo`,经 `go.mod replace` 在进程内 `hub.Parse` 运行内核。
+  因链接了 GPL-3.0 的 mihomo 代码,Panoxy 成为其衍生作品,整体采用 **GPL-3.0**(见 [LICENSE](LICENSE))。
+- 上游更新:`Panoxy upstream` 探测 Alpha 最新 commit 并提示,由用户 + AI 完成 subtree 合并(不自动合并)。
+
+## 运行时组件(由 init/upgrade 下载,并打入离线包)
 
 ### metacubexd(Web 面板)— MIT
 

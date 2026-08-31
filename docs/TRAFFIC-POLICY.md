@@ -29,8 +29,9 @@
 ### 远程管理
 | 端口 | 服务 | 原因 |
 |---|---|---|
-| 22 | SSH/SFTP | **已改走分流**(境外 SSH 走代理,GitHub SSH 规避污染) |
 | 23 | Telnet | 延迟敏感,走代理增加延迟 |
+
+> **注:** SSH(22)不在直连列表 —— 现走分流(境外 SSH 走代理,GitHub SSH 规避污染),见 `src/internal/asset/config.tpl` 中被注释的 `DST-PORT,22,DIRECT`。
 
 ### 远程桌面
 | 端口 | 服务 | 原因 |

@@ -2,13 +2,12 @@ package config
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/core"
 )
 
 // renderTmp 渲染基础模板到临时文件并返回 Editor。
@@ -182,36 +181,9 @@ func TestPruneDerivedKeepsOnlyMatchedGroups(t *testing.T) {
 	}
 }
 
-// TestEditedConfigPassesMihomoCheck 终极集成:模板 → 增删 provider → 真实内核 -t。
-func TestEditedConfigPassesMihomoCheck(t *testing.T) {
-	bin := os.Getenv("MIHOMO_BIN")
-	if bin == "" {
-		for _, c := range []string{
-			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
-			"/opt/panixy/bin/mihomo", // 旧版残留
-		} {
-			if _, err := os.Stat(c); err == nil {
-				bin = c
-				break
-			}
-		}
-		if bin == "" {
-			t.Skip("本机无 mihomo 内核,跳过 -t 实测")
-		}
-	}
-	geoSrc := os.Getenv("GEO_SRC")
-	if geoSrc == "" {
-		geoSrc = filepath.Join("/opt", constants.ProgName)
-		if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
-			geoSrc = "/opt/panixy" // 旧版残留
-			if _, err := os.Stat(geoSrc + "/GeoSite.dat"); err != nil {
-				h, _ := os.UserHomeDir()
-				if _, err2 := os.Stat(h + "/panixy-e2e/GeoSite.dat"); err2 == nil {
-					geoSrc = h + "/panixy-e2e"
-				}
-			}
-		}
-	}
+// TestEditedConfigPassesCheck 终极集成:模板 → 增删 provider → 进程内内核 -t(等价外部 mihomo -t)。
+func TestEditedConfigPassesCheck(t *testing.T) {
+	geoSrc := geoFallback(t)
 	dir := t.TempDir()
 	for _, f := range []string{"GeoIP.dat", "GeoSite.dat", "Country.mmdb"} {
 		if b, err := os.ReadFile(filepath.Join(geoSrc, f)); err == nil {
@@ -230,13 +202,8 @@ func TestEditedConfigPassesMihomoCheck(t *testing.T) {
 	e.WireProvider("SUB", false, nil)
 	e.path = filepath.Join(dir, "clash.yaml")
 	e.Save()
-	cmd := exec.Command(bin, "-t", "-f", e.path, "-d", dir)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("删光全部订阅应被 -t 拒绝,却通过了:\n%s", out)
-	}
-	if !strings.Contains(string(out), "use") {
-		t.Logf("(-t 输出:%s)", out)
+	if err := core.Validate(dir, mustRead(t, e.path)); err == nil {
+		t.Fatalf("删光全部订阅应被 -t 拒绝,却通过了")
 	}
 
 	// 保留 SUB 的正常编辑必须通过
@@ -245,9 +212,8 @@ func TestEditedConfigPassesMihomoCheck(t *testing.T) {
 	e2.WireProvider("airport2", true, nil)
 	e2.path = filepath.Join(dir, "clash2.yaml")
 	e2.Save()
-	out2, err := exec.Command(bin, "-t", "-f", e2.path, "-d", dir).CombinedOutput()
-	if err != nil {
-		t.Errorf("编辑后的配置未过 -t:\n%s", out2)
+	if err := core.Validate(dir, mustRead(t, e2.path)); err != nil {
+		t.Errorf("编辑后的配置未过 -t:%v", err)
 	}
 }
 

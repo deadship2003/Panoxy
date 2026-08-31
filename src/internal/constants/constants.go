@@ -33,8 +33,14 @@ const (
 	MixedPortDef  = 33833
 	ApiPortDef    = 9999
 	DefSecret     = "deadship" // 面板/API 默认密钥(init/deploy --secret 默认值,与 API 客户端回退同源)
+)
 
-	CoreKeep = 3 // 内核备份保留份数
+// mihomo 上游内嵌内核基线:Alpha 分支锁定 commit(subtree 引入的版本,即 third_party/mihomo 内容对应)。
+// upstream 命令据此探测上游是否有新提交;subtree 同步后需同步更新此常量与 third_party/mihomo/.git-subtree-source。
+const (
+	UpstreamRepo         = "https://github.com/MetaCubeX/mihomo"
+	UpstreamBranch       = "Alpha"
+	UpstreamMihomoCommit = "65287f0"
 )
 
 // 以下默认值随 ProgName 派生(编译注入 ProgName 后自动跟随)。

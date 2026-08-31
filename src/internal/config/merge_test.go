@@ -2,13 +2,13 @@ package config
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/deadship2003/Panoxy/internal/asset"
 	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/Panoxy/internal/core"
 )
 
 // personalSample 模拟个人配置:自定义分组(进程/地理分流)、自建节点、端口密钥、
@@ -187,31 +187,8 @@ func subSnippet(s string) string {
 	return ""
 }
 
-// TestMergedConfigPassesMihomoCheck 融合产物过真实内核 -t。
-func TestMergedConfigPassesMihomoCheck(t *testing.T) {
-	bin := os.Getenv("MIHOMO_BIN")
-	if bin == "" {
-		for _, c := range []string{
-			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
-			"/opt/panixy/bin/mihomo", // 旧版残留
-		} {
-			if _, err := os.Stat(c); err == nil {
-				bin = c
-				break
-			}
-		}
-		if bin == "" {
-			if h, _ := os.UserHomeDir(); h != "" {
-				if _, err := os.Stat(h + "/panixy-e2e/mihomo"); err == nil {
-					bin = h + "/panixy-e2e/mihomo"
-				} else {
-					t.Skip("无 mihomo 内核,跳过 -t 实测")
-				}
-			} else {
-				t.Skip("无 mihomo 内核,跳过 -t 实测")
-			}
-		}
-	}
+// TestMergedConfigPassesCheck 融合产物过进程内内核 -t(等价外部 mihomo -t)。
+func TestMergedConfigPassesCheck(t *testing.T) {
 	geoSrc := geoFallback(t)
 	base, per, dir := mergeSetup(t)
 	rep, _ := base.MergePersonal(per, MergeOpts{})
@@ -226,9 +203,8 @@ func TestMergedConfigPassesMihomoCheck(t *testing.T) {
 		}
 	}
 	os.MkdirAll(filepath.Join(dir, "ui", "official"), 0o755)
-	out, err := exec.Command(bin, "-t", "-f", merged, "-d", dir).CombinedOutput()
-	if err != nil {
-		t.Errorf("融合产物未过 -t:\n%s", out)
+	if err := core.Validate(dir, mustRead(t, merged)); err != nil {
+		t.Errorf("融合产物未过 -t:%v", err)
 	}
 }
 
@@ -251,6 +227,6 @@ func geoFallback(t *testing.T) string {
 			return h + "/panixy-e2e"
 		}
 	}
-	t.Fatal("缺 geo")
+	t.Skip("本机无 geodata(GeoSite.dat),跳过进程内 -t 实测")
 	return ""
 }

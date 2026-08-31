@@ -1,6 +1,6 @@
 # Panoxy 双栈 Fake-IP 改造（IPv4 198.18.0.0/16 + IPv6 2001:2::/48）
 
-> 供多主机、多分支同步/融合使用。改动已通过 `go build ./...` 与三个包的单测（含真实 mihomo `-t` 校验），**尚未部署到本机**。
+> 供多主机、多分支同步/融合使用。改动已通过 `go build ./...` 与三个包的单测（含内嵌内核 `Panoxy check` 校验），**尚未部署到本机**。
 
 ## 0. 一句话
 
@@ -32,7 +32,7 @@
 - `--dns mine` 时强制写回 listen 的字面量 `0.0.0.0:1053` → `[::]:1053`（**否则会被 merge 覆盖回 v4**）。
 - 相关注释同步。
 
-### 2.4 `cmd/panixy/misccmds.go`
+### 2.4 `cmd/Panoxy/misccmds.go`
 - `warnCompat` 的 `dns.listen` 一致性告警文案 `0.0.0.0:1053` → `[::]:1053`。判定逻辑仍是 `Contains(":1053")`，不受影响。
 
 ### 2.5 `internal/firewall/firewall.go`

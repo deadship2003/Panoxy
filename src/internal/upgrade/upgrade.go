@@ -3,17 +3,11 @@
 package upgrade
 
 import (
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/deadship2003/Panoxy/internal/httpx"
@@ -71,64 +65,9 @@ func Download(urlStr, proxy, dst string) error {
 	return try("")
 }
 
-var verRe = regexp.MustCompile(`v[0-9]+\.[0-9]+\.[0-9]+`)
-
-// VerifyCore 试运行解包后的内核并核对版本(空/损坏内核会被 shell 当空脚本执行
-// 而假通过 —— bash 时代实测教训,必须校验输出内容)。
-func VerifyCore(bin, wantVer string) error {
-	out, err := exec.Command(bin, "-v").CombinedOutput()
-	logx.DebugCmd(bin, []string{"-v"}, string(out), err)
-	if err != nil || !strings.Contains(string(out), "Mihomo") {
-		return fmt.Errorf("new core cannot run (instruction set incompatible?)")
-	}
-	got := verRe.FindString(string(out))
-	if wantVer != "" && got != wantVer {
-		return fmt.Errorf("version mismatch: expected %s got %s", wantVer, got)
-	}
-	return nil
-}
-
-// GunzipFile 解压 .gz 文件到目标。
-func GunzipFile(src, dst string) error {
-	f, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	zr, err := gzip.NewReader(f)
-	if err != nil {
-		return fmt.Errorf("corrupt archive: %w", err)
-	}
-	defer zr.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, zr)
-	return err
-}
-
-// CoreAssetCandidates 按架构/AVX2 给出候选资产基名(依次降级)。
-func CoreAssetCandidates(ver string) []string {
-	base := "mihomo-linux-" + runtime.GOARCH
-	if runtime.GOARCH == "amd64" && hasAVX2() {
-		return []string{base + "-v3-" + ver, base + "-" + ver, base + "-compatible-" + ver}
-	}
-	return []string{base + "-" + ver, base + "-compatible-" + ver}
-}
-
-func hasAVX2() bool {
-	b, err := os.ReadFile("/proc/cpuinfo")
-	return err == nil && strings.Contains(string(b), "avx2")
-}
-
 // DownloadProgress 带进度条下载:统一 10 分钟超时(Content-Length 已知时渲染百分比)。
 // 连通性探测(15s 硬顶)已由调用方 directAssetReachable 完成,此处不做重复判定;
-// 18MB 内核正常下载约需 10-30s,15s 硬顶会误杀大文件下载(实测教训)。
+// 大文件下载正常约需 10-30s,15s 硬顶会误杀大文件下载(实测教训)。
 func DownloadProgress(urlStr, proxy, dst, label string) error {
 	return downloadOnce(urlStr, proxy, dst, label, 600*time.Second)
 }

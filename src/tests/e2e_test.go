@@ -1,5 +1,5 @@
-// Package tests 是 Go 版 e2e:以环境变量覆盖 + 假 systemctl + 真实 mihomo 内核
-// 驱动编译出的 panixy 二进制,覆盖 deploy/sub import/del/mode 的全事务链路。
+// Package tests 是 Go 版 e2e:以环境变量覆盖 + 假 systemctl + 内嵌内核(panixy run)
+// 驱动编译出的 panixy 单二进制,覆盖 deploy/sub import/del/mode 的全事务链路。
 //
 // 安全约束:本机(开发机)不引导 tun 实例(auto-route 会改宿主路由表)——
 // e2e 配置一律去除 tun 段;tun/tproxy 的真机引导验证在网关阶段进行。
@@ -23,10 +23,8 @@ import (
 )
 
 var (
-	bin     string // 编译出的 panixy
-	mihomo  string // 真实内核
-	goTool  string
-	e2eSkip bool
+	bin    string // 编译出的 panixy(单二进制,内核内嵌)
+	goTool string
 )
 
 func TestMain(m *testing.M) {
@@ -34,22 +32,6 @@ func TestMain(m *testing.M) {
 	goTool, err = exec.LookPath("go")
 	if err != nil {
 		fmt.Println("SKIP: 无 go 工具链")
-		os.Exit(0)
-	}
-	mihomo = os.Getenv("MIHOMO_BIN")
-	if mihomo == "" {
-		for _, c := range []string{
-			filepath.Join("/opt", constants.ProgName, "bin", "mihomo"),
-			"/opt/panixy/bin/mihomo", // 旧版残留
-		} {
-			if _, err := os.Stat(c); err == nil {
-				mihomo = c
-				break
-			}
-		}
-	}
-	if mihomo == "" {
-		fmt.Println("SKIP: 无 mihomo 内核(MIHOMO_BIN 可指定)")
 		os.Exit(0)
 	}
 	// geo 来源:GEO_SRC > /opt/<ProgName> > /opt/panixy > 离线包资产(机器清理过 /opt 后仍可测)
@@ -71,7 +53,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	bin = filepath.Join(dir, constants.ProgName)
-	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/panixy").CombinedOutput()
+	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/Panoxy").CombinedOutput()
 	if err != nil {
 		fmt.Printf("SKIP: 构建 panixy 失败(依赖未拉取?): %s\n%s", err, out)
 		os.Exit(0)
@@ -120,7 +102,7 @@ func newEnv(t *testing.T) *env {
 	os.WriteFile(shim, []byte(fmt.Sprintf(`#!/bin/sh
 PIDF=%s
 start_mh() {
-  nohup "$%s_ROOT/bin/mihomo" -f "$%s_CONF" -d "$%s_ROOT" >> "$%s_ROOT/run.log" 2>&1 9>&- &
+  nohup "$%s_CLI" run >> "$%s_ROOT/run.log" 2>&1 9>&- &
   echo $! >> "$PIDF"
 }
 case "$1" in
@@ -131,7 +113,7 @@ case "$1" in
              [ "$alive" = 1 ] && echo active || { echo inactive; exit 3; } ;;
 esac
 exit 0
-`, pidf, pfx, pfx, pfx, pfx, constants.ProgName)), 0o755)
+`, pidf, pfx, pfx, constants.ProgName)), 0o755)
 	for _, name := range []string{"ip", "sysctl", "nft"} {
 		os.WriteFile(filepath.Join(dir, "bin", name), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	}
@@ -231,7 +213,8 @@ func (e *env) waitAPI(t *testing.T) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatal("沙箱内核 API 未就绪")
+	log, _ := os.ReadFile(filepath.Join(e.root, "run.log"))
+	t.Fatalf("沙箱内核 API 未就绪\n--- run.log ---\n%s", log)
 }
 
 // noTunConf 渲染模板并去掉 tun 段(开发机不引导 tun)+ 换端口 + 固定密钥。

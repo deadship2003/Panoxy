@@ -1,0 +1,6 @@
+# mihomo 内嵌内核的 subtree 来源(上游基线)。
+# 与 internal/constants.UpstreamMihomoCommit 同源;subtree 同步后需同步更新两处。
+repo:   https://github.com/MetaCubeX/mihomo
+branch: Alpha
+commit: 65287f0
+module: github.com/metacubex/mihomo

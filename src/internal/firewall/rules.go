@@ -34,6 +34,7 @@ const (
 	fakeIpv6Range = "2001:2::/48" // RFC 5180 基准测试段(公网不可路由),IPv6 版 198.18.0.0/15
 )
 
+
 // BuildNftScript 生成 TUN 模式的完整 nft 脚本。
 // 原则:不阻断任何协议(QUIC/DoT/DoQ/DoH 均纳入正常分流);正常访问优先于分流精度。
 func BuildNftScript(dnsPort, markSelf int) string {
@@ -79,6 +80,10 @@ func BuildNftScript(dnsPort, markSelf int) string {
 // tcp/udp 流量」打上 markTproxy,经策略路由 `ip rule fwmark 1 lookup 100` → `local 0.0.0.0/0
 // dev lo` 回环重入,再走 tproxy_prerouting 交给 mihomo —— 与 TUN 等价(含 v6 与直连 IP)。
 // 关键点:local_output 必须用 `type route`(强制 re-route,普通 output 钩子打 mark 不触发重路由)。
+//
+// tproxy_prerouting 的 `socket transparent 1` 是 DIVERT 优化(内核 tproxy.txt 标准做法):
+// 匹配已建立透明连接(IP_TRANSPARENT socket)回环重入的后续包,打标+accept,避免再次走
+// tproxy 语句做无谓的 socket 查找。
 func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) string {
 	return fmt.Sprintf(`table inet %s {
   set keep4 {
@@ -131,11 +136,12 @@ func BuildNftTproxyScript(dnsPort, markSelf, markTproxy, table, tproxyPort int) 
     ip6 daddr @keep6 return
     meta mark %d return
     meta l4proto { tcp, udp } th dport 53 return
+    meta l4proto { tcp, udp } socket transparent 1 meta mark set %d accept
     meta l4proto { tcp, udp } tproxy to :%d meta mark set %d accept
   }
 }
 `, constants.NftTable, keep4Elements, keep6Elements,
 		dnsPort, markSelf, dnsPort, dnsPort, dnsPort, dnsPort,
 		keepPortsTCP, keepPortsUDP, markTproxy,
-		keepPortsTCP, keepPortsUDP, markSelf, tproxyPort, markTproxy)
+		keepPortsTCP, keepPortsUDP, markSelf, markTproxy, tproxyPort, markTproxy)
 }

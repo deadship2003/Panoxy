@@ -5,15 +5,15 @@
 **A Linux transparent-proxy gateway deploy/management tool built on the [mihomo](https://github.com/MetaCubeX/mihomo) core**
 
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL%203.0-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20amd64%7Carm64-lightgrey)]()
 [![Release](https://img.shields.io/badge/Release-V0.0.1-orange)](../../releases)
 
-Single binary · zero dependencies · transactional deployment · full rollback
+Single binary · zero dependencies · transactional deployment · automatic rollback
 
 </div>
 
-**What it does.** Panoxy turns one Linux box into a transparent proxy gateway for your entire network. Install it on a single machine and every device behind it — phones, laptops, consoles, IoT — is proxied automatically at the network layer (TUN/TPROXY), with no client software and no per-app configuration. It bundles the mihomo core, a web panel, geo/rules data, and a transactional deploy/upgrade flow with full rollback, so standing up and maintaining a gateway is a single command.
+**What it does.** Panoxy turns one Linux box into a transparent proxy gateway for your entire network. Install it on a single machine and every device behind it — phones, laptops, consoles, IoT — is proxied automatically at the network layer (TUN/TPROXY), with no client software and no per-app configuration. It embeds the mihomo kernel (fused into the single binary), bundles a web panel and geo/rules data, and adds a transactional deploy/upgrade flow with automatic rollback, so standing up and maintaining a gateway is a single command.
 
 > **The name.** *Panoxy* = Greek *πᾶν* (*pan*, "all") + *proxy*: one proxy for *all* of your traffic.
 
@@ -28,7 +28,7 @@ Single binary · zero dependencies · transactional deployment · full rollback
 - 🔄 **Self-healing** — `kill -9`/OOM residue is cleaned automatically on `systemctl restart Panoxy`; no manual intervention
 - 📡 **Verifiable subscriptions** — prefetch → validate → incremental write → restart → **node count > 0 counts as success**; never a false success
 - 🧩 **Config merge** — `merge-conf` does field-level merge of same-named groups (union of proxies/use); base groups are preserved, never deleted
-- ⬆️ **Parameterized upgrade** — `--core/--ui/--cli/--check/--core-version`; dry-run validation, automatic rollback on failure
+- ⬆️ **Parameterized upgrade** — `--check`/`--ui-version` (web UI); dry-run validation, automatic rollback on failure
 - 📖 **Complete documentation** — every command's `-h/-?/--help` includes examples; `man Panoxy` is generated from the same source as `--help`
 - 🔍 **Debug-friendly** — `--verbose` for step-by-step detail; `--debug` for zero-obfuscation of external command/API I/O
 
@@ -41,11 +41,11 @@ Single binary · zero dependencies · transactional deployment · full rollback
 sudo Panoxy init '<your-subscription-url>'
 ```
 
-Nine steps run automatically: precheck → fetch subscription → network probe → download core → download geo/rules → download panel → place assets → deploy service → import subscription. Each step has a progress bar; when a direct connection fails, downloads are proxied through subscription nodes (requires an existing local mihomo core); with no core present it suggests the offline package `deploy`, or manually copying the core to `/opt/Panoxy/bin/mihomo`.
+Eight steps run automatically: precheck → fetch subscription → network probe → download geo/rules → download panel → place assets → deploy service → import subscription. Each step has a progress bar; when a direct connection fails, downloads are proxied through subscription nodes (a temporary in-process kernel is booted from the Panoxy CLI itself); with no Panoxy CLI present it suggests the offline package `deploy`.
 
 ### Option 2: Offline package (for friends)
 
-Download the offline package from [Releases](../../releases) (34 MB, core + geo + UI + rules):
+Download the offline package from [Releases](../../releases) (~50 MB, geo + UI + rules; the kernel is embedded in the CLI):
 
 ```bash
 tar xzf Panoxy-V0.0.1-amd64.tar.gz && cd Panoxy-V0.0.1-amd64
@@ -99,7 +99,7 @@ The first goal of transparent proxying is **normal access**; routing is only an 
 
 | Category | Ports | Services |
 |---|---|---|
-| **Remote management** | 23 | Telnet (SSH/SFTP 22 now routed via proxy — `DST-PORT,22,DIRECT` commented out) |
+| **Remote management** | 23 | Telnet |
 | **Remote desktop** | 3389, 5900 | RDP, VNC |
 | **VPN/overlay** | 41641, 3478, 51820, 1194, 500, 4500, 1701, 1723 | Tailscale, STUN/TURN, WireGuard, OpenVPN, IPSec (IKE/NAT-T), L2TP, PPTP |
 | **VoIP** | 5060, 5061 | SIP, SIPS |
@@ -108,6 +108,8 @@ The first goal of transparent proxying is **normal access**; routing is only an 
 | **IoT** | 1883, 8883, 5683 | MQTT, MQTT/TLS, CoAP |
 | **Storage/database** | 3260, 3306, 5432, 6379, 27017, 873 | iSCSI, MySQL, PostgreSQL, Redis, MongoDB, Rsync |
 | **Tailscale-specific** | 100.100.100.100, 100.64.0.0/10 | MagicDNS, CGNAT subnet |
+
+> **Note:** SSH (port 22) is **not** in the direct-connect list — it now follows split-tunneling. Foreign SSH goes through the proxy, and GitHub SSH is routed via proxy to avoid pollution (see the commented `DST-PORT,22,DIRECT` rule in `src/internal/asset/config.tpl`).
 
 ## 📂 Repository layout
 
@@ -160,13 +162,13 @@ cd src
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v3 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-amd64 \
-  ./cmd/panixy
+  ./cmd/Panoxy
 
 # cross-compile ARM64 (no ARM machine needed)
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
   -o ../dist/Panoxy-linux-arm64 \
-  ./cmd/panixy
+  ./cmd/Panoxy
 
 # generate checksums
 cd ../dist && sha256sum Panoxy-linux-* > sha256sums.txt
@@ -197,7 +199,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath \
   -ldflags "-s -w -X main.version=V0.0.1 -X github.com/deadship2003/Panoxy/internal/constants.ProgName=myproxy" \
   -o ../dist/myproxy-linux-amd64 \
-  ./cmd/panixy
+  ./cmd/Panoxy
 ```
 
 The easy way is to hand it to the build entry:
@@ -221,7 +223,7 @@ Runtime artifacts follow the renamed program (using `myproxy` as the example):
 
 > Note: the program name (a build-time variable) and the GitHub repo name (`deadship2003/Panoxy`) are two different things — renaming only affects the binary and runtime artifacts, not the repo or the upgrade source.
 
-> **CPU selection for CLI and core**: the Panoxy CLI auto-detects `GOAMD64` against the current CPU at build time by default (amd64 with AVX2 → `v3`, without → `v1` full compatibility; force with `GOAMD64=v1 ./build.sh`). The mihomo core, on the other hand, is matched at **runtime** by `Panoxy init` / `Panoxy upgrade` / `build.sh package`, which probe the local arch and AVX2 to download a matching core (AVX2 → `v3`, otherwise → standard, falling back to `compatible`); once downloaded/cached the core is not re-probed.
+> **CPU selection**: the Panoxy CLI auto-detects `GOAMD64` against the current CPU at build time (amd64 with AVX2 → `v3`, without → `v1` full compatibility; force with `GOAMD64=v1 ./build.sh`). Since the mihomo kernel is fused into the CLI, this single build-time choice also covers the kernel — there is no separate core to probe or download at runtime.
 
 ### Verify the build
 
@@ -253,7 +255,6 @@ dist/Panoxy-linux-amd64 --version
 | `--prog Panoxy` (or `PROG` env) | `Panoxy` | program name (build-time injection; determines binary/package name and runtime paths) |
 | `--sub-url URL` | (empty) | download assets through subscription proxy when offline |
 | `ASSETS_SRC` | `/opt/Panoxy` | local assets dir (copied if present, not downloaded) |
-| `MIHOMO_VERSION` | latest probed at runtime | core version (pin for reproducibility) |
 | `PROXY_PORT` | `33999` | subscription bootstrap proxy port |
 
 ### Packaging flow (internal steps)
@@ -261,7 +262,7 @@ dist/Panoxy-linux-amd64 --version
 ```
 [1/5] build ─── inline go build → dist/Panoxy-linux-<arch> (both arches when `all`)
 [2/5] assets ── local first (ASSETS_SRC) > direct (15s check) > subscription proxy > gh mirror
-                 download: mihomo core + geo×3 + Country.mmdb + HyperADRules + metacubexd UI
+                 download: geo×3 + Country.mmdb + HyperADRules + metacubexd UI (kernel is embedded in the CLI)
 [3/5] scan ──── subscription-leak detection (token= etc. → abort; URL never enters the package)
 [4/5] assemble ─ Panoxy-V<ver>-<arch>/{Panoxy, README.md, assets/}
 [5/5] package ── tar.gz + sha256 → dist/
@@ -280,24 +281,11 @@ mkdir -p dist
 cd src
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags "-s -w -X main.version=V0.0.1" \
-  -o ../dist/Panoxy-linux-amd64 ./cmd/panixy
+  -o ../dist/Panoxy-linux-amd64 ./cmd/Panoxy
 cd ..
 
 # ===== Step 2: download assets =====
 TMP=$(mktemp -d)
-# probe the latest upstream core version at runtime (not hardcoded);
-# fall back to the local /opt/Panoxy/bin/mihomo -v when offline
-MIHOMO_VER="$(curl -fsSL --connect-timeout 8 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
-  | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
-
-# mihomo core (18MB): probe AVX2 to pick v3/standard (same source as build.sh package)
-if grep -qw avx2 /proc/cpuinfo; then
-  curl -fsSL -o "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" \
-    "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-v3-$MIHOMO_VER.gz"
-else
-  curl -fsSL -o "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" \
-    "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER/mihomo-linux-amd64-$MIHOMO_VER.gz"
-fi
 
 # geo trio (28MB)
 geo="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
@@ -316,11 +304,10 @@ curl -fsSL -o $TMP/ui.tgz \
 # ===== Step 3: assemble the offline package =====
 PKG="Panoxy-V0.0.1-amd64"
 rm -rf "$PKG"
-mkdir -p "$PKG/assets/core" "$PKG/assets/geo" "$PKG/assets/ui/official" "$PKG/assets/rule"
+mkdir -p "$PKG/assets/geo" "$PKG/assets/ui/official" "$PKG/assets/rule"
 
 cp dist/Panoxy-linux-amd64 "$PKG/Panoxy"
 chmod +x "$PKG/Panoxy"
-cp "$TMP/mihomo-linux-amd64-$MIHOMO_VER.gz" "$PKG/assets/core/"
 cp $TMP/Geo*.dat $TMP/Country.mmdb "$PKG/assets/geo/"
 cp $TMP/HyperADRules-Ads.yaml "$PKG/assets/rule/"
 tar xzf $TMP/ui.tgz -C "$PKG/assets/ui/official"
@@ -338,9 +325,7 @@ echo "artifact: dist/$PKG.tar.gz ($(du -h dist/$PKG.tar.gz | cut -f1))"
 **Skip downloads when assets already exist locally:**
 
 ```bash
-# core version taken from the installed core (offline packaging; same local fallback as build.sh package)
-MIHOMO_VER="$(/opt/Panoxy/bin/mihomo -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-gzip -c /opt/Panoxy/bin/mihomo > "$PKG/assets/core/mihomo-linux-amd64-$MIHOMO_VER.gz"
+# copy the local assets directly (offline packaging; same local fallback as build.sh package)
 cp /opt/Panoxy/Geo*.dat /opt/Panoxy/Country.mmdb "$PKG/assets/geo/"
 cp /opt/Panoxy/rule_provider/HyperADRules-Ads.yaml "$PKG/assets/rule/"
 ```
@@ -351,16 +336,15 @@ cp /opt/Panoxy/rule_provider/HyperADRules-Ads.yaml "$PKG/assets/rule/"
 
 ```
 Panoxy-V0.0.1-amd64/
-├── Panoxy                                    ← Go binary (9MB)
+├── Panoxy                                    ← Go binary (~46MB, mihomo kernel embedded)
 ├── README.md
 └── assets/
-    ├── core/mihomo-linux-amd64-<version>.gz  ← core (18MB)
     ├── geo/GeoIP.dat GeoSite.dat Country.mmdb
     ├── rule/HyperADRules-Ads.yaml            ← ad rules
     └── ui/official/                          ← metacubexd panel (161 files)
 ```
 
-**~34 MB total** · the recipient runs `tar xzf` → `sudo ./Panoxy deploy` and installation is done.
+**~50 MB total** · the recipient runs `tar xzf` → `sudo ./Panoxy deploy` and installation is done.
 
 ### CI auto-packaging
 
@@ -375,38 +359,36 @@ git tag V0.0.1 && git push origin V0.0.1
 
 ## 📋 Command reference
 
-| Command | Effect |
+Global flags (every command): `--root <dir>` custom install dir · `--verbose` step-by-step detail · `--debug` full transparency
+
+| Command (parameters) | Effect |
 |---|---|
-| `Panoxy try [URL]` | pre-install (rootless sandboxed trial) |
-| `Panoxy init/deploy --dry-run` | dry-run mode (rootless) |
-| `sudo Panoxy init [URL]` | bare-metal init (nine steps with progress) |
-| `sudo Panoxy deploy [URL]` | deploy from the offline package |
-| `sudo Panoxy redeploy` | in-place reinstall: force-refresh all program files (config preserved), re-apply firewall and restart |
-| `sudo Panoxy merge-conf <yaml>` | overlay-merge a personal config (`--dry-run`/`--rollback`) |
-| `Panoxy config [--mode tun\|tproxy] [--write]` | print the default config template (rootless; `--write` writes config.default.yaml) |
-| `sudo Panoxy sub import [URL]` | import a subscription (paste mode, no quotes) |
+| `Panoxy try [URL] [--dir] [--name] [--file] [--proxy-mode] [--secret] [--mirror]` | rootless sandboxed trial of the full install flow |
+| `sudo Panoxy init [URL] [--name] [--file] [--proxy-mode] [--secret] [--mirror] [--dry-run]` | bare-metal init (downloads assets → deploy → import subscription) |
+| `sudo Panoxy deploy [URL] [--name] [--file] [--proxy-mode] [--secret] [--dry-run]` | deploy from the offline package |
+| `sudo Panoxy redeploy [--dry-run]` | refresh the CLI/systemd units in place (config & data preserved), re-mount firewall + restart |
+| `sudo Panoxy sub import [URL] [--name] [--file] [--group]` | import/replace a subscription |
 | `sudo Panoxy sub del --name N` | delete a subscription |
 | `Panoxy sub list [--json]` | per-subscription status / node count |
-| `Panoxy status [-q\|--json\|--detail]` | health overview (`-q` exit code for monitoring) |
-| `sudo Panoxy start` | start the service (enable on boot), load firewall, verify health |
-| `sudo Panoxy stop` | stop the service (disable on boot) and clear the firewall |
-| `sudo Panoxy restart` | restart the service (self-heals the firewall) |
-| `sudo Panoxy mode [tun\|tproxy]` | view/switch mode |
-| `sudo Panoxy upgrade [--core\|--ui\|--cli] [--check]` | parameterized upgrade |
-| `sudo Panoxy rollback [vX]` | core rollback |
-| `Panoxy check [yaml]` | validate a config |
-| `sudo Panoxy apply-conf <yaml>` | apply a config (hot-reload first) |
-| `sudo Panoxy uninstall` | uninstall (data preserved) |
-| `Panoxy man [command]` | view manual (root page or subcommand page) |
-| `sudo Panoxy fw <apply\|teardown\|clean>` | firewall management |
-
-**Global flags**: `--root <dir>` custom install dir · `--verbose` step-by-step detail · `--debug` full transparency
+| `Panoxy status [--detail] [-q] [--json]` | health overview (service/firewall/subscription/egress) |
+| `sudo Panoxy merge-conf <yaml> [--dry-run] [--dns keep\|mine] [--no-wire] [--rollback]` | overlay-merge a personal config onto the default template |
+| `Panoxy config [--mode tun\|tproxy] [--secret]` | print the default config template (rootless) |
+| `Panoxy check [yaml]` | validate a config with the embedded kernel (read-only) |
+| `sudo Panoxy apply-conf <yaml>` | apply a config (hot-reload first, then restart) |
+| `sudo Panoxy start` / `stop` / `restart` | start (enable on boot) / stop (disable + clear firewall) / restart (self-heal) |
+| `sudo Panoxy mode [tun\|tproxy]` | view/switch transparent-proxy mode (atomic switch) |
+| `sudo Panoxy upgrade [--ui] [--ui-version vX] [--check]` | upgrade the web UI (`--ui` forces a manual re-upgrade) |
+| `sudo Panoxy uninstall` | uninstall (data & config preserved) |
+| `sudo Panoxy fw <apply\|clean>` | firewall management (advanced; auto-invoked by units) |
+| `Panoxy units` / `log [n]` | print rendered unit text / view service logs |
+| `Panoxy man [command] [--raw]` | view manual (root page or subcommand page) |
+| `Panoxy upstream` | check mihomo Alpha upstream for newer commits (hint only) |
 
 ## 🧪 Testing
 
 ```bash
 make test          # unit tests (YAML editor / firewall-rule text / template -t)
-make e2e           # end-to-end tests (real core + fake systemd, ~60s)
+make e2e           # end-to-end tests (real binary + fake systemd, ~60s)
 make test-all      # everything
 make lint          # go vet
 ```
@@ -417,10 +399,10 @@ make lint          # go vet
 | Layer | Tests what | In Panoxy | Count | Speed |
 |---|---|---|---|---|
 | Unit | single function | YAML merge / firewall-rule generation / template rendering | ~15 | <1s |
-| Integration | component interplay | config through mihomo `-t` | ~5 | 1-2s |
+| Integration | component interplay | config through the embedded kernel (`Panoxy check`) | ~5 | 1-2s |
 | E2E | full flow | deploy → sub import → status end-to-end | 3 | ~50s |
 
-E2E uses the real compiled binary + real mihomo core + a mock subscription server + fake systemd; business logic is not mocked, so it validates the actual user experience.
+E2E uses the real compiled binary (embedded kernel) + a mock subscription server + fake systemd; business logic is not mocked, so it validates the actual user experience.
 
 </details>
 
@@ -430,15 +412,18 @@ E2E uses the real compiled binary + real mihomo core + a mock subscription serve
 |---|---|
 | [docs/TPROXY.md](docs/TPROXY.md) | complete TPROXY-mode guide (precheck / switch / verify / network topology / troubleshooting) |
 | [docs/MIGRATION.md](docs/MIGRATION.md) | migration steps from the bash version |
-| [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md) | known limitations (mihomo limits / DoH / core requirements, etc.) |
+| [docs/KNOWN-LIMITATIONS.md](docs/KNOWN-LIMITATIONS.md) | known limitations (mihomo limits / DoH / CPU requirements, etc.) |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | troubleshooting guide |
 | `Panoxy man` | manual (after deploy: `man Panoxy` / `man Panoxy-<command>`) |
 
 ## 📄 License
 
-Panoxy itself is under a **commercial-rights-reserved** proprietary license: the source is public for audit/evaluation only; commercial use and redistribution require separate authorization, see [LICENSE](LICENSE).
+Panoxy is licensed under the **GNU General Public License v3.0 (GPL-3.0)** — it is a derivative work of the
+embedded [mihomo](https://github.com/MetaCubeX/mihomo) kernel (GPL-3.0). Copyright © 2026 deadship2003.
+See [LICENSE](LICENSE).
 
-Bundled/downloaded third-party components (mihomo, metacubexd, meta-rules-dat, etc.) each carry their own open-source license, see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) and [LICENSES/](LICENSES/).
+Bundled/downloaded third-party components (metacubexd, meta-rules-dat, etc.) each carry their own
+open-source license, see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) and [LICENSES/](LICENSES/).
 
 ---
 

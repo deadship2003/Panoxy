@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# panixy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
+# Panoxy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
 # 用法: build.sh [命令]
 #   编译(默认)   build.sh [--arch amd64|arm64|all] [--ver V0.0.1] [--prog 程序名]
 #                 默认只编当前 CPU 架构;amd64 自带检测 AVX2(有→v3,无→v1)
@@ -16,10 +16,9 @@
 #   PROG             程序名(与 --prog 等价,默认 Panoxy)
 #   GOAMD64          amd64 CLI 编译档(默认自动检测 AVX2;可 GOAMD64=v1/v3/v4 强制)
 #   ASSETS_SRC       本地资产目录(默认 /opt/$PROG,存在即优先复制,断网可打包)
-#   MIHOMO_VERSION   内核版本(默认运行时探测上游最新;显式指定可固定/复现)
-#   MIHOMO_BOOT_BIN  引导代理内核(默认 /opt/$PROG/bin/mihomo)
+#   PANOXY_BOOT_BIN  引导代理 CLI(默认 dist/$PROG-linux-<host_arch>;内核已内嵌,无外部 mihomo)
 #   PROXY_PORT       引导代理端口(默认 33999)
-# 打包流程:编译 CLI → 资产获取(本地优先/直连/订阅代理兜底)→ 订阅泄露扫描
+# 打包流程:编译 CLI(内核内嵌)→ 资产获取(本地优先/直连/订阅代理兜底)→ 订阅泄露扫描
 #   → 组装 <Prog>-V<ver>-<arch>.tar.gz + sha256(订阅 URL 永不进包)→ 清旧产物
 set -euo pipefail
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -37,13 +36,7 @@ trap 'boot_proxy_stop; rm -rf "$TMP"' EXIT
 host_arch() { case "$(uname -m)" in x86_64|amd64) echo amd64 ;; aarch64|arm64) echo arm64 ;; *) echo "" ;; esac; }
 has_avx2()  { grep -qw avx2 /proc/cpuinfo 2>/dev/null; }
 goamd64()   { if has_avx2; then echo v3; else echo v1; fi; }
-
-# latest_gh_release 探测 GitHub 仓库最新 release 的 tag_name(运行时探测,不写死)。
-# 失败返回空串且退出码 0,由调用方决定兜底策略(本地内核/显式版本/报错)。
-latest_gh_release() {
-  curl -fsSL --connect-timeout 8 "https://api.github.com/repos/$1/releases/latest" \
-    2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true
-}
+envpfx()    { printf '%s' "$PROG" | tr 'a-z-' 'A-Z_'; }
 
 # ---- 编译:默认当前架构(amd64 自动检测 AVX2),--arch 可覆盖 ----
 build_cmd() {
@@ -73,11 +66,11 @@ build_cmd() {
       amd64)
         local lvl="${GOAMD64:-$(goamd64)}"
         echo "  amd64(GOAMD64=$lvl)"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/panixy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/Panoxy)
         ;;
       arm64)
         echo "  arm64"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/panixy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/Panoxy)
         ;;
     esac
   done
@@ -95,10 +88,13 @@ clean() {
 }
 
 # ---- 订阅引导代理:直连下载不了 GitHub 时,用订阅节点建本地代理再下 ----
+# 内核已内嵌于 CLI,引导代理直接 `$PROG run`(不再依赖外部 mihomo 二进制)。
 boot_proxy() {
   [ -n "$SUB_URL" ] || return 1
-  local BOOT_BIN="${MIHOMO_BOOT_BIN:-/opt/$PROG/bin/mihomo}"
-  [ -x "$BOOT_BIN" ] || { echo "      ⚠️ 无引导内核($BOOT_BIN),无法经订阅下载"; return 1; }
+  local HA; HA="$(host_arch)"
+  local BOOT_BIN="${PANOXY_BOOT_BIN:-$ROOT/dist/$PROG-linux-$HA}"
+  [ -x "$BOOT_BIN" ] || BOOT_BIN="$(command -v "$PROG" 2>/dev/null || true)"
+  [ -x "$BOOT_BIN" ] || { echo "      ⚠️ 无引导 CLI($BOOT_BIN),无法经订阅下载"; return 1; }
   local d; d="$(mktemp -d)"
   cat > "$d/boot.yaml" <<YEOF
 mixed-port: $PROXY_PORT
@@ -116,7 +112,7 @@ proxy-groups:
 rules:
   - MATCH,P
 YEOF
-  (cd "$d" && nohup "$BOOT_BIN" -f boot.yaml -d "$d" > boot.log 2>&1 & echo $! > "$d/pid")
+  (cd "$d" && "$(envpfx)"_ROOT="$d" "$(envpfx)"_CONF="$d/boot.yaml" nohup "$BOOT_BIN" run > boot.log 2>&1 & echo $! > "$d/pid")
   local i ok=0
   for i in $(seq 1 25); do
     if curl -s -m 3 -x "http://127.0.0.1:$PROXY_PORT" -o /dev/null https://www.gstatic.com/generate_204; then ok=1; break; fi
@@ -159,9 +155,8 @@ leak_scan() {
 build_one() {
   local arch="$1"
   local pkg="${PROG}-${VER}-${arch}"
-  rm -rf "$pkg"; mkdir -p "$pkg/assets/core" "$pkg/assets/geo" "$pkg/assets/ui/official" "$pkg/assets/rule"
+  rm -rf "$pkg"; mkdir -p "$pkg/assets/geo" "$pkg/assets/ui/official" "$pkg/assets/rule"
   cp "dist/$PROG-linux-$arch" "$pkg/$PROG"; chmod +x "$pkg/$PROG"
-  cp "$TMP/mihomo-linux-$arch.gz" "$pkg/assets/core/mihomo-linux-$arch-$MIHOMO_VER.gz"
   cp "$TMP"/GeoIP.dat "$TMP"/GeoSite.dat "$TMP"/Country.mmdb "$pkg/assets/geo/"
   tar xzf "$TMP/ui.tgz" -C "$pkg/assets/ui/official"
   test -f "$pkg/assets/ui/official/index.html" || { echo "UI 包异常"; exit 1; }
@@ -177,7 +172,7 @@ build_one() {
 }
 
 # cleanup_old 移除旧版本产物:dist/ 只保留本次版本,并清掉遗留的暂存目录。
-# 旧版本可经 git 重编,无需在 dist/ 堆积;运行时的内核回滚由 panixy rollback 负责。
+# 旧版本可经 git 重编,无需在 dist/ 堆积。
 cleanup_old() {
   local f d
   for f in dist/${PROG}-*.tar.gz dist/${PROG}-*.tar.gz.sha256; do
@@ -191,8 +186,6 @@ cleanup_old() {
     rm -rf "$d"
   done
 }
-
-missing_kernel() { [ -s "$TMP/mihomo-linux-$1.gz" ] || { echo "      ⚠️ 无 $1 内核(本地非本机架构且下载不可得),跳过该架构"; return 0; }; return 1; }
 
 package_cmd() {
   local ARCH=""
@@ -211,16 +204,10 @@ package_cmd() {
   [ -n "$ARCH" ] || ARCH="$(host_arch)"          # 打包默认当前 CPU 架构
   [ -n "$ARCH" ] || { echo "无法识别当前架构,请 --arch amd64|arm64|all 或位置参数 all 指定"; exit 1; }
   [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "V0.0.1-dev")"
-  MIHOMO_VER="${MIHOMO_VERSION:-$(latest_gh_release MetaCubeX/mihomo)}"
   # 本地资产源(断网打包):存在则优先复制,缺失才联网下载
   local SRC="${ASSETS_SRC:-/opt/$PROG}"
-  # 联网探测失败时兜底:本地内核版本 > 明确报错(绝不静默写死)
-  if [ -z "$MIHOMO_VER" ] && [ -x "$SRC/bin/mihomo" ]; then
-    MIHOMO_VER="$("$SRC/bin/mihomo" -v 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-  fi
-  [ -n "$MIHOMO_VER" ] || { echo "无法确定 mihomo 内核版本(联网探测失败且无本地内核);请用 MIHOMO_VERSION=vX.Y.Z 显式指定"; exit 1; }
 
-  BOOT_DIRF="$(mktemp -d)/panixy-boot-proxy.dir"; : > "$BOOT_DIRF" 2>/dev/null || BOOT_DIRF=/tmp/panixy-boot-proxy.$$.dir
+  BOOT_DIRF="$(mktemp -d)/panoxy-boot-proxy.dir"; : > "$BOOT_DIRF" 2>/dev/null || BOOT_DIRF=/tmp/panoxy-boot-proxy.$$.dir
 
   echo "== [1/5] 编译(CLI, --arch $ARCH) =="
   build_cmd --arch "$ARCH" --ver "$VER" --prog "$PROG"
@@ -241,25 +228,6 @@ package_cmd() {
   if [ -d "$SRC/ui/official" ] && [ -f "$SRC/ui/official/index.html" ]; then
     (cd "$SRC/ui/official" && tar czf "$TMP/ui.tgz" .); echo "      本地: metacubexd UI"
   else dl "$TMP/ui.tgz" "https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz" || true; fi
-  # 内核:本机架构可来自本地二进制(gzip),其余架构需下载
-  local base="https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_VER"
-  local HA; HA="$(host_arch)"
-  local KERNEL_ARCHS="$ARCH"
-  [ "$ARCH" = all ] && KERNEL_ARCHS="amd64 arm64"
-  local arch
-  for arch in $KERNEL_ARCHS; do
-    if [ "$arch" = "$HA" ] && [ -x "$SRC/bin/mihomo" ]; then
-      gzip -c "$SRC/bin/mihomo" > "$TMP/mihomo-linux-$arch.gz"; echo "      本地: mihomo 内核($arch)"
-    elif [ "$arch" = amd64 ]; then
-      if has_avx2; then
-        echo "      下载: mihomo 内核(amd64-v3,本机 AVX2)"; dl "$TMP/mihomo-linux-amd64.gz" "$base/mihomo-linux-amd64-v3-$MIHOMO_VER.gz" || true
-      else
-        echo "      下载: mihomo 内核(amd64 标准,本机无 AVX2)"; dl "$TMP/mihomo-linux-amd64.gz" "$base/mihomo-linux-amd64-$MIHOMO_VER.gz" || true
-      fi
-    else
-      echo "      下载: mihomo 内核(arm64)"; dl "$TMP/mihomo-linux-arm64.gz" "$base/mihomo-linux-arm64-$MIHOMO_VER.gz" || true
-    fi
-  done
   [ -s "$TMP/Country.mmdb" ] && [ -s "$TMP/HyperADRules-Ads.yaml" ] && [ -s "$TMP/ui.tgz" ] || { echo "geo/规则/UI 资产不完整(本地与网络均不可得)"; exit 1; }
 
   echo "== [3/5] 订阅泄露扫描 =="
@@ -267,8 +235,8 @@ package_cmd() {
 
   echo "== [4/5] 组装 =="
   case "$ARCH" in
-    amd64|arm64) missing_kernel "$ARCH" || build_one "$ARCH" ;;
-    all) missing_kernel amd64 || build_one amd64; missing_kernel arm64 || build_one arm64 ;;
+    amd64|arm64) build_one "$ARCH" ;;
+    all) build_one amd64; build_one arm64 ;;
     *) echo "--arch 只能是 amd64|arm64|all"; exit 1 ;;
   esac
 

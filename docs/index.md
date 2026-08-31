@@ -6,7 +6,7 @@
 
 1. [TPROXY 模式指南](TPROXY.md) — 前置检测、切换、验证、网络拓扑、故障排查
 2. [从 bash 版迁移](MIGRATION.md) — 升级步骤
-3. [已知限制](KNOWN-LIMITATIONS.md) — mihomo 限制、DoH、内核/CPU 选型
+3. [已知限制](KNOWN-LIMITATIONS.md) — mihomo 限制、DoH、二进制/CPU 选型
 4. [故障排查](TROUBLESHOOTING.md) — 常见问题与解决方案
 
 ## 快速链接

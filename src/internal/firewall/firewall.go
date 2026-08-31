@@ -87,9 +87,6 @@ func ApplyTproxy() error {
 	return nil
 }
 
-// Teardown 删除自有全部规则(停止信号)。
-func Teardown() error { return CleanAll() }
-
 // HasStaleRules 表存在即视为有残留规则。
 func HasStaleRules() (bool, error) {
 	if err := ensureNft(); err != nil {
