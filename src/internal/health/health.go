@@ -1,5 +1,5 @@
 // Package health 健康检测五要素:服务状态、API、各 provider 节点数、出口连通、防火墙残留。
-// 核心教训(bash 时代实测):mihomo 拉不到订阅时 API 照常应答 —— 只查 API 会假成功,
+// 核心教训(bash 时代实测):内核拉不到订阅时 API 照常应答 —— 只查 API 会假成功,
 // 节点数才是"真的能转发"的前提。
 package health
 

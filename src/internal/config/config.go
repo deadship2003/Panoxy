@@ -254,7 +254,7 @@ func (e *Editor) SetProvider(name, url, cacheRelPath string) error {
 // false 时删除显式 type,回落到锚点 <<: *p 的 type: http 自动刷新)。
 //
 // 用于 mihomo 无法原生解析的订阅格式(sing-box/Surge/base64-Clash):sub import 已把内容
-// 归一化成 Clash YAML 写入缓存,必须切 file,否则 mihomo 重启时会重新拉原始 URL 再解析失败。
+// 归一化成 Clash YAML 写入缓存,必须切 file,否则内核重启时会重新拉原始 URL 再解析失败。
 func (e *Editor) SetProviderType(name string, file bool) error {
 	pm := mapGet(e.topMap(), "proxy-providers")
 	if pm == nil || pm.Kind != yaml.MappingNode {

@@ -35,14 +35,9 @@ sudo nft list table inet Panoxy | grep tproxy
 | WSL2/虚拟化 | ✅ | ❌(内核裁剪) |
 
 **透明网关网络拓扑**:
-```
-Internet ←─ WAN ── Panoxy 机器(LAN 口 192.168.1.1)── LAN 设备
-                    │                        ↑
-                    │ nftables DNS 劫持       │ DHCP 网关=192.168.1.1
-                    │ TPROXY mark+tproxy      │ DNS=公网(53 被劫持)
-                    └─ 内核 :7893            │
-                                              └─ 设备无需任何配置
-```
+- 链路:`Internet ← WAN ← Panoxy 机器(LAN 口 192.168.1.1)← LAN 设备`
+- 出站(设备→外网):Panoxy 机器做 `nftables DNS 劫持` + `TPROXY mark+tproxy`,流量交给内核 `:7893`
+- 回程(DHCP):LAN 设备网关 = `192.168.1.1`、DNS = 公网(53 被劫持),设备本身无需任何配置
 
 **LAN 设备接入(三选一)**:
 1. 路由器 DHCP 下发网关 = Panoxy 机器 LAN IP,DNS = 公网地址

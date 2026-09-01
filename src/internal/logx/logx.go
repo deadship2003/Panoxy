@@ -2,7 +2,7 @@
 // --debug 全量透传(外部命令原样回显、mihomo API 请求响应、文件写入)。
 // 所有日志走 stderr,stdout 保留给 --json 等机器输出。
 //
-// 教训背景:bash 版曾因 exec 重定向吞掉整个脚本 stderr、mihomo 日志走 stdout 被
+// 教训背景:bash 版曾因 exec 重定向吞掉整个脚本 stderr、内核日志走 stdout 被
 // >/dev/null 吃掉,排查"静默失败"花费整轮 —— Go 版外部调用 I/O 在 debug 级零遮蔽。
 package logx
 

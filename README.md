@@ -24,7 +24,7 @@ Single binary · zero dependencies · transactional deployment · automatic roll
 ## ✨ Features
 
 - 🔧 **TUN / TPROXY dual mode** — TUN is stable out of the box (default); TPROXY preserves the client's real source IP with the best kernel forwarding performance
-- 🛡️ **DNS hijack = nftables** — a dedicated `inet Panoxy` table; port 53 redirect → mihomo:1053 (no protocol blocked, DoT/DoQ/DoH route normally)
+- 🛡️ **DNS hijack = nftables** — a dedicated `inet Panoxy` table; port 53 redirect → the kernel's dual-stack DNS listener `[::]:1053` (no protocol blocked, DoT/DoQ/DoH route normally)
 - 🔄 **Self-healing** — `kill -9`/OOM residue is cleaned automatically on `systemctl restart Panoxy`; no manual intervention
 - 📡 **Verifiable subscriptions** — prefetch → validate → incremental write → restart → **node count > 0 counts as success**; never a false success
 - 🧩 **Config merge** — `merge-conf` does field-level merge of same-named groups (union of proxies/use); base groups are preserved, never deleted
@@ -70,17 +70,12 @@ sudo Panoxy merge-conf --dry-run ~/my.yaml   # preview the merge decision first
 
 ## 📐 Architecture
 
-```
-     DNS(53/853)                                            Data traffic (non-53)
-   ┌─────────────┐   nft redirect → :1053   ┌────┐   routing table → TUN device → mihomo
-   │  TUN mode   │ ───────────────────────► │same│
-   ├─────────────┤                          │core│   nft mark 1 + policy routing
-   │ TPROXY mode │   nft redirect → :1053   │    │   + tproxy → :7893 (preserves source IP)
-   └─────────────┘ ───────────────────────► └────┘
-```
+- **DNS (53/853)** — nft redirect → `:1053` → kernel
+- **Data traffic (non-53)** — routing table → TUN device → kernel; TPROXY mode adds `nft mark 1` + policy routing + `tproxy → :7893` (preserves source IP)
+- TUN and TPROXY share the same kernel — only the traffic path differs
 
 - Data plane (node/group selection) lives in the **web panel**; transport plane (tun/tproxy) lives in the **CLI**
-- mihomo's own outbound traffic is allowed via `routing-mark: 6666` → prevents DNS loop deadlock
+- the kernel's own outbound traffic is allowed via `routing-mark: 6666` → prevents DNS loop deadlock
 - systemd unit has zero `resolvectl`; `fw apply` self-cleans → restart self-heals
 
 ### Traffic policy (blocks nothing)
@@ -89,7 +84,7 @@ The first goal of transparent proxying is **normal access**; routing is only an 
 
 | Protocol | Handling | Notes |
 |---|---|---|
-| Plain DNS (53) | **hijack** → mihomo | provides domain-level routing (fake-ip) for most devices |
+| Plain DNS (53) | **hijack** → kernel | provides domain-level routing (fake-ip) for most devices |
 | QUIC/HTTP3 (UDP 443) | **normal routing** | native HTTP/3 experience; SNI is encrypted, so domain rules don't apply (IP routing) |
 | DoT (TCP 853) | **normal routing** | encrypted DNS goes through the proxy (preserved for custom devices) |
 | DoQ (UDP 853) | **normal routing** | same as above |
