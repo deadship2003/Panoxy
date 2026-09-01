@@ -15,14 +15,9 @@ GOAMD64       ?= $(shell grep -qw avx2 /proc/cpuinfo 2>/dev/null && echo v3 || e
 
 LDFLAGS := -s -w -X main.version=$(PANOXY_VERSION) -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$(PROG) -buildid=
 
-# 命令回显开关(内核/autotools 惯例):默认 V=0 静默,只输出关键状态;
-# make V=1 显示底层命令与详细步骤,便于 DEBUG。
-V ?= 0
-ifeq ($(V),1)
-  Q :=
-else
-  Q := @
-endif
+# 命令回显:默认静默(@ 前缀),只输出关键状态;
+# 需排查构建时用 make -d(--debug)查看 make 内部调试输出,或 make -n 仅打印命令不执行。
+Q := @
 
 # 展开目标平台;ARCH 非法时立即报错(而非在 shell 里二次判断)。
 ifeq ($(ARCH),all)
@@ -37,7 +32,7 @@ endif
 
 all: build ## 默认:编译当前平台二进制
 
-build: $(addprefix _build-,$(BUILD_ARCHS)) _checksums ## 编译目标二进制(默认当前平台;ARCH=amd64|arm64|all 覆盖;V=1 看底层命令)
+build: $(addprefix _build-,$(BUILD_ARCHS)) _checksums ## 编译目标二进制(默认当前平台;ARCH=amd64|arm64|all 覆盖;make -d 看调试输出)
 
 _build-amd64:
 	@mkdir -p dist
@@ -76,5 +71,5 @@ clean: ## 清理全部编译产物(dist/ 与暂存目录)
 lint: ## 代码检查
 	$(Q)cd src && go vet ./...
 
-help: ## 显示所有目标(调试时用 make V=1)
+help: ## 显示所有目标(调试时用 make -d/--debug)
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
