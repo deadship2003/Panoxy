@@ -301,7 +301,7 @@ URLs with & ? etc. need no quoting).
 Flow: prefetch (local file > direct > via local proxy) -> validate as Clash YAML with nodes ->
 incremental yaml edit into proxy-providers[NAME] (reuse anchor <<: *p, keep other providers
 and comments, and merge NAME into each group's use list) -> validate (embedded kernel) -> pre-populate
-provider cache -> restart (hot-reload does not refresh providers, a kernel limitation) -> query
+provider cache -> restart (hot-reload does not re-fetch provider content) -> query
 that provider's node count, and roll back automatically if it is 0.
 
 Prerequisite: the config has an &p anchor (the base template ships it).`,
@@ -495,13 +495,13 @@ With no argument it validates the current /etc/clash.yaml; with a path it valida
 func cmdApplyConf() *cobra.Command {
 	return &cobra.Command{
 		Use:   "apply-conf <yaml>",
-		Short: "apply a custom config (prefer hot-reload; note it does not refresh proxy-providers)",
+		Short: "apply a custom config (prefer hot-reload; note it does not re-fetch proxy-providers)",
 		Long: `After validation, apply the given YAML to /etc/clash.yaml: prefer hot-reload (only effective for
 non-provider changes); if that doesn't take effect, fall back to restart, then restore the original
 on failure. Auto-backup before applying; success clears the backup.
 
-Note: kernel hot-reload does not refresh proxy-providers, so subscription-related changes need a
-restart to take effect.`,
+Note: kernel hot-reload rebuilds providers but does not re-fetch their content, so subscription
+changes (add/remove/URL) need a restart to take effect.`,
 		Example: "  sudo panixy apply-conf ~/my-clash.yaml",
 		RunE:    runApplyConf,
 	}

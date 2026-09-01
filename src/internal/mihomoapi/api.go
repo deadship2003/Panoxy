@@ -1,6 +1,7 @@
 // Package mihomoapi 封装 mihomo external-controller REST API。
-// 注意(实测事实,写入注释防止误用):PUT /configs 热重载不会重建/刷新
-// proxy-providers —— 修改 provider 必须重启进程,本包不提供该假象。
+// 注意(实测事实,写入注释防止误用):PUT /configs 热重载会重新 parse 并重建
+// provider 对象,但不会重拉订阅内容(Initial 只读本地缓存、不碰远程 URL);
+// 免重启重拉用 PUT /providers/proxies/{name},增删 provider 或重连分组仍须重启进程。
 package mihomoapi
 
 import (
@@ -151,7 +152,7 @@ func (c *Client) Provider(name string) (ProviderStat, error) {
 	return st, nil
 }
 
-// ReloadConf 热重载配置(仅适用于非 provider 改动!)。
+// ReloadConf 热重载配置:会重建 provider 对象但不重拉订阅内容,仅适用于不改动 provider 的变更。
 func (c *Client) ReloadConf(path string) error {
 	_, err := c.call("PUT", "/configs?force=0", map[string]string{"path": path})
 	return err

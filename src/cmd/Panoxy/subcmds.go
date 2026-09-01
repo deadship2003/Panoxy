@@ -181,7 +181,7 @@ func runSubImportBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 3) Restart to rebuild providers (hot-reload does not refresh providers — kernel limitation) + verify node count.
+	// 3) Restart to rebuild providers (hot-reload rebuilds objects but does not re-fetch content) + verify node count.
 	logx.Step("subscription written to provider %s, cache preloaded, restarting kernel to take effect (changing URL requires a restart)", name)
 	if err := systemdunit.Restart(); err != nil {
 		recoverAll(false)

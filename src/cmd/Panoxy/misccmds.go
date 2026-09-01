@@ -63,7 +63,8 @@ func runApplyConfBody(p paths.Paths, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	api := mihomoapi.NewFromConf(p.Conf)
-	// Hot-reload does not refresh proxy-providers (kernel limitation); only effective for non-provider changes.
+	// Hot-reload rebuilds provider objects but does not re-fetch subscription content (reads local cache);
+	// re-fetch without restart is PUT /providers/proxies/{name}; provider add/del/rewire still needs a restart.
 	if err := api.ReloadConf(p.Conf); err == nil && health.WaitHealthy(p.Conf, 20*time.Second, "") == nil {
 		config.ClearBackup(p.Conf)
 		logx.Info("config hot-reloaded (no restart); note provider changes need a restart")
