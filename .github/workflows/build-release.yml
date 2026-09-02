@@ -69,13 +69,28 @@ jobs:
           ARCH="${{ github.event.inputs.arch || 'all' }}"
           ./build.sh --arch "$ARCH" --ver "${{ steps.version.outputs.version }}"
 
-      - name: Upload binaries (artifact)
+      # 按架构拆分 artifact,名字即目标平台(推 main 时 arch 输入为空 → 两个都传)
+      - name: Upload linux amd64
+        if: github.event.inputs.arch == '' || github.event.inputs.arch == 'amd64' || github.event.inputs.arch == 'all'
         uses: actions/upload-artifact@v7
         with:
-          name: Panoxy-binaries
-          path: |
-            dist/Panoxy-linux-*
-            dist/sha256sums.txt
+          name: Panoxy-linux-amd64
+          path: dist/Panoxy-linux-amd64
+          if-no-files-found: error
+
+      - name: Upload linux arm64
+        if: github.event.inputs.arch == '' || github.event.inputs.arch == 'arm64' || github.event.inputs.arch == 'all'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Panoxy-linux-arm64
+          path: dist/Panoxy-linux-arm64
+          if-no-files-found: error
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v7
+        with:
+          name: Panoxy-linux-checksums
+          path: dist/sha256sums.txt
           if-no-files-found: error
 
   release:
