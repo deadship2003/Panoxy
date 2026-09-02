@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 # 同一 ref 新构建到来时,取消仍在跑的旧构建,避免连续 push 堆积历史构建
 concurrency:
@@ -97,6 +98,20 @@ jobs:
           name: Panoxy-linux-checksums
           path: dist/sha256sums.txt
           if-no-files-found: error
+
+      # 删除 main 分支上本 workflow 的历史 run(连其 artifact 一并删),只保留当前这条
+      - name: Delete old build runs
+        if: github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --workflow "${{ github.workflow }}" --branch main --status completed \
+            --limit 100 --json databaseId \
+            | jq -r '.[].databaseId' \
+            | grep -vx "${{ github.run_id }}" \
+            | while read -r id; do
+                gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$id" >/dev/null 2>&1 || true
+              done
 
   release:
     name: Package & Release
