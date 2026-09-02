@@ -1,0 +1,132 @@
+# Panoxy 构建/发布(单文件统一入口)
+#   推 main     → 跑测试 + 编译 linux amd64/arm64 单二进制 → 上传构建产物(workflow artifact)
+#   手动触发    → Actions 页左侧「Build & Release」→ Run workflow(可选:打离线包并发布 Release)
+#   推 v*/V* 标签 → 测试通过后打双架构离线包,自动发布 GitHub Release
+# 本地与 CI 同一真源:全部编译/打包逻辑在 build.sh(本机可复现)
+name: Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号(留空自动:tag→标签名,否则 git describe/默认 V0.0.1-dev)'
+        required: false
+        default: ''
+      arch:
+        description: '目标架构(仅影响“构建产物”;发布时始终打双架构离线包)'
+        required: false
+        default: 'all'
+        type: choice
+        options: [amd64, arm64, all]
+      publish_release:
+        description: '打包离线包并发布 GitHub Release(手动发布时必须填写 version)'
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [main]
+    tags: ['v*', 'V*']
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.24'
+
+jobs:
+  build:
+    name: Build (linux amd64 + arm64)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Test
+        run: cd src && go test ./internal/... -timeout 120s
+
+      - name: Determine version
+        id: version
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          if [ -z "$VER" ]; then
+            case "$GITHUB_REF" in
+              refs/tags/*) VER="${GITHUB_REF_NAME}" ;;
+              *) VER="$(git describe --tags 2>/dev/null || echo V0.0.1-dev)" ;;
+            esac
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        run: |
+          ARCH="${{ github.event.inputs.arch || 'all' }}"
+          ./build.sh --arch "$ARCH" --ver "${{ steps.version.outputs.version }}"
+
+      - name: Upload binaries (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Panoxy-binaries
+          path: |
+            dist/Panoxy-linux-*
+            dist/sha256sums.txt
+          if-no-files-found: error
+
+  release:
+    name: Package & Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Determine version
+        id: version
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          if [ -z "$VER" ]; then
+            case "$GITHUB_REF" in
+              refs/tags/*) VER="${GITHUB_REF_NAME}" ;;
+              *) VER="$(git describe --tags 2>/dev/null || echo V0.0.1-dev)" ;;
+            esac
+          fi
+          # 手动发布必须给出明确版本号,防止误把 V0.0.1-dev 发成 Release
+          if [ "${{ github.event_name }}" = 'workflow_dispatch' ] && [ -z "${{ github.event.inputs.version }}" ]; then
+            echo "::error::手动发布 Release 必须填写 version(例如 V0.0.1)"
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Package (dual-arch offline bundles)
+        run: ./build.sh package --arch all --ver "${{ steps.version.outputs.version }}"
+
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.version }}"
+          notes="全离线安装包(双架构):Panoxy 独立单二进制构建,融合 mihomo 上游源码;geo 数据(GeoIP/GeoSite/Country.mmdb)、广告规则、metacubexd 面板。
+          另附纯二进制(单文件,可直接拷贝到目标机运行):Panoxy-linux-{amd64,arm64}。
+          完整性校验:sha256sum -c Panoxy-${TAG}-<arch>.tar.gz.sha256
+          快速开始:tar xzf Panoxy-${TAG}-<arch>.tar.gz && cd Panoxy-${TAG}-<arch> && sudo ./Panoxy deploy
+          随后导入订阅:sudo Panoxy sub import(回车进入粘贴模式,URL 无需引号)"
+          # 幂等:Release 已存在则补传/覆盖资产
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/Panoxy-${TAG}-*.tar.gz dist/Panoxy-${TAG}-*.tar.gz.sha256 \
+              dist/Panoxy-linux-amd64 dist/Panoxy-linux-arm64 --clobber
+          else
+            gh release create "$TAG" --title "Panoxy ${TAG}" --notes "$notes" \
+              dist/Panoxy-${TAG}-*.tar.gz dist/Panoxy-${TAG}-*.tar.gz.sha256 \
+              dist/Panoxy-linux-amd64 dist/Panoxy-linux-arm64
+          fi
