@@ -30,6 +30,11 @@ on:
 permissions:
   contents: write
 
+# 同一 ref 新构建到来时,取消仍在跑的旧构建,避免连续 push 堆积历史构建
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GO_VERSION: '1.24'
 
