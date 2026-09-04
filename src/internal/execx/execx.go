@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/logx"
 )
 
 // Run 执行并返回合并输出;失败时错误信息附带输出(教训:内核日志走 stdout,

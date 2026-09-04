@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 // 黄金断言:规则文本的关键行必须存在 —— 这些行就是 DNS 劫持/防回环/853 拒绝的全部骨架。

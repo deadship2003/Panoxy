@@ -1,7 +1,7 @@
 ## 已知限制(必读)
 
 1. **热重载不重拉 proxy-providers**(内核限制):`PUT /configs` 会重建 provider 对象但只读本地缓存、不重拉订阅;免重启重拉用 `PUT /providers/proxies/{name}`。sub import/del 涉及增删 provider + 重连分组、mode 涉及重建防火墙/tun/tproxy,三者一律重启进程生效
-2. kill -9/OOM 会残留防火墙规则:`systemctl restart Panoxy` 启动即自动清理,无需手工
+2. kill -9/OOM 会残留防火墙规则:`systemctl restart panoxy` 启动即自动清理,无需手工
 3. **DoH(443)无法在内核劫持**:浏览器内置加密 DNS 不走分流,status 已提示,建议关闭
 4. 订阅预取只是预校验;运行期内核会按 interval 自行远程拉取
 5. sub import `--name` 依赖配置锚点 `&p`(基础模板自带;纯手写配置需自备)

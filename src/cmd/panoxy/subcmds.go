@@ -12,16 +12,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/config"
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/core"
-	"github.com/deadship2003/Panoxy/internal/health"
-	"github.com/deadship2003/Panoxy/internal/locker"
-	"github.com/deadship2003/Panoxy/internal/logx"
-	"github.com/deadship2003/Panoxy/internal/mihomoapi"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/subscribe"
-	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/panoxy/internal/config"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/core"
+	"github.com/deadship2003/panoxy/internal/health"
+	"github.com/deadship2003/panoxy/internal/locker"
+	"github.com/deadship2003/panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/mihomoapi"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/subscribe"
+	"github.com/deadship2003/panoxy/internal/systemdunit"
 )
 
 func needRoot() error {

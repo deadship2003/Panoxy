@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 // Unified registration of subscription and deployment parameters: init/deploy/try/sub import share the same

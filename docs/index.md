@@ -1,4 +1,4 @@
-# Panoxy 文档
+# panoxy 文档
 
 [返回 README](../README.md)
 

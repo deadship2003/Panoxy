@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 type Paths struct {

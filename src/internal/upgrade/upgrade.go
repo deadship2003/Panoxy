@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/deadship2003/Panoxy/internal/httpx"
-	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/httpx"
+	"github.com/deadship2003/panoxy/internal/logx"
 )
 
 // Latest 查询 repo(如 MetaCubeX/mihomo)最新稳定 tag;经本机代理优先,失败直连。

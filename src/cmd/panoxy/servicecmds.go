@@ -7,15 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/firewall"
-	"github.com/deadship2003/Panoxy/internal/health"
-	"github.com/deadship2003/Panoxy/internal/logx"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/firewall"
+	"github.com/deadship2003/panoxy/internal/health"
+	"github.com/deadship2003/panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/systemdunit"
 )
 
-// Service lifecycle commands: start/stop/restart the Panoxy service.
+// Service lifecycle commands: start/stop/restart the panoxy service.
 //
 // The firewall is normally loaded/removed by the unit's ExecStartPost (fw apply) / ExecStop
 // (fw clean) hooks; these commands additionally do an explicit clean + health check so a

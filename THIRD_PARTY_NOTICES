@@ -1,9 +1,9 @@
 # 第三方组件声明(THIRD PARTY NOTICES)
 
-Panoxy 在编译或运行时捆绑/下载以下第三方组件。每个组件各自适用其自身许可,
-与 Panoxy 本身的许可([LICENSE](LICENSE))无关。请以下方链接为准(许可可能随上游更新而变化)。
+panoxy 在编译或运行时捆绑/下载以下第三方组件。每个组件各自适用其自身许可,
+与 panoxy 本身的许可([LICENSE](LICENSE))无关。请以下方链接为准(许可可能随上游更新而变化)。
 
-## Go 依赖(编译进 Panoxy 二进制)
+## Go 依赖(编译进 panoxy 二进制)
 
 | 依赖 | 许可 |
 |---|---|
@@ -20,8 +20,8 @@ Panoxy 在编译或运行时捆绑/下载以下第三方组件。每个组件各
 - 仓库:https://github.com/MetaCubeX/mihomo
 - 分支:**Alpha**,锁定 commit `65287f0`;许可 **GPL-3.0**(文本见 [LICENSES/GPL-3.0.txt](LICENSES/GPL-3.0.txt))
 - 内嵌方式:git subtree 引入 `third_party/mihomo`,经 `go.mod replace` 在进程内 `hub.Parse` 运行内核。
-  因链接了 GPL-3.0 的 mihomo 代码,Panoxy 成为其衍生作品,整体采用 **GPL-3.0**(见 [LICENSE](LICENSE))。
-- 上游更新:`Panoxy upstream` 探测 Alpha 最新 commit 并提示,由用户 + AI 完成 subtree 合并(不自动合并)。
+  因链接了 GPL-3.0 的 mihomo 代码,panoxy 成为其衍生作品,整体采用 **GPL-3.0**(见 [LICENSE](LICENSE))。
+- 上游更新:`panoxy upstream` 探测 Alpha 最新 commit 并提示,由用户 + AI 完成 subtree 合并(不自动合并)。
 
 ## 运行时组件(由 init/upgrade 下载,并打入离线包)
 

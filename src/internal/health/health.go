@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deadship2003/Panoxy/internal/config"
-	"github.com/deadship2003/Panoxy/internal/core"
-	"github.com/deadship2003/Panoxy/internal/firewall"
-	"github.com/deadship2003/Panoxy/internal/mihomoapi"
-	"github.com/deadship2003/Panoxy/internal/statemode"
-	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/panoxy/internal/config"
+	"github.com/deadship2003/panoxy/internal/core"
+	"github.com/deadship2003/panoxy/internal/firewall"
+	"github.com/deadship2003/panoxy/internal/mihomoapi"
+	"github.com/deadship2003/panoxy/internal/statemode"
+	"github.com/deadship2003/panoxy/internal/systemdunit"
 )
 
 type Report struct {

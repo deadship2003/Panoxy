@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 // e2e 主线:deploy(预置无tun配置)→ sub import 成功/失败/离线 → sub del → mode 配置级切换。

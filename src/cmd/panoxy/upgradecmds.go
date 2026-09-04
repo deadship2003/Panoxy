@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/logx"
-	"github.com/deadship2003/Panoxy/internal/mihomoapi"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/upgrade"
+	"github.com/deadship2003/panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/mihomoapi"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/upgrade"
 )
 
 // runUpgrade upgrades the metacubexd web UI; --check is a dry-run, --ui-version pins a version.

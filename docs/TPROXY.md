@@ -11,16 +11,16 @@ Arch/Debian/Ubuntu 标准内核默认包含;WSL2 微信裁剪内核不支持。
 
 **切换**:
 ```bash
-sudo Panoxy mode tproxy     # 原子切换:旧规则卸载→配置变体→重启→新规则→健康检查
-sudo Panoxy mode tun        # 切回 TUN(自动清理 TPROXY 规则)
+sudo panoxy mode tproxy     # 原子切换:旧规则卸载→配置变体→重启→新规则→健康检查
+sudo panoxy mode tun        # 切回 TUN(自动清理 TPROXY 规则)
 ```
 
 **切换后验证**:
 ```bash
-Panoxy mode                              # "tproxy"
+panoxy mode                              # "tproxy"
 ip rule show | grep fwmark              # fwmark 0x1 lookup 100
 ip route show table 100                 # local default dev lo
-sudo nft list table inet Panoxy | grep tproxy
+sudo nft list table inet panoxy | grep tproxy
 ```
 
 **TUN vs TPROXY 对比**:
@@ -35,14 +35,14 @@ sudo nft list table inet Panoxy | grep tproxy
 | WSL2/虚拟化 | ✅ | ❌(内核裁剪) |
 
 **透明网关网络拓扑**:
-- 链路:`Internet ← WAN ← Panoxy 机器(LAN 口 192.168.1.1)← LAN 设备`
-- 出站(设备→外网):Panoxy 机器做 `nftables DNS 劫持` + `TPROXY mark+tproxy`,流量交给内核 `:7893`
+- 链路:`Internet ← WAN ← panoxy 机器(LAN 口 192.168.1.1)← LAN 设备`
+- 出站(设备→外网):panoxy 机器做 `nftables DNS 劫持` + `TPROXY mark+tproxy`,流量交给内核 `:7893`
 - 回程(DHCP):LAN 设备网关 = `192.168.1.1`、DNS = 公网(53 被劫持),设备本身无需任何配置
 
 **LAN 设备接入(三选一)**:
-1. 路由器 DHCP 下发网关 = Panoxy 机器 LAN IP,DNS = 公网地址
-2. 单台设备手动设网关指向 Panoxy 机器
-3. Panoxy 机器自身跑 DHCP(dnsmasq 示例):
+1. 路由器 DHCP 下发网关 = panoxy 机器 LAN IP,DNS = 公网地址
+2. 单台设备手动设网关指向 panoxy 机器
+3. panoxy 机器自身跑 DHCP(dnsmasq 示例):
 ```bash
 sudo tee /etc/dnsmasq.conf << 'EOF'
 interface=eth0
@@ -54,6 +54,6 @@ sudo systemctl enable --now dnsmasq
 ```
 
 **故障排查**:
-- 切换后断网:`sudo systemctl restart Panoxy`(自愈)
-- 策略路由丢:`ip rule show | grep fwmark` 确认;`sudo Panoxy fw apply` 重载
-- 某设备不走代理:检查其网关是否指向 Panoxy 机器
+- 切换后断网:`sudo systemctl restart panoxy`(自愈)
+- 策略路由丢:`ip rule show | grep fwmark` 确认;`sudo panoxy fw apply` 重载
+- 某设备不走代理:检查其网关是否指向 panoxy 机器

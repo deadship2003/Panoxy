@@ -6,7 +6,7 @@
 
 ### 1. 现象
 
-- TUN 模式正常;`sudo Panoxy mode tproxy` 切换后,**网关本机**上的应用连不上外网。
+- TUN 模式正常;`sudo panoxy mode tproxy` 切换后,**网关本机**上的应用连不上外网。
 - LAN 客户端通常仍正常(它们走 PREROUTING 的另一条路径),因此容易被误判成「只有某个应用坏了」,而非防火墙模型问题。
 
 ### 2. 根因
@@ -30,8 +30,8 @@ TPROXY 默认只在 **prerouting** 钩子生效,抓不到网关本机 **output**
 
 1. 确认源码已含闭环修复;分支落后则先合并对应提交。
 2. 备份旧二进制 → 重编 → 重部署(静态二进制可直接拷贝覆盖)。
-3. `sudo Panoxy mode tproxy` 后实测:本机出站走通 + 国内直连 + LAN 侧回归。
-4. 保持 tproxy,或 `sudo Panoxy mode tun` 切回。
+3. `sudo panoxy mode tproxy` 后实测:本机出站走通 + 国内直连 + LAN 侧回归。
+4. 保持 tproxy,或 `sudo panoxy mode tun` 切回。
 
 ### 5. 关键参照
 
@@ -63,5 +63,5 @@ TPROXY 默认只在 **prerouting** 钩子生效,抓不到网关本机 **output**
 - `internal/firewall/rules.go` → `fakeIpv4Range`/`fakeIpv6Range` 常量(单一事实源,网络形式 `198.18.0.0/16`、`2001:2::/48`)
 - `internal/asset/config.tpl` → `dns.listen`、`fake-ip-range`、`fake-ip-range6`
 - `internal/config/merge.go` → `--dns mine` 时强制写回 `[::]:1053`(防止被 merge 覆盖回 v4)
-- `cmd/Panoxy/misccmds.go` → `warnCompat` 的 `dns.listen` 一致性告警
+- `cmd/panoxy/misccmds.go` → `warnCompat` 的 `dns.listen` 一致性告警
 - `internal/constants` → `DnsListenPort=1053`

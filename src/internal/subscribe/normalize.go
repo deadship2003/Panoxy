@@ -4,7 +4,7 @@
 //   - mihomo 的 proxy-provider(无论 type: http / file)原生只解析 Clash YAML,
 //     以及 base64/明文 URI 列表(vless/vmess/trojan/ss/ssr/hysteria2/tuic ...)。
 //   - mihomo 不能原生解析:sing-box JSON、Surge 配置、base64 编码的 Clash YAML。
-//     这三类必须由 Panoxy 在缓存前归一化成 Clash YAML,并把 provider 切成 type: file
+//     这三类必须由 panoxy 在缓存前归一化成 Clash YAML,并把 provider 切成 type: file
 //     (否则内核重启刷新时会重新拉原始 URL 再解析失败)。
 //
 // 因此这里的职责不是为某个机场写专用解析,而是覆盖所有标准订阅格式的通用识别与转换。

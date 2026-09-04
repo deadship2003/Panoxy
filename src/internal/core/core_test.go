@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/asset"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
-// TestValidateRenderedConfig 用进程内内核校验 Panoxy 渲染的 tun/tproxy 配置,
+// TestValidateRenderedConfig 用进程内内核校验 panoxy 渲染的 tun/tproxy 配置,
 // 等价外部 `mihomo -t`(M1 起替代该外部调用)。
 // 需 geodata 文件,本机缺失时跳过(CI/打包阶段再验)。
 func TestValidateRenderedConfig(t *testing.T) {

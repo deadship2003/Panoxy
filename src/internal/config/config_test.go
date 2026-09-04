@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/core"
+	"github.com/deadship2003/panoxy/internal/asset"
+	"github.com/deadship2003/panoxy/internal/core"
 )
 
 // renderTmp 渲染基础模板到临时文件并返回 Editor。

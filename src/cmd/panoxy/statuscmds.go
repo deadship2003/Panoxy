@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/health"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/statemode"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/health"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/statemode"
 )
 
 func runStatus(cmd *cobra.Command, args []string) error {

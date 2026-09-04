@@ -3,7 +3,7 @@ package firewall
 import (
 	"fmt"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 // keep-out 网段:内核层直接放行、绝不进内核的地址集合(与 TUN route-exclude 等价)。

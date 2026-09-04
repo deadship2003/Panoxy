@@ -1,4 +1,4 @@
-# Panoxy 构建/发布(单文件统一入口)
+# panoxy 构建/发布(单文件统一入口)
 #   推 main     → 跑测试 + 编译 linux amd64/arm64 单二进制 → 上传构建产物(workflow artifact)
 #   手动触发    → Actions 页左侧「Build & Release」→ Run workflow(可选:打离线包并发布 Release)
 #   推 v*/V* 标签 → 测试通过后打双架构离线包,自动发布 GitHub Release
@@ -81,22 +81,22 @@ jobs:
         if: github.event.inputs.arch == '' || github.event.inputs.arch == 'amd64' || github.event.inputs.arch == 'all'
         uses: actions/upload-artifact@v7
         with:
-          name: Panoxy-linux-amd64
-          path: dist/Panoxy-linux-amd64
+          name: panoxy-linux-amd64
+          path: dist/panoxy-linux-amd64
           if-no-files-found: error
 
       - name: Upload linux arm64
         if: github.event.inputs.arch == '' || github.event.inputs.arch == 'arm64' || github.event.inputs.arch == 'all'
         uses: actions/upload-artifact@v7
         with:
-          name: Panoxy-linux-arm64
-          path: dist/Panoxy-linux-arm64
+          name: panoxy-linux-arm64
+          path: dist/panoxy-linux-arm64
           if-no-files-found: error
 
       - name: Upload checksums
         uses: actions/upload-artifact@v7
         with:
-          name: Panoxy-linux-checksums
+          name: panoxy-linux-checksums
           path: dist/sha256sums.txt
           if-no-files-found: error
 
@@ -154,17 +154,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.version }}"
-          notes="全离线安装包(双架构):Panoxy 独立单二进制构建,融合 mihomo 上游源码;geo 数据(GeoIP/GeoSite/Country.mmdb)、广告规则、metacubexd 面板。
-          另附纯二进制(单文件,可直接拷贝到目标机运行):Panoxy-linux-{amd64,arm64}。
-          完整性校验:sha256sum -c Panoxy-${TAG}-<arch>.tar.gz.sha256
-          快速开始:tar xzf Panoxy-${TAG}-<arch>.tar.gz && cd Panoxy-${TAG}-<arch> && sudo ./Panoxy deploy
-          随后导入订阅:sudo Panoxy sub import(回车进入粘贴模式,URL 无需引号)"
+          notes="全离线安装包(双架构):panoxy 独立单二进制构建,融合 mihomo 上游源码;geo 数据(GeoIP/GeoSite/Country.mmdb)、广告规则、metacubexd 面板。
+          另附纯二进制(单文件,可直接拷贝到目标机运行):panoxy-linux-{amd64,arm64}。
+          完整性校验:sha256sum -c panoxy-${TAG}-<arch>.tar.gz.sha256
+          快速开始:tar xzf panoxy-${TAG}-<arch>.tar.gz && cd panoxy-${TAG}-<arch> && sudo ./panoxy deploy
+          随后导入订阅:sudo panoxy sub import(回车进入粘贴模式,URL 无需引号)"
           # 幂等:Release 已存在则补传/覆盖资产
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/Panoxy-${TAG}-*.tar.gz dist/Panoxy-${TAG}-*.tar.gz.sha256 \
-              dist/Panoxy-linux-amd64 dist/Panoxy-linux-arm64 --clobber
+            gh release upload "$TAG" dist/panoxy-${TAG}-*.tar.gz dist/panoxy-${TAG}-*.tar.gz.sha256 \
+              dist/panoxy-linux-amd64 dist/panoxy-linux-arm64 --clobber
           else
-            gh release create "$TAG" --title "Panoxy ${TAG}" --notes "$notes" \
-              dist/Panoxy-${TAG}-*.tar.gz dist/Panoxy-${TAG}-*.tar.gz.sha256 \
-              dist/Panoxy-linux-amd64 dist/Panoxy-linux-arm64
+            gh release create "$TAG" --title "panoxy ${TAG}" --notes "$notes" \
+              dist/panoxy-${TAG}-*.tar.gz dist/panoxy-${TAG}-*.tar.gz.sha256 \
+              dist/panoxy-linux-amd64 dist/panoxy-linux-arm64
           fi

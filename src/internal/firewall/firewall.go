@@ -1,4 +1,4 @@
-// Package firewall 管理 Panoxy 自有防火墙规则(DNS 劫持;TPROXY 模式另含打标/策略路由)。
+// Package firewall 管理 panoxy 自有防火墙规则(DNS 劫持;TPROXY 模式另含打标/策略路由)。
 //
 // 设计要点:
 //   - 独立表 inet <程序名>(= constants.NftTable,随编译期 ProgName 注入),绝不复用系统 nat/filter 表 → CleanAll = 删整表,幂等
@@ -15,17 +15,17 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/logx"
 )
 
 // BackendName 是唯一防火墙后端名(健康报告展示用)。
 const BackendName = "nftables"
 
-// ensureNft 校验 nftables 用户态可用;Panoxy 只支持 nftables,缺失即快速失败并给出安装提示。
+// ensureNft 校验 nftables 用户态可用;panoxy 只支持 nftables,缺失即快速失败并给出安装提示。
 func ensureNft() error {
 	if _, err := exec.LookPath("nft"); err != nil {
-		return fmt.Errorf("nftables not found: Panoxy requires the nftables userspace (install the 'nftables' package)")
+		return fmt.Errorf("nftables not found: panoxy requires the nftables userspace (install the 'nftables' package)")
 	}
 	return nil
 }

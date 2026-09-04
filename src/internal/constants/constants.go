@@ -1,4 +1,4 @@
-// Package constants 定义 Panoxy 全局常量:目录布局、防火墙标识、端口。
+// Package constants 定义 panoxy 全局常量:目录布局、防火墙标识、端口。
 // 布局原则:/opt/<ProgName> 自包含数据家目录;/etc/<ProgName>.yaml 是管理员手编的系统级配置(唯一事实源)。
 package constants
 
@@ -6,11 +6,11 @@ import "strings"
 
 // ProgName 程序名:编译期可用
 //
-//	-ldflags "-X github.com/deadship2003/Panoxy/internal/constants.ProgName=myproxy"
+//	-ldflags "-X github.com/deadship2003/panoxy/internal/constants.ProgName=myproxy"
 //
 // 注入。一旦注入,派生路径/单元名/防火墙表链/env 前缀/状态文件/备份后缀全部跟随(见 EnvPrefix)。
-// 缺省 "Panoxy"(Makefile 的 PROG / build.sh 的 --prog 亦默认此名)。
-var ProgName = "Panoxy"
+// 缺省 "panoxy"(Makefile 的 PROG / build.sh 的 --prog 亦默认此名)。
+var ProgName = "panoxy"
 
 // EnvPrefix 环境变量前缀:PANOXY_ → <PROG>_(小写转大写,- 转 _)。
 func EnvPrefix() string { return strings.ToUpper(strings.ReplaceAll(ProgName, "-", "_")) }

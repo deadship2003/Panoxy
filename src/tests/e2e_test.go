@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/asset"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 var (
@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	bin = filepath.Join(dir, constants.ProgName)
-	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/Panoxy").CombinedOutput()
+	out, err := exec.Command(goTool, "build", "-o", bin, "../cmd/panoxy").CombinedOutput()
 	if err != nil {
 		fmt.Printf("SKIP: 构建 panixy 失败(依赖未拉取?): %s\n%s", err, out)
 		os.Exit(0)

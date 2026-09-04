@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/core"
-	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/core"
+	"github.com/deadship2003/panoxy/internal/paths"
 	"github.com/metacubex/mihomo/hub"
 )
 

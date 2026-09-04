@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/execx"
-	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/asset"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/execx"
+	"github.com/deadship2003/panoxy/internal/paths"
 
 	"gopkg.in/yaml.v3"
 )

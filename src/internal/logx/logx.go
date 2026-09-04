@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 const (
@@ -34,7 +34,7 @@ func Info(format string, a ...any) {
 	fmt.Fprintln(os.Stderr, stamp("INFO", fmt.Sprintf(format, a...)))
 }
 
-// Step 是 --verbose 级:事务分步(如 "[3/7] 写入配置(备份→.Panoxy-bak,即 BackupSuffix 派生)")。
+// Step 是 --verbose 级:事务分步(如 "[3/7] 写入配置(备份→.panoxy-bak,即 BackupSuffix 派生)")。
 func Step(format string, a ...any) {
 	if level >= LevelVerbose {
 		fmt.Fprintln(os.Stderr, stamp("STEP", fmt.Sprintf(format, a...)))

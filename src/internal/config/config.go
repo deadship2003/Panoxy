@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/asset"
+	"github.com/deadship2003/panoxy/internal/constants"
 
 	"gopkg.in/yaml.v3"
 )

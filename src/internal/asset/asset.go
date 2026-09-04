@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/constants"
 )
 
 //go:embed service.tpl upgrade-service.tpl upgrade-timer.tpl config.tpl
@@ -36,7 +36,7 @@ func render(name string, data any) (string, error) {
 	return b.String(), nil
 }
 
-// RenderService 渲染 <Prog>.service(即 Panoxy.service;无任何 resolvectl 逻辑;
+// RenderService 渲染 <Prog>.service(即 panoxy.service;无任何 resolvectl 逻辑;
 // fw apply 内部先无条件 CleanAll,kill -9 残留随 restart 自愈)。
 func RenderService(d UnitData) (string, error) { return render("service.tpl", d) }
 

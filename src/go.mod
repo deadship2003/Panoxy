@@ -1,4 +1,4 @@
-module github.com/deadship2003/Panoxy
+module github.com/deadship2003/panoxy
 
 go 1.23.4
 

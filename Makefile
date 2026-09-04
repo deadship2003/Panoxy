@@ -5,7 +5,7 @@
 # 内核已内嵌于 CLI(单二进制),测试无需外部 mihomo 二进制。
 
 PANOXY_VERSION ?= $(shell git describe --tags 2>/dev/null || echo "V0.0.1-dev")
-PROG           ?= Panoxy
+PROG           ?= panoxy
 PREFIX        ?= /usr/local
 BINDIR        ?= $(PREFIX)/bin
 DESTDIR       ?=
@@ -13,7 +13,7 @@ HOST_ARCH     := $(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$
 ARCH          ?= $(HOST_ARCH)
 GOAMD64       ?= $(shell grep -qw avx2 /proc/cpuinfo 2>/dev/null && echo v3 || echo v1)
 
-LDFLAGS := -s -w -X main.version=$(PANOXY_VERSION) -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$(PROG) -buildid=
+LDFLAGS := -s -w -X main.version=$(PANOXY_VERSION) -X github.com/deadship2003/panoxy/internal/constants.ProgName=$(PROG) -buildid=
 
 # 命令回显:默认静默(@ 前缀),只输出关键状态;
 # 需排查构建时手工加 make -n 仅打印命令、不执行。
@@ -37,12 +37,12 @@ build: $(addprefix _build-,$(BUILD_ARCHS)) _checksums ## 编译目标二进制(�
 _build-amd64:
 	@mkdir -p dist
 	@echo "  → 编译 amd64 (GOAMD64=$(GOAMD64))"
-	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=$(GOAMD64) go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-amd64 ./cmd/Panoxy
+	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=$(GOAMD64) go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-amd64 ./cmd/panoxy
 
 _build-arm64:
 	@mkdir -p dist
 	@echo "  → 编译 arm64"
-	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-arm64 ./cmd/Panoxy
+	$(Q)cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../dist/$(PROG)-linux-arm64 ./cmd/panoxy
 
 _checksums:
 	$(Q)(cd dist && sha256sum $(PROG)-linux-* > sha256sums.txt 2>/dev/null || true)

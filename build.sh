@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Panoxy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
+# panoxy 构建脚本(单一入口):编译 CLI / 打离线包 / 清理产物
 # 用法: build.sh [命令]
 #   编译(默认)   build.sh [--arch amd64|arm64|all] [--ver V0.0.1] [--prog 程序名]
 #                 默认只编当前 CPU 架构;amd64 自带检测 AVX2(有→v3,无→v1)
@@ -10,10 +10,10 @@
 # 选项:
 #   --arch <amd64|arm64|all>   目标架构。编译/打包默认当前平台;--arch all 打全部
 #   --ver  <V0.0.1>            版本号(默认 git describe;无 git 时 V0.0.1-dev)
-#   --prog <Panoxy>            程序名(默认 Panoxy;编译期注入,决定二进制/包名与运行期路径)
+#   --prog <panoxy>            程序名(默认 panoxy;编译期注入,决定二进制/包名与运行期路径)
 #   --sub-url <订阅URL>        打包时直连下载失败,经订阅节点建本地代理再下载
 # 环境变量:
-#   PROG             程序名(与 --prog 等价,默认 Panoxy)
+#   PROG             程序名(与 --prog 等价,默认 panoxy)
 #   GOAMD64          amd64 CLI 编译档(默认自动检测 AVX2;可 GOAMD64=v1/v3/v4 强制)
 #   ASSETS_SRC       本地资产目录(默认 /opt/$PROG,存在即优先复制,断网可打包)
 #   PANOXY_BOOT_BIN  引导代理 CLI(默认 dist/$PROG-linux-<host_arch>;内核已内嵌,无外部 mihomo)
@@ -29,7 +29,7 @@ usage() { sed -n '2,/^set -euo/p' "$SELF" | sed '$d; s/^# \{0,1\}//'; exit 0; }
 
 # ---- 全局状态(供 package 与 EXIT trap 使用) ----
 SUB_URL=""; PROXYX=""; BOOT_DIRF=""; TMP=""
-PROG="${PROG:-Panoxy}"
+PROG="${PROG:-panoxy}"
 PROXY_PORT="${PROXY_PORT:-33999}"
 trap 'boot_proxy_stop; rm -rf "$TMP"' EXIT
 
@@ -55,7 +55,7 @@ build_cmd() {
   [ -n "$VER" ] || VER="$(git describe --tags 2>/dev/null || echo "")"
   [ -n "$VER" ] || VER="V0.0.1-dev"
   local commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  local ldflags="-s -w -X main.version=$VER -X github.com/deadship2003/Panoxy/internal/constants.ProgName=$PROG -buildid="
+  local ldflags="-s -w -X main.version=$VER -X github.com/deadship2003/panoxy/internal/constants.ProgName=$PROG -buildid="
   local targets="$ARCH"
   [ "$ARCH" = all ] && targets="amd64 arm64"
   mkdir -p dist
@@ -66,11 +66,11 @@ build_cmd() {
       amd64)
         local lvl="${GOAMD64:-$(goamd64)}"
         echo "  amd64(GOAMD64=$lvl)"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/Panoxy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64="$lvl" go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-amd64 ./cmd/panoxy)
         ;;
       arm64)
         echo "  arm64"
-        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/Panoxy)
+        (cd src && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$ldflags" -o ../dist/$PROG-linux-arm64 ./cmd/panoxy)
         ;;
     esac
   done

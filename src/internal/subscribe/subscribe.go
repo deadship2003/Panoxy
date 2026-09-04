@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/httpx"
-	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/httpx"
+	"github.com/deadship2003/panoxy/internal/logx"
 )
 
 // UA 返回拉取订阅的 User-Agent。

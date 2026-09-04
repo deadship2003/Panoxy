@@ -7,12 +7,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/logx"
 )
 
 // runUpstream 探测 mihomo Alpha 上游最新 commit,与内嵌基线对比,仅提示、绝不自动合并/改源码。
-// 上游同步(子树合并 → 重新应用 Panoxy 裁剪 → 回归)由用户 + AI 人工完成,本命令只做探测。
+// 上游同步(子树合并 → 重新应用 panoxy 裁剪 → 回归)由用户 + AI 人工完成,本命令只做探测。
 func runUpstream(cmd *cobra.Command, args []string) error {
 	remote := constants.UpstreamRepo + ".git"
 	ref := "refs/heads/" + constants.UpstreamBranch
@@ -64,7 +64,7 @@ func cmdUpstream() *cobra.Command {
 kernel baseline. If upstream has moved, it prints a hint — it never auto-merges or modifies source.
 
 The embedded kernel baseline is compiled in (internal/constants.UpstreamMihomoCommit); syncing
-upstream is a manual + AI step (git subtree pull → re-apply Panoxy trims → regression).`,
+upstream is a manual + AI step (git subtree pull → re-apply panoxy trims → regression).`,
 		Example: `  panixy upstream   # prints "发现上游更新: Alpha @ 65287f0 → <new>, 建议同步" when upstream moved`,
 		RunE:    runUpstream,
 	}

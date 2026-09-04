@@ -8,18 +8,18 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/firewall"
-	"github.com/deadship2003/Panoxy/internal/health"
-	"github.com/deadship2003/Panoxy/internal/logx"
-	"github.com/deadship2003/Panoxy/internal/mihomoapi"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/statemode"
-	"github.com/deadship2003/Panoxy/internal/systemdunit"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/firewall"
+	"github.com/deadship2003/panoxy/internal/health"
+	"github.com/deadship2003/panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/mihomoapi"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/statemode"
+	"github.com/deadship2003/panoxy/internal/systemdunit"
 )
 
 // applyFW explicitly loads firewall rules for the current mode (shared with fw apply).
-// redeploy uses it to explicitly re-mount the firewall — a newly compiled Panoxy may have
+// redeploy uses it to explicitly re-mount the firewall — a newly compiled panoxy may have
 // adjusted rules, so it can't rely solely on the service restart's ExecStartPost fallback.
 func applyFW(mode string) error {
 	if mode == "tproxy" {

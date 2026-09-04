@@ -1,4 +1,4 @@
-// Panoxy — a mihomo-based Linux transparent proxy gateway deploy/management tool (single-binary, Go).
+// panoxy — a mihomo-based Linux transparent proxy gateway deploy/management tool (single-binary, Go).
 // Responsibility boundary: template rendering, file/unit management, firewall DNS hijack, subscription
 // management, upgrade, and health checks; traffic forwarding and DNS resolution are all done by
 // the mihomo kernel.
@@ -15,11 +15,11 @@ import (
 	"github.com/spf13/cobra/doc"
 	"github.com/spf13/pflag"
 
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/firewall"
-	"github.com/deadship2003/Panoxy/internal/logx"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/statemode"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/firewall"
+	"github.com/deadship2003/panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/statemode"
 )
 
 // version is injected by the build script via -ldflags -X; defaults to the constant.

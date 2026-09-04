@@ -89,10 +89,10 @@ tun:
     - 192.168.0.0/16
 {{- end}}
 # ============ 防火墙(iptables 块)============
-# 重要:这里的 iptables 是 mihomo 自带的“自动写内核规则”开关,不是 Panoxy 的防火墙后端。
-# 透明代理所需的 DNS 劫持 / TPROXY mark/策略路由,全部由 Panoxy 自己的 nftables 规则管理
-# (systemd 的 ExecStartPost 执行 `Panoxy fw apply` 写入内核),mihomo 只负责监听端口。
-# 若误改成 enable: true,mihomo 会再往内核写一套 inbound-tproxy/redirect 规则,与 Panoxy
+# 重要:这里的 iptables 是 mihomo 自带的“自动写内核规则”开关,不是 panoxy 的防火墙后端。
+# 透明代理所需的 DNS 劫持 / TPROXY mark/策略路由,全部由 panoxy 自己的 nftables 规则管理
+# (systemd 的 ExecStartPost 执行 `panoxy fw apply` 写入内核),mihomo 只负责监听端口。
+# 若误改成 enable: true,mihomo 会再往内核写一套 inbound-tproxy/redirect 规则,与 panoxy
 # 的规则重复、冲突,卸载时也清不干净。因此这里必须恒为 false,请勿改动。
 iptables:
   enable: false

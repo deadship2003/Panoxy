@@ -16,19 +16,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deadship2003/Panoxy/internal/asset"
-	"github.com/deadship2003/Panoxy/internal/constants"
-	"github.com/deadship2003/Panoxy/internal/logx"
-	"github.com/deadship2003/Panoxy/internal/mihomoapi"
-	"github.com/deadship2003/Panoxy/internal/paths"
-	"github.com/deadship2003/Panoxy/internal/statemode"
-	"github.com/deadship2003/Panoxy/internal/subscribe"
-	"github.com/deadship2003/Panoxy/internal/systemdunit"
-	"github.com/deadship2003/Panoxy/internal/upgrade"
+	"github.com/deadship2003/panoxy/internal/asset"
+	"github.com/deadship2003/panoxy/internal/constants"
+	"github.com/deadship2003/panoxy/internal/logx"
+	"github.com/deadship2003/panoxy/internal/mihomoapi"
+	"github.com/deadship2003/panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/statemode"
+	"github.com/deadship2003/panoxy/internal/subscribe"
+	"github.com/deadship2003/panoxy/internal/systemdunit"
+	"github.com/deadship2003/panoxy/internal/upgrade"
 )
 
 // runInit: no packaging, single-binary bare-metal init — downloads all assets and deploys by itself, then imports the subscription.
-// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs the Panoxy CLI on this machine) > gh mirror.
+// Three-tier download strategy: direct (15s hard cap) > subscription bootstrap proxy (needs the panoxy CLI on this machine) > gh mirror.
 func runInit(cmd *cobra.Command, args []string) error {
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		return initDryRun(cmd, args)
@@ -316,7 +316,7 @@ rules:
 		bootBody = body // fall back to the original on normalization failure, letting mihomo report its own error (consistent with the real import path)
 	}
 	os.WriteFile(filepath.Join(dir, "boot.sub.yaml"), bootBody, 0o644)
-	// Boot the embedded kernel via `Panoxy run`; the temp dir is the data home, the temp config the source.
+	// Boot the embedded kernel via `panoxy run`; the temp dir is the data home, the temp config the source.
 	c := exec.Command(bootBin, "run")
 	c.Dir = dir
 	c.Env = append(os.Environ(),
@@ -366,7 +366,7 @@ func fetchSubBody(u string, api *mihomoapi.Client) ([]byte, error) {
 }
 
 // initDryRun is a dry-run: environment checks + download strategy decision + placement list + config render preview.
-// No downloads, no writes, no root needed; for a full sandbox run use Panoxy try.
+// No downloads, no writes, no root needed; for a full sandbox run use panoxy try.
 func initDryRun(cmd *cobra.Command, args []string) error {
 	p := paths.Get()
 	logx.Info("== init --dry-run (dry-run mode, does not execute) ==")

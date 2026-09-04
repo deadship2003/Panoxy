@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deadship2003/Panoxy/internal/paths"
+	"github.com/deadship2003/panoxy/internal/paths"
 )
 
 func TestInstalled(t *testing.T) {
